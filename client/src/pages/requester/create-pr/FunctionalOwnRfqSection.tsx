@@ -15,8 +15,6 @@ const softWash = {
     'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
-const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
 
 export type SavedQuotationFile = {
   id?: number | null;
@@ -205,7 +203,6 @@ export default function FunctionalOwnRfqSection({
     const q1 = r.quotes.find((q) => q.round === 1);
     return Number(q1?.quotedPrice) >= 0 && String(q1?.quotedPrice || '').trim() !== '' && quoteHasQuotationFile(q1);
   }).length;
-  const guideStep = quotedCount > 0 ? 2 : rows.length > 0 ? 2 : 1;
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -472,234 +469,293 @@ export default function FunctionalOwnRfqSection({
     return Math.min(4, latest + 1 || 1);
   };
 
+  const pendingNames = rows
+    .filter((r) => {
+      const q1 = r.quotes.find((q) => q.round === 1);
+      return !(
+        Number(q1?.quotedPrice) >= 0 &&
+        String(q1?.quotedPrice || '').trim() !== '' &&
+        quoteHasQuotationFile(q1)
+      );
+    })
+    .map((r) => r.name || 'Vendor');
+  const recommendedName = rows.find((r) => r.key === recommendedKey)?.name || '';
+  const stepStatus = [
+    rows.length ? `${rows.length} vendor${rows.length === 1 ? '' : 's'} added` : 'No vendors yet',
+    rows.length ? `${quotedCount} of ${rows.length} quotes entered` : 'Waiting for vendors',
+    recommendedName ? `${recommendedName} chosen` : 'Not chosen yet',
+  ];
+  const activeStep = steps.find((s) => !s.done)?.n ?? 0;
+  const nextHint =
+    rows.length === 0
+      ? 'Search for a vendor below and select them. A form opens to enter their price.'
+      : pendingNames.length > 0
+        ? `Enter the quote for ${pendingNames.slice(0, 2).join(', ')}${
+            pendingNames.length > 2 ? ` and ${pendingNames.length - 2} more` : ''
+          } — click "Add quote" next to the vendor.`
+        : !recommendedKey
+          ? 'All quotes are in. Compare the prices below and click "Choose" on the best vendor.'
+          : `${recommendedName} is selected. You can continue to the next step.`;
+
+  const handleQuoteFiles = (picked: File[]) => {
+    if (!picked.length || !editing) return;
+    const nextFiles = [...localQuoteFiles(editingQuote), ...picked];
+    updateQuote(editing.key, quoteRound, {
+      files: nextFiles,
+      file: nextFiles[0] || null,
+    });
+    setFileViewError('');
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        {steps.map((s) => {
-          const active = guideStep === s.n;
-          return (
-            <div
+    <div className="vr-root space-y-4">
+      {/* ── How it works ── */}
+      <div className="vr-guide">
+        <div className="vr-guide-head">
+          <span className="vr-guide-ic">
+            <i className="ri-lightbulb-flash-line" />
+          </span>
+          <div className="min-w-0">
+            <h3>Collect vendor quotes in 3 simple steps</h3>
+            <p>Add the vendors you asked for a price, enter what each one quoted, then pick the best one.</p>
+          </div>
+        </div>
+        <ol className="vr-steps">
+          {steps.map((s, i) => (
+            <li
               key={s.n}
-              className={`${softCard} px-4 py-3.5 ${
-                s.done
-                  ? 'ring-1 ring-[#90CAF9]/70'
-                  : active
-                    ? 'ring-2 ring-[#90CAF9]'
-                    : ''
-              }`}
+              className={`vr-step${s.done ? ' is-done' : ''}${activeStep === s.n ? ' is-active' : ''}`}
             >
-              <div className="pointer-events-none absolute inset-0" style={softWash} />
-              <div className="relative z-[1] flex items-center gap-2.5">
-                <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl text-xs font-bold ${
-                    s.done
-                      ? 'bg-[#1E88E5] text-white'
-                      : active
-                        ? 'bg-[#1E88E5] text-white'
-                        : 'bg-[#E3F2FD] text-[#1E88E5]'
-                  }`}
-                >
-                  {s.done ? <i className="ri-check-line" /> : s.n}
-                </span>
-                <p className="text-sm font-semibold text-[#2C3E50]">{s.title}</p>
+              <span className="vr-step-no">{s.done ? <i className="ri-check-line" /> : s.n}</span>
+              <div className="min-w-0">
+                <p className="vr-step-title">
+                  {s.n === 1 ? 'Add vendors' : s.n === 2 ? 'Enter their quotes' : 'Choose the winner'}
+                </p>
+                <p className="vr-step-status">{stepStatus[i]}</p>
               </div>
-              <p className="relative z-[1] mt-1.5 pl-10 text-xs text-slate-500">{s.hint}</p>
-            </div>
-          );
-        })}
+            </li>
+          ))}
+        </ol>
+        <div className={`vr-next${activeStep === 0 ? ' is-done' : ''}`}>
+          <i className={activeStep === 0 ? 'ri-checkbox-circle-fill' : 'ri-arrow-right-circle-fill'} />
+          <span>
+            <b>{activeStep === 0 ? 'All done: ' : 'Next: '}</b>
+            {nextHint}
+          </span>
+        </div>
       </div>
 
       {existingQuoteNote && (
-        <div className="rounded-xl border border-transparent bg-[#E3F2FD]/70 px-3.5 py-3 text-sm text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]">
-          {existingQuoteNote}
+        <div className="vr-banner info">
+          <i className="ri-information-line" />
+          <span>{existingQuoteNote}</span>
         </div>
       )}
       {(localError || error) && (
-        <div className="rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{localError || error}</div>
+        <div className="vr-banner error">
+          <i className="ri-error-warning-line" />
+          <span>{localError || error}</span>
+        </div>
       )}
       {toast && (
-        <div className="rounded-xl border border-transparent bg-[#E3F2FD]/80 px-3.5 py-3 text-sm text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]">
-          {toast}
+        <div className="vr-banner success">
+          <i className="ri-checkbox-circle-line" />
+          <span>{toast}</span>
         </div>
       )}
 
-      <div className={softCard}>
-        <div className="pointer-events-none absolute inset-0" style={softWash} />
-        <div className="relative z-[1] border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">Step 1</p>
-          <h2 className="mt-0.5 text-base font-bold text-[#2C3E50]">Add vendors</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Type and select a vendor — a popup opens for quoted amount and quotation file.
-          </p>
-        </div>
-
-        <div className="relative z-[1] space-y-4 p-5">
-        {rows.length > 0 && (
-          <div className="space-y-2.5">
-            {rows.map((row) => {
-              const round1 = row.quotes.find((q) => q.round === 1);
-              const hasQuote =
-                Number(round1?.quotedPrice) >= 0 &&
-                String(round1?.quotedPrice || '').trim() !== '' &&
-                quoteHasQuotationFile(round1);
-              return (
-                <div
-                  key={row.key}
-                  className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-3.5 py-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
-                >
-                  <div className="pointer-events-none absolute inset-0" style={softWash} />
-                  <span className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                    <i className="ri-store-2-line" />
-                  </span>
-                  <div className="relative z-[1] min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.name || 'Vendor'}</p>
-                    <p className="truncate text-xs text-slate-500">
-                      {row.email || 'No email on file'}
-                      {hasQuote ? ` · ${moneyFmt(Number(round1?.quotedPrice))}` : ' · Quote pending'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => openQuote(row, 1)}
-                    className="relative z-[1] cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0]"
-                  >
-                    {hasQuote ? 'Edit' : 'Quote'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onChange(rows.filter((x) => x.key !== row.key))}
-                    className="relative z-[1] cursor-pointer px-2 text-sm text-slate-400 transition-colors hover:text-rose-500"
-                  >
-                    Remove
-                  </button>
-                </div>
-              );
-            })}
+      {/* ── Step 1: add vendors ── */}
+      <div className="vr-card">
+        <div className="vr-card-head">
+          <span className="vr-badge">1</span>
+          <div className="min-w-0">
+            <h2>Add vendors and their quotes</h2>
+            <p>Search a vendor and select them — a form opens where you enter their price and attach the quotation file.</p>
           </div>
-        )}
-
-        <div className="space-y-2">
-          <label className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Search vendor</label>
-          <VendorSearchSelect
-            vendors={vendors}
-            value={searchVendorId}
-            takenIds={takenIds}
-            onChange={(id) => {
-              setSearchVendorId(id);
-              if (!id) return;
-              const v = vendors.find((x) => String(x.id) === String(id));
-              if (!v) return;
-              // Selecting a vendor immediately opens quote popup (amount + file)
-              addVendorAndOpenQuote({
-                id: String(v.id),
-                name: v.name,
-                email: v.email || '',
-              });
-            }}
-            placeholder="Type name, vendor code, or email — then enter quote"
-            emptyHint="No match. Use Create new to add them to Vendor Master."
-          />
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-[#1E88E5] hover:text-[#1565C0]"
-          >
-            <i className="ri-user-add-line" />
-            Vendor not in the list? Create new
-          </button>
         </div>
 
-        <p className="text-sm font-semibold text-[#2C3E50]">Or choose how to add the quote</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => {
-              if (!selectedSearch) {
-                setLocalError('Search and select a vendor first');
-                return;
-              }
-              addVendorAndOpenQuote({
-                id: String(selectedSearch.id),
-                name: selectedSearch.name,
-                email: selectedSearch.email || '',
-              });
-            }}
-            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
-          >
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-              <i className="ri-mail-send-line" />
-            </span>
-            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">Email the vendor</p>
-            <p className="relative z-[1] mt-1 text-xs text-slate-500">Add them and attach the quote amount + file now.</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!selectedSearch) {
-                setLocalError('Search and select a vendor first');
-                return;
-              }
-              addVendorAndOpenQuote({
-                id: String(selectedSearch.id),
-                name: selectedSearch.name,
-                email: selectedSearch.email || '',
-              });
-            }}
-            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
-          >
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#1E88E5] text-white">
-              <i className="ri-edit-line" />
-            </span>
-            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">I will type the quote</p>
-            <p className="relative z-[1] mt-1 text-xs text-slate-500">Opens popup for quoted amount and quotation file upload.</p>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setLocalError('');
-              if (selectedSearch) {
-                const added = commitVendor({
-                  id: String(selectedSearch.id),
-                  name: selectedSearch.name,
-                  email: selectedSearch.email || '',
+        <div className="space-y-4 p-4 sm:p-5">
+          <div className="vr-search">
+            <label className="vr-label">
+              <i className="ri-search-line" /> Find a vendor
+            </label>
+            <VendorSearchSelect
+              vendors={vendors}
+              value={searchVendorId}
+              takenIds={takenIds}
+              onChange={(id) => {
+                setSearchVendorId(id);
+                if (!id) return;
+                const v = vendors.find((x) => String(x.id) === String(id));
+                if (!v) return;
+                // Selecting a vendor immediately opens quote popup (amount + file)
+                addVendorAndOpenQuote({
+                  id: String(v.id),
+                  name: v.name,
+                  email: v.email || '',
                 });
-                applyRows(added.nextRows);
-                setSearchVendorId('');
-                openRfqChat({ vendor: selectedSearch });
-                return;
-              }
-              openRfqChat();
-            }}
-            className="relative cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color,box-shadow] hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)] sm:rounded-[18px]"
-          >
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <span className="relative z-[1] mb-2 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-800 text-white">
-              <i className="ri-robot-2-line" />
-            </span>
-            <p className="relative z-[1] text-sm font-bold text-[#2C3E50]">Upload with AI</p>
-            <p className="relative z-[1] mt-1 text-xs text-slate-500">Chat asks the vendor name, then you upload the quotation file.</p>
-          </button>
-        </div>
+              }}
+              placeholder="Type vendor name, code or email…"
+              emptyHint="No match. Use Create new to add them to Vendor Master."
+            />
+            <div className="vr-alt">
+              <button type="button" onClick={() => setCreateOpen(true)} className="vr-alt-btn">
+                <i className="ri-user-add-line" />
+                <span>
+                  <b>Vendor not in the list?</b>
+                  <small>Create a new vendor</small>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalError('');
+                  if (selectedSearch) {
+                    const added = commitVendor({
+                      id: String(selectedSearch.id),
+                      name: selectedSearch.name,
+                      email: selectedSearch.email || '',
+                    });
+                    applyRows(added.nextRows);
+                    setSearchVendorId('');
+                    openRfqChat({ vendor: selectedSearch });
+                    return;
+                  }
+                  openRfqChat();
+                }}
+                className="vr-alt-btn ai"
+              >
+                <i className="ri-robot-2-line" />
+                <span>
+                  <b>Have the quotation file?</b>
+                  <small>Upload it and let AI fill in the price</small>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {rows.length > 0 ? (
+            <div className="space-y-2.5">
+              <p className="vr-label">
+                <i className="ri-store-2-line" /> Vendors added ({rows.length})
+              </p>
+              {rows.map((row, idx) => {
+                const round1 = row.quotes.find((q) => q.round === 1);
+                const hasQuote =
+                  Number(round1?.quotedPrice) >= 0 &&
+                  String(round1?.quotedPrice || '').trim() !== '' &&
+                  quoteHasQuotationFile(round1);
+                const fileCount = localQuoteFiles(round1).length + savedQuoteFiles(round1).length;
+                return (
+                  <div key={row.key} className={`vr-vendor${hasQuote ? ' is-quoted' : ''}`}>
+                    <span className="vr-vendor-no">{idx + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="vr-vendor-name">
+                        {row.name || 'Vendor'}
+                        {recommendedKey === row.key ? (
+                          <span className="vr-pill chosen">
+                            <i className="ri-award-line" /> Chosen
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="vr-vendor-meta">{row.email || 'No email on file'}</p>
+                    </div>
+                    <span className={`vr-pill ${hasQuote ? 'ok' : 'wait'}`}>
+                      {hasQuote ? (
+                        <>
+                          <i className="ri-checkbox-circle-fill" />
+                          {moneyFmt(Number(round1?.quotedPrice))}
+                          {fileCount > 0 ? ` · ${fileCount} file${fileCount === 1 ? '' : 's'}` : ''}
+                        </>
+                      ) : (
+                        <>
+                          <i className="ri-time-line" /> Waiting for quote
+                        </>
+                      )}
+                    </span>
+                    <div className="vr-vendor-acts">
+                      <button
+                        type="button"
+                        onClick={() => openQuote(row, 1)}
+                        className={`vr-btn sm ${hasQuote ? 'ghost' : 'primary'}`}
+                      >
+                        <i className={hasQuote ? 'ri-edit-line' : 'ri-add-line'} />
+                        {hasQuote ? 'Edit quote' : 'Add quote'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onChange(rows.filter((x) => x.key !== row.key))}
+                        className="vr-icon-btn danger"
+                        title="Remove this vendor"
+                        aria-label="Remove this vendor"
+                      >
+                        <i className="ri-delete-bin-line" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="vr-empty">
+              <i className="ri-store-2-line" />
+              <p>No vendors added yet</p>
+              <small>Use the search above to add the first vendor.</small>
+            </div>
+          )}
         </div>
       </div>
 
       {rows.length > 0 && (
         <div className="space-y-3">
-          <div className={`${softCard} px-5 py-4`}>
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">Step 2 &amp; 3</p>
-                <h2 className="mt-0.5 text-base font-bold text-[#2C3E50]">Get quotes and pick a vendor</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Switch tabs to edit each round. Click the <strong>×</strong> on Q2/Q3/Q4 to delete that round only (vendors stay). <strong>Remove vendor</strong> deletes that vendor and all their rounds.
-                </p>
+          <div className="vr-card">
+            <div className="vr-card-head">
+              <span className="vr-badge">2</span>
+              <div className="min-w-0 flex-1">
+                <h2>Compare quotes and choose the winner</h2>
+                <p>Each vendor&apos;s price is shown by round. Q1 is the first price; Q2–Q4 are revised prices after negotiation.</p>
               </div>
-              <span className="rounded-full bg-[#E3F2FD] px-3 py-1.5 text-xs font-semibold text-[#1E88E5]">
-                {quotedCount} of {rows.length} quotes received
+              <span className="vr-count">
+                {quotedCount} of {rows.length} quotes entered
               </span>
+            </div>
+            <div className="vr-tips">
+              <div className="vr-tip">
+                <span className="vr-tip-ic">
+                  <i className="ri-edit-line" />
+                </span>
+                <div>
+                  <b>Edit</b>
+                  <small>Change the price or file for the selected round.</small>
+                </div>
+              </div>
+              <div className="vr-tip amber">
+                <span className="vr-tip-ic">
+                  <i className="ri-refresh-line" />
+                </span>
+                <div>
+                  <b>Re-quote</b>
+                  <small>Vendor sent a revised price? This adds the next round (up to Q4).</small>
+                </div>
+              </div>
+              <div className="vr-tip green">
+                <span className="vr-tip-ic">
+                  <i className="ri-award-line" />
+                </span>
+                <div>
+                  <b>Choose</b>
+                  <small>Pick the winning vendor and write a short reason.</small>
+                </div>
+              </div>
+              <div className="vr-tip red">
+                <span className="vr-tip-ic">
+                  <i className="ri-close-line" />
+                </span>
+                <div>
+                  <b>× on a round tab</b>
+                  <small>Deletes only that round. Vendors stay.</small>
+                </div>
+              </div>
             </div>
           </div>
           <RfqVendorQuoteTable
@@ -789,57 +845,65 @@ export default function FunctionalOwnRfqSection({
       )}
 
       {editingSource && editingQuote && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)] sm:rounded-[18px]">
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
-              <div>
-                <h3 className="text-base font-bold text-[#2C3E50]">
-                  Enter quote — {editingSource.name}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Upload the quotation file and enter the quoted amount (required for round 1).
-                </p>
+        <div className="vr-modal-wrap fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="vr-modal relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden">
+            <div className="vr-modal-head">
+              <span className="vr-modal-ic">
+                <i className="ri-price-tag-3-line" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3>Quote from {editingSource.name}</h3>
+                <p>Enter the price this vendor quoted and attach their quotation file.</p>
               </div>
-              <button type="button" onClick={closeQuote} className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-[#E3F2FD] hover:text-[#1E88E5]">
-                ×
+              <button type="button" onClick={closeQuote} className="vr-icon-btn" aria-label="Close">
+                <i className="ri-close-line" />
               </button>
             </div>
-            <div className="relative z-[1] flex-1 space-y-5 overflow-y-auto p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                {editingQuotes.map((q) => (
-                  <button
-                    key={q.round}
-                    type="button"
-                    onClick={() => setQuoteRound(q.round)}
-                    className={`cursor-pointer rounded-xl px-3 py-1.5 text-xs font-bold transition-colors ${
-                      quoteRound === q.round
-                        ? 'bg-[#1E88E5] text-white'
-                        : 'border border-transparent bg-white text-slate-600 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9]'
-                    }`}
-                  >
-                    Round {q.round}
-                    {q.round === 1 ? ' *' : ''}
-                  </button>
-                ))}
-                {quoteRound > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const r = quoteRound;
-                      removeRound(r);
-                      closeQuote();
-                    }}
-                    className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
-                  >
-                    <i className="ri-delete-bin-line" />
-                    Delete round {quoteRound} only
-                  </button>
-                )}
-              </div>
-              <div>
-                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                  Quotation files {quoteRound === 1 ? <span className="text-rose-500">*</span> : null}
+
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              {/* Round */}
+              <section>
+                <p className="vr-sec-title">
+                  <span>1</span> Which quote is this?
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {editingQuotes.map((q) => (
+                    <button
+                      key={q.round}
+                      type="button"
+                      onClick={() => setQuoteRound(q.round)}
+                      className={`vr-round${quoteRound === q.round ? ' is-active' : ''}`}
+                    >
+                      <b>Round {q.round}</b>
+                      <small>{q.round === 1 ? 'First quote' : 'Revised price'}</small>
+                    </button>
+                  ))}
+                  {quoteRound > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = quoteRound;
+                        removeRound(r);
+                        closeQuote();
+                      }}
+                      className="vr-btn sm danger ml-auto"
+                    >
+                      <i className="ri-delete-bin-line" />
+                      Delete round {quoteRound} only
+                    </button>
+                  )}
+                </div>
+                <p className="vr-help">
+                  {quoteRound === 1
+                    ? 'Round 1 is the vendor’s first price. Use Re-quote in the table later if they send a revised price.'
+                    : `Round ${quoteRound} is a revised price after negotiation. Leave it empty if the vendor did not revise.`}
+                </p>
+              </section>
+
+              {/* File */}
+              <section>
+                <p className="vr-sec-title">
+                  <span>2</span> Quotation file {quoteRound === 1 ? <em>Required</em> : <em className="opt">Optional</em>}
                 </p>
                 {(() => {
                   const locals = localQuoteFiles(editingQuote);
@@ -847,114 +911,105 @@ export default function FunctionalOwnRfqSection({
                   const hasAny = locals.length + saved.length > 0;
                   return (
                     <>
-                <label
-                  className={`flex cursor-pointer flex-wrap items-center gap-3 rounded-2xl border-2 border-dashed px-4 py-3.5 sm:rounded-[18px] ${
-                    hasAny
-                      ? 'border-[#90CAF9] bg-[#E3F2FD]/40 hover:bg-[#E3F2FD]/70'
-                      : 'border-rose-200 bg-rose-50/40 hover:bg-rose-50/70'
-                  }`}
-                >
-                  <i
-                    className={`shrink-0 text-xl ${
-                      hasAny ? 'ri-upload-2-line text-[#1E88E5]' : 'ri-upload-cloud-2-line text-rose-500'
-                    }`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-semibold ${hasAny ? 'text-[#1565C0]' : 'text-rose-700'}`}>
-                      {hasAny
-                        ? `Add more files (${locals.length + saved.length} attached)`
-                        : 'Upload quotation files (required)'}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">PDF, Word, Excel, or photo · you can select multiple</p>
-                  </div>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
-                    className="max-w-full text-xs"
-                    onChange={(e) => {
-                      const picked = Array.from(e.target.files || []);
-                      e.target.value = '';
-                      if (!picked.length) return;
-                      const nextFiles = [...locals, ...picked];
-                      updateQuote(editing.key, quoteRound, {
-                        files: nextFiles,
-                        file: nextFiles[0] || null,
-                      });
-                      setFileViewError('');
-                    }}
-                  />
-                </label>
-                {(saved.length > 0 || locals.length > 0) && (
-                  <ul className="mt-2 space-y-1.5">
-                    {saved.map((sf, idx) => (
-                      <li
-                        key={`saved-${sf.id || sf.fileName}-${idx}`}
-                        className="flex items-center gap-2 rounded-xl border border-transparent bg-[#E3F2FD]/50 px-3 py-2 text-xs shadow-[0_8px_24px_-12px_rgba(15,23,42,0.06)]"
+                      <label
+                        className={`vr-drop${hasAny ? ' has-files' : ''}${quoteRound === 1 && !hasAny ? ' is-required' : ''}`}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          handleQuoteFiles(Array.from(e.dataTransfer.files || []));
+                        }}
                       >
-                        <i className="ri-file-check-line shrink-0 text-[#1E88E5]" />
-                        <span className="min-w-0 flex-1 truncate font-medium text-[#1565C0]" title={sf.fileName}>
-                          {sf.fileName}
+                        <span className="vr-drop-ic">
+                          <i className={hasAny ? 'ri-file-add-line' : 'ri-upload-cloud-2-line'} />
                         </span>
-                        <button
-                          type="button"
-                          disabled={fileViewBusy || (!sf.id && !editingQuote.savedSubmissionId)}
-                          onClick={() => void openQuotationPreview(editingQuote, { saved: sf })}
-                          className="cursor-pointer font-semibold text-[#1E88E5] hover:underline disabled:opacity-50"
-                        >
-                          Open
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextSaved = saved.filter((_, i) => i !== idx);
-                            updateQuote(editing.key, quoteRound, {
-                              savedFiles: nextSaved,
-                              savedFileName: nextSaved[0]?.fileName,
-                            });
-                          }}
-                          className="cursor-pointer text-slate-400 hover:text-rose-500"
-                          title="Remove"
-                        >
-                          <i className="ri-close-line" />
-                        </button>
-                      </li>
-                    ))}
-                    {locals.map((lf, idx) => (
-                      <li
-                        key={`local-${lf.name}-${idx}`}
-                        className="flex items-center gap-2 rounded-xl border border-transparent bg-white px-3 py-2 text-xs shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)]"
-                      >
-                        <i className="ri-file-add-line shrink-0 text-slate-500" />
-                        <span className="min-w-0 flex-1 truncate font-medium text-slate-800" title={lf.name}>
-                          {lf.name}
+                        <div className="min-w-0 flex-1">
+                          <p className="vr-drop-title">
+                            {hasAny
+                              ? `Add more files (${locals.length + saved.length} attached)`
+                              : 'Drop the quotation here or click to upload'}
+                          </p>
+                          <p className="vr-drop-sub">PDF, Word, Excel or photo · you can select multiple files</p>
+                        </div>
+                        <span className="vr-btn sm ghost">
+                          <i className="ri-folder-open-line" /> Browse
                         </span>
-                        <span className="text-[10px] text-slate-400">New</span>
-                        <button
-                          type="button"
-                          onClick={() => void openQuotationPreview(editingQuote, { file: lf })}
-                          className="cursor-pointer font-semibold text-[#1E88E5] hover:underline"
-                        >
-                          Open
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextFiles = locals.filter((_, i) => i !== idx);
-                            updateQuote(editing.key, quoteRound, {
-                              files: nextFiles,
-                              file: nextFiles[0] || null,
-                            });
+                        <input
+                          type="file"
+                          multiple
+                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx"
+                          className="sr-only"
+                          onChange={(e) => {
+                            const picked = Array.from(e.target.files || []);
+                            e.target.value = '';
+                            handleQuoteFiles(picked);
                           }}
-                          className="cursor-pointer text-slate-400 hover:text-rose-500"
-                          title="Remove"
-                        >
-                          <i className="ri-close-line" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                        />
+                      </label>
+                      {(saved.length > 0 || locals.length > 0) && (
+                        <ul className="mt-2 space-y-1.5">
+                          {saved.map((sf, idx) => (
+                            <li key={`saved-${sf.id || sf.fileName}-${idx}`} className="vr-file">
+                              <i className="ri-file-check-line vr-file-ic" />
+                              <span className="vr-file-name" title={sf.fileName}>
+                                {sf.fileName}
+                              </span>
+                              <span className="vr-file-tag">Saved</span>
+                              <button
+                                type="button"
+                                disabled={fileViewBusy || (!sf.id && !editingQuote.savedSubmissionId)}
+                                onClick={() => void openQuotationPreview(editingQuote, { saved: sf })}
+                                className="vr-link"
+                              >
+                                Open
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextSaved = saved.filter((_, i) => i !== idx);
+                                  updateQuote(editing.key, quoteRound, {
+                                    savedFiles: nextSaved,
+                                    savedFileName: nextSaved[0]?.fileName,
+                                  });
+                                }}
+                                className="vr-icon-btn danger xs"
+                                title="Remove"
+                              >
+                                <i className="ri-close-line" />
+                              </button>
+                            </li>
+                          ))}
+                          {locals.map((lf, idx) => (
+                            <li key={`local-${lf.name}-${idx}`} className="vr-file">
+                              <i className="ri-file-text-line vr-file-ic" />
+                              <span className="vr-file-name" title={lf.name}>
+                                {lf.name}
+                              </span>
+                              <span className="vr-file-tag new">New</span>
+                              <button
+                                type="button"
+                                onClick={() => void openQuotationPreview(editingQuote, { file: lf })}
+                                className="vr-link"
+                              >
+                                Open
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextFiles = locals.filter((_, i) => i !== idx);
+                                  updateQuote(editing.key, quoteRound, {
+                                    files: nextFiles,
+                                    file: nextFiles[0] || null,
+                                  });
+                                }}
+                                className="vr-icon-btn danger xs"
+                                title="Remove"
+                              >
+                                <i className="ri-close-line" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </>
                   );
                 })()}
@@ -964,53 +1019,83 @@ export default function FunctionalOwnRfqSection({
                     {fileViewError}
                   </p>
                 ) : null}
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                    Quoted price ({moneySym}) *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editingQuote.quotedPrice}
-                    onChange={(e) => updateQuote(editing.key, quoteRound, { quotedPrice: e.target.value })}
-                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
-                  />
+              </section>
+
+              {/* Price */}
+              <section>
+                <p className="vr-sec-title">
+                  <span>3</span> Price details
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="vr-field-label">
+                      Quoted price {quoteRound === 1 ? <span className="text-rose-500">*</span> : null}
+                    </label>
+                    <div className="vr-input-wrap">
+                      <span className="vr-prefix">{moneySym}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editingQuote.quotedPrice}
+                        placeholder="0.00"
+                        onChange={(e) => updateQuote(editing.key, quoteRound, { quotedPrice: e.target.value })}
+                        className="vr-input has-prefix"
+                      />
+                    </div>
+                    <small className="vr-field-help">Total amount the vendor quoted</small>
+                  </div>
+                  <div>
+                    <label className="vr-field-label">Delivery time</label>
+                    <div className="vr-input-wrap">
+                      <input
+                        type="number"
+                        min="0"
+                        value={editingQuote.leadTime}
+                        placeholder="e.g. 15"
+                        onChange={(e) => updateQuote(editing.key, quoteRound, { leadTime: e.target.value })}
+                        className="vr-input has-suffix"
+                      />
+                      <span className="vr-suffix">days</span>
+                    </div>
+                    <small className="vr-field-help">Optional</small>
+                  </div>
+                  <div>
+                    <label className="vr-field-label">Payment terms</label>
+                    <select
+                      value={editingQuote.paymentTerms}
+                      onChange={(e) => updateQuote(editing.key, quoteRound, { paymentTerms: e.target.value })}
+                      className="vr-input"
+                    >
+                      <option value="">Select</option>
+                      {PR_PAYMENT_TERM_OPTIONS.map((term) => (
+                        <option key={term} value={term}>{term}</option>
+                      ))}
+                    </select>
+                    <small className="vr-field-help">Optional</small>
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Lead time (days)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editingQuote.leadTime}
-                    onChange={(e) => updateQuote(editing.key, quoteRound, { leadTime: e.target.value })}
-                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
-                  />
+              </section>
+              {localError ? (
+                <div className="vr-banner error">
+                  <i className="ri-error-warning-line" />
+                  <span>{localError}</span>
                 </div>
-                <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Payment terms</label>
-                  <select
-                    value={editingQuote.paymentTerms}
-                    onChange={(e) => updateQuote(editing.key, quoteRound, { paymentTerms: e.target.value })}
-                    className="box-border h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
-                  >
-                    <option value="">Select</option>
-                    {PR_PAYMENT_TERM_OPTIONS.map((term) => (
-                      <option key={term} value={term}>{term}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              ) : null}
             </div>
-            <div className="relative z-[1] flex justify-end gap-2 border-t border-slate-100/80 px-5 py-4">
-              <button
-                type="button"
-                onClick={closeQuote}
-                className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
-              >
-                Close
+
+            <div className="vr-modal-foot">
+              <span className="vr-foot-note">
+                {quoteRound === 1 ? (
+                  <>
+                    <span className="text-rose-500">*</span> Round 1 needs a price and a file
+                  </>
+                ) : (
+                  'Changes are kept when you save the PR'
+                )}
+              </span>
+              <button type="button" onClick={closeQuote} className="vr-btn ghost">
+                Cancel
               </button>
               <button
                 type="button"
@@ -1027,9 +1112,10 @@ export default function FunctionalOwnRfqSection({
                   closeQuote();
                   showToast(`Quote saved for ${editingSource.name}`);
                 }}
-                className="cursor-pointer rounded-xl bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0]"
+                className="vr-btn primary"
               >
-                Save quote + file
+                <i className="ri-check-line" />
+                Save quote
               </button>
             </div>
           </div>
@@ -1037,24 +1123,27 @@ export default function FunctionalOwnRfqSection({
       )}
 
       {recommendModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.18)] sm:rounded-[18px]">
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
-              <div>
-                <h3 className="text-base font-bold text-[#2C3E50]">Choose this vendor</h3>
-                <p className="mt-0.5 text-xs text-slate-500">{recommendModal.vendorName}</p>
+        <div className="vr-modal-wrap fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="vr-modal relative w-full max-w-lg overflow-hidden">
+            <div className="vr-modal-head">
+              <span className="vr-modal-ic green">
+                <i className="ri-award-line" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3>Choose {recommendModal.vendorName}</h3>
+                <p>This vendor will be recommended to the approvers.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setRecommendModal(null)}
-                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-[#E3F2FD] hover:text-[#1E88E5]"
+                className="vr-icon-btn"
+                aria-label="Close"
               >
-                ×
+                <i className="ri-close-line" />
               </button>
             </div>
-            <div className="relative z-[1] space-y-3 p-5">
-              <label className="block text-sm font-semibold text-[#2C3E50]">
+            <div className="space-y-2 p-5">
+              <label className="vr-field-label">
                 Why this vendor? <span className="text-rose-500">*</span>
               </label>
               <textarea
@@ -1062,27 +1151,19 @@ export default function FunctionalOwnRfqSection({
                 onChange={(e) => setRecommendDraft(e.target.value)}
                 rows={4}
                 placeholder="Example: Lowest price and delivery in 10 days"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30"
+                className="vr-input min-h-[110px] py-2.5"
               />
-              <p className="text-xs text-slate-500">
-                Saved with the draft. Managers will see this reason.
-              </p>
+              <p className="vr-field-help">Saved with the draft. Managers will see this reason.</p>
               {localError && <p className="text-xs text-rose-600">{localError}</p>}
             </div>
-            <div className="relative z-[1] flex justify-end gap-2 border-t border-slate-100/80 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setRecommendModal(null)}
-                className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
-              >
+            <div className="vr-modal-foot">
+              <span className="vr-foot-note" />
+              <button type="button" onClick={() => setRecommendModal(null)} className="vr-btn ghost">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={confirmRecommend}
-                className="cursor-pointer rounded-xl bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0]"
-              >
-                Confirm choose
+              <button type="button" onClick={confirmRecommend} className="vr-btn primary">
+                <i className="ri-check-double-line" />
+                Confirm vendor
               </button>
             </div>
           </div>

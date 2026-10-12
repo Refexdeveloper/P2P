@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import '../../../styles/create-pr-fx.css';
 import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPanel';
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -2738,17 +2739,19 @@ export default function CreatePRPage() {
           </div>
         </div>
       ) : (
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-      {/* ── Soft header (matches requester dashboard) ── */}
-      <header className="mb-0 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-2 pt-0.5 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-3">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2 text-xs text-slate-500">
-              <Link to={backTo} className="cursor-pointer transition-colors hover:text-[#1E88E5]">
-                {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
-              </Link>
+      <div className="cpr-fx min-h-full font-sans text-[#0F172A]">
+      {/* ── Hero header ── */}
+      <header className="cpr-hero">
+        <div className="cpr-art" aria-hidden="true" />
+        <div className="cpr-hero-bubbles" aria-hidden="true">
+          <i /><i /><i /><i /><i />
+        </div>
+        <div className="cpr-hero-inner">
+          <div className="cpr-hero-text min-w-0">
+            <div className="cpr-crumbs">
+              <Link to={backTo}>{isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}</Link>
               <i className="ri-arrow-right-s-line"></i>
-              <span className="text-slate-600">
+              <span>
                 {isAdminEditFlow
                   ? 'Admin Edit PR'
                   : isEditMode
@@ -2758,7 +2761,7 @@ export default function CreatePRPage() {
                     : 'Create Purchase Requisition'}
               </span>
             </div>
-            <h1 className="text-lg font-semibold tracking-tight text-slate-800 sm:text-xl">
+            <h1 className="cpr-title">
               {isAdminEditFlow
                 ? 'Admin Edit Purchase Requisition'
                 : isEditMode
@@ -2767,7 +2770,7 @@ export default function CreatePRPage() {
                     : 'Edit Purchase Requisition'
                   : 'New Purchase Requisition'}
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="cpr-sub">
               {isAdminEditFlow
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
@@ -2778,125 +2781,89 @@ export default function CreatePRPage() {
                 ? 'Update your draft or submit when ready'
                 : 'Fill in the details to raise a new procurement request'}
             </p>
+            <div className="cpr-chips">
+              <span className={`cpr-chip ${typeColors[requestType]}`}>{requestType}</span>
+              <span className={`cpr-chip ${priorityColors[priority]}`}>{priority} Priority</span>
+              {department && (
+                <span className="cpr-chip cpr-chip-dept">
+                  <i className="ri-building-line mr-1"></i>
+                  {department}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex w-full flex-col flex-wrap items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
-            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
-                }}
-              />
-              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                <i className="ri-file-list-3-line text-sm"></i>
+          <div className="cpr-hero-side">
+            <div className="cpr-stats">
+              <div className="cpr-stat" style={{ '--i': 0 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-teal">
+                  <i className="ri-file-list-3-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>PR Number</small>
+                  <b className="cpr-stat-accent truncate">{displayPrNumber}</b>
+                </div>
               </div>
-              <div className="relative z-[1] min-w-0">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  PR Number
-                </p>
-                <p className="truncate text-sm font-bold tabular-nums tracking-wide text-[#1E88E5]">
-                  {displayPrNumber}
-                </p>
+              <div className="cpr-stat" style={{ '--i': 1 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-green">
+                  <i className="ri-money-rupee-circle-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>{hideLinePricing ? 'Vendor Path' : 'Total Amount'}</small>
+                  <b className="truncate tabular-nums">
+                    {hideLinePricing
+                      ? 'Own Vendor'
+                      : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </b>
+                </div>
               </div>
-            </div>
-
-            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
-                }}
-              />
-              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                <i className="ri-money-dollar-circle-line text-sm"></i>
-              </div>
-              <div className="relative z-[1] min-w-0">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
-                </p>
-                <p className="truncate text-sm font-bold tabular-nums text-[#2C3E50]">
-                  {hideLinePricing
-                    ? 'Own Vendor'
-                    : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
+              <div className="cpr-stat" style={{ '--i': 2 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-violet">
+                  <i className="ri-shopping-cart-2-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>Line Items</small>
+                  <b className="tabular-nums">{lineItems.length}</b>
+                </div>
               </div>
             </div>
 
-            <div className="relative flex w-full items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:w-auto sm:rounded-[18px]">
-              <div
-                className="pointer-events-none absolute inset-0"
-                style={{
-                  background:
-                    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
-                }}
-              />
-              <div className="relative z-[1] flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                <i className="ri-shopping-cart-line text-sm"></i>
-              </div>
-              <div className="relative z-[1] min-w-0">
-                <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  Line Items
-                </p>
-                <p className="text-sm font-bold tabular-nums text-[#2C3E50]">{lineItems.length}</p>
+            <div className="cpr-status">
+              <span className="cpr-status-msg">
+                <i className="cpr-status-dot" />
+                {softSaveHint ||
+                  (isEditMode || isAdminEditFlow ? 'Editing purchase requisition' : 'Starting a new purchase requisition')}
+              </span>
+              <span className="cpr-status-count">
+                {lineItems.length === 0
+                  ? 'No items yet'
+                  : hideLinePricing
+                    ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
+                    : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
+              </span>
+              <div className="cpr-status-track">
+                <div
+                  className="cpr-status-fill"
+                  style={{
+                    width: `${
+                      lineItems.length > 0
+                        ? ((hideLinePricing
+                            ? lineItems.filter((i) => i.description || i.itemName).length
+                            : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
+                            lineItems.length) *
+                          100
+                        : 0
+                    }%`,
+                  }}
+                />
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* ── Soft sticky status bar ── */}
-      <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-white/60 bg-white/90 px-1 py-2 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.10)] backdrop-blur-md sm:px-0">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${typeColors[requestType]}`}>
-            {requestType}
-          </span>
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${priorityColors[priority]}`}>
-            {priority} Priority
-          </span>
-          {department && (
-            <span className="rounded-full bg-[#E3F2FD] px-3 py-1 text-xs font-medium text-[#1E88E5]">
-              <i className="ri-building-line mr-1"></i>{department}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {softSaveHint && (
-            <span className="hidden text-xs font-medium text-[#43A047] sm:inline">
-              <i className="ri-checkbox-circle-line mr-1"></i>
-              {softSaveHint}
-            </span>
-          )}
-          <span className="text-xs text-slate-500">
-            {lineItems.length === 0
-              ? 'No items yet'
-              : hideLinePricing
-                ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
-                : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
-          </span>
-          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-[#1E88E5] transition-all duration-300"
-              style={{
-                width: `${
-                  lineItems.length > 0
-                    ? ((hideLinePricing
-                        ? lineItems.filter((i) => i.description || i.itemName).length
-                        : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
-                        lineItems.length) *
-                      100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
       {/* ── Main Content ── */}
-      <div className="w-full min-w-0 max-w-full space-y-4 pt-3">
+      <div className="cpr-body w-full min-w-0 max-w-full space-y-4 pt-3">
 
         {isReturned && (
           <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl space-y-4">
@@ -2946,76 +2913,44 @@ export default function CreatePRPage() {
           </div>
         ) : null}
 
-        {/* ── Create PR step tabs (icon + arrows, full-width labels) ── */}
-        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white/95 px-2 py-2 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-3 sm:py-2.5">
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-            }}
-          />
-          <div className="relative z-[1] flex w-full items-center">
-            {createPrTabs.map((tab, index) => {
-              const isActive = activeTab === tab.id;
-              const activeIdx = createPrTabs.findIndex((t) => t.id === activeTab);
-              const isDone = index < activeIdx;
-              return (
-                <div key={tab.id} className="flex min-w-0 flex-1 items-center">
-                  {index > 0 ? (
-                    <i
-                      className={`ri-arrow-right-s-line mx-0.5 shrink-0 text-base sm:mx-1 sm:text-xl ${
-                        isDone || isActive ? 'text-[#1E88E5]' : 'text-slate-300'
-                      }`}
-                      aria-hidden
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex min-w-0 flex-1 cursor-pointer flex-col items-center gap-1.5 rounded-2xl px-1 py-2 transition-colors sm:flex-row sm:justify-center sm:gap-2.5 sm:px-3 ${
-                      isActive ? 'bg-[#E3F2FD]/70' : 'hover:bg-slate-50'
-                    }`}
-                  >
-                    <span
-                      className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm transition-all sm:h-10 sm:w-10 sm:text-base ${
-                        isActive
-                          ? 'bg-[#1E88E5] text-white shadow-sm'
-                          : isDone
-                            ? 'bg-[#E3F2FD] text-[#1E88E5]'
-                            : 'border border-slate-200 bg-white text-slate-500 group-hover:border-[#90CAF9] group-hover:text-[#1E88E5]'
-                      }`}
-                    >
-                      <i className={isDone && !isActive ? 'ri-check-line' : tab.icon}></i>
-                      {tab.id === 'items' && lineItems.length > 0 ? (
-                        <span
-                          className={`absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold ${
-                            isActive ? 'bg-white text-[#1E88E5]' : 'bg-[#1E88E5] text-white'
-                          }`}
-                        >
-                          {lineItems.length}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span
-                      className={`w-full text-center text-[10px] font-semibold leading-snug sm:w-auto sm:text-left sm:text-xs sm:whitespace-nowrap ${
-                        isActive ? 'text-[#1E88E5]' : isDone ? 'text-slate-700' : 'text-slate-500'
-                      }`}
-                    >
-                      {tab.label}
-                    </span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+        {/* ── Create PR step tabs ── */}
+        <div className="cpr-steps">
+          {createPrTabs.map((tab, index) => {
+            const isActive = activeTab === tab.id;
+            const activeIdx = createPrTabs.findIndex((t) => t.id === activeTab);
+            const isDone = index < activeIdx;
+            return (
+              <div key={tab.id} className="flex min-w-0 flex-1 items-center">
+                {index > 0 ? (
+                  <i
+                    className={`cpr-step-sep ri-arrow-right-s-line${isDone || isActive ? ' is-on' : ''}`}
+                    aria-hidden
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`cpr-step${isActive ? ' is-active' : ''}${isDone ? ' is-done' : ''}`}
+                >
+                  <span className="cpr-step-ic">
+                    <i className={isDone && !isActive ? 'ri-check-line' : tab.icon}></i>
+                    {tab.id === 'items' && lineItems.length > 0 ? (
+                      <span className="cpr-step-badge">{lineItems.length}</span>
+                    ) : null}
+                  </span>
+                  <span className="cpr-step-label">{tab.label}</span>
+                  {isActive ? <i className="cpr-step-go ri-arrow-right-s-line" aria-hidden /> : null}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {activeTab === 'basic' && (
           <div className="space-y-4">
         {/* ── Section 1: Basic Information ── */}
         <div className={PM_CARD}>
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-information-line text-sm"></i>
             </div>
@@ -3042,24 +2977,27 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                value={prTitle}
-                onChange={(e) => {
-                  setPrTitle(e.target.value);
-                  if (errors.prTitle) {
-                    setErrors((prev) => {
-                      const next = { ...prev };
-                      delete next.prTitle;
-                      return next;
-                    });
-                  }
-                }}
-                placeholder="Enter a short title for this purchase request"
-                className={`box-border h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${
-                  errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'
-                }`}
-              />
+              <div className="cpr-ic-wrap">
+                <i className="ri-file-text-line" aria-hidden />
+                <input
+                  type="text"
+                  value={prTitle}
+                  onChange={(e) => {
+                    setPrTitle(e.target.value);
+                    if (errors.prTitle) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.prTitle;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="Enter a short title for this purchase request"
+                  className={`cpr-has-ic box-border h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${
+                    errors.prTitle ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'
+                  }`}
+                />
+              </div>
               {errors.prTitle && <p className="mt-1 text-xs text-red-500">{errors.prTitle}</p>}
             </div>
 
@@ -3158,17 +3096,19 @@ export default function CreatePRPage() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 w-full">
                 {(
                   [
-                    { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####' },
-                    { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####' },
+                    { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####', icon: 'ri-file-list-3-line' },
+                    { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####', icon: 'ri-file-settings-line' },
                     {
                       id: 'sass' as const,
                       label: 'Cloud Subscription',
                       hint: 'No PO · L1 → invoice path',
+                      icon: 'ri-cloud-fill',
                     },
                     {
                       id: 'online_purchase' as const,
                       label: 'Online Purchase',
                       hint: 'Number: OP-Entity-FY-####',
+                      icon: 'ri-shopping-cart-2-line',
                     },
                   ]
                 ).map((opt) => (
@@ -3200,25 +3140,19 @@ export default function CreatePRPage() {
                         setWorkEndDate('');
                       }
                     }}
-                    className={`min-w-0 w-full text-left px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-colors ${
-                      purchaseType === opt.id
-                        ? 'text-white border-transparent'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#2978B1]'
-                    }`}
-                    style={
-                      purchaseType === opt.id
-                        ? { backgroundColor: '#1E88E5', borderColor: '#1E88E5' }
-                        : undefined
-                    }
+                    className={`cpr-ptype${purchaseType === opt.id ? ' is-active' : ''}`}
                   >
-                    <span className="block truncate">{opt.label}</span>
-                    <span
-                      className={`block text-[10px] font-normal mt-0.5 truncate ${
-                        purchaseType === opt.id ? 'text-white/85' : 'text-gray-400'
-                      }`}
-                      title={opt.hint}
-                    >
-                      {opt.hint}
+                    <span className="cpr-ptype-ic">
+                      <i className={opt.icon}></i>
+                    </span>
+                    {purchaseType === opt.id ? (
+                      <i className="cpr-ptype-check ri-checkbox-circle-fill" aria-hidden />
+                    ) : null}
+                    <span className="min-w-0">
+                      <span className="block truncate">{opt.label}</span>
+                      <span className="cpr-ptype-hint block truncate" title={opt.hint}>
+                        {opt.hint}
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -3299,13 +3233,16 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Required Date <span className="text-red-500">*</span>
               </label>
-              <input
-                type="date"
-                value={requiredDate}
-                onChange={e => setRequiredDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className={`h-11 w-full cursor-pointer rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
-              />
+              <div className="cpr-ic-wrap">
+                <i className="ri-calendar-event-line" aria-hidden />
+                <input
+                  type="date"
+                  value={requiredDate}
+                  onChange={e => setRequiredDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className={`cpr-has-ic h-11 w-full cursor-pointer rounded-xl border border-gray-200 bg-white px-4 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 ${errors.requiredDate ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}
+                />
+              </div>
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
 
@@ -3384,7 +3321,7 @@ export default function CreatePRPage() {
                     onClick={() => setCurrency(opt.code)}
                     className={`h-10 flex-1 cursor-pointer whitespace-nowrap rounded-lg px-2 text-xs font-semibold transition-colors ${
                       currency === opt.code
-                        ? 'bg-[#1E88E5] text-white shadow-sm ring-2 ring-[#1E88E5]/25'
+                        ? 'cpr-seg-on text-white'
                         : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
@@ -3703,7 +3640,7 @@ export default function CreatePRPage() {
 
         {/* ── Section 4: Business Justification ── */}
         <div className={PM_CARD} data-field="businessJustification">
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-article-line text-sm"></i>
             </div>
@@ -3732,7 +3669,7 @@ export default function CreatePRPage() {
 
         {/* ── Section 5: Attachments ── */}
         <div className={PM_CARD}>
-          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-attachment-2 text-sm"></i>
             </div>
@@ -4290,7 +4227,7 @@ export default function CreatePRPage() {
 
         {showScopeAndPaymentTerms && (
           <div className={PM_CARD} data-field="scopeOfWork">
-            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+            <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
               <div className={PM_ICON_CHIP_SOLID}>
                 <i className="ri-file-list-3-line text-sm"></i>
               </div>

@@ -4,9 +4,9 @@ import { formatDisplayDate, formatDisplayDateTime } from '../../../utils/formatD
 import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotationsPanel';
 import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 import { formatMoney } from '../../../constants/currency';
-import { PM_BTN_PRIMARY, PM_BTN_SECONDARY } from '../../../constants/pmTheme';
 import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import '../../../styles/drawer-fx.css';
 
 interface LineItem {
   itemName?: string;
@@ -103,34 +103,54 @@ interface TaskDetailDrawerProps {
 
 const CLOSED_STATUSES = new Set(['approved', 'rejected', 'returned']);
 
-const softWash = {
-  background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-} as const;
+type DrawerTab = 'details' | 'items' | 'quotes' | 'history';
 
-const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
-const softLabel = 'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
-const softValue = 'mt-1.5 text-sm font-semibold text-[#2C3E50] break-words';
+const TAB_ICON: Record<DrawerTab, string> = {
+  details: 'ri-file-info-line',
+  items: 'ri-list-check-3',
+  quotes: 'ri-price-tag-3-line',
+  history: 'ri-history-line',
+};
 
-function SoftField({
+/** Duration of the slide-out animation before the parent unmounts the drawer. */
+const EXIT_MS = 280;
+
+function Field({
   label,
+  icon,
+  index,
+  wide = false,
   children,
-  className = '',
 }: {
   label: string;
+  icon: string;
+  index: number;
+  wide?: boolean;
   children: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={`${softCard} ${className}`}>
-      <div className="pointer-events-none absolute inset-0" style={softWash} />
-      <div className="relative z-[1]">
-        <p className={softLabel}>{label}</p>
-        <div className={softValue}>{children}</div>
+    <div
+      className={`dfx-field${wide ? ' sm:col-span-2' : ''}`}
+      style={{ '--i': index } as CSSProperties}
+    >
+      <span className="dfx-field-ic">
+        <i className={icon} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="dfx-label">{label}</p>
+        <div className="dfx-value">{children}</div>
       </div>
     </div>
   );
+}
+
+function historyTone(status: string) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
+  if (s.includes('return') || s.includes('rework')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
+  if (s.includes('approv') || s.includes('complet') || s.includes('submit'))
+    return { tone: 'green', icon: 'ri-check-line' };
+  return { tone: 'teal', icon: 'ri-time-line' };
 }
 
 function canShowActions(status: string, canAct?: boolean) {
@@ -166,7 +186,15 @@ export default function TaskDetailDrawer({
     }))
   );
   const [hasQuotes, setHasQuotes] = useState(false);
-  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<DrawerTab>('details');
+  const [closing, setClosing] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, EXIT_MS);
+  }, [onClose]);
   const isOwnVendor = task.vendorSelection === 'own';
 
   useEffect(() => {
@@ -198,51 +226,65 @@ export default function TaskDetailDrawer({
   const showQuotesTab = Boolean(task.prId) && (isSass || isOwnVendor || hasQuotes || savedQuoteVendors.length > 0);
   const showItemsTab = isInvoiceFlow || !hasQuotes;
 
+
+  const tabs: { id: DrawerTab; label: string; count?: number }[] = [
+    { id: 'details', label: 'Details' },
+    ...(showItemsTab ? [{ id: 'items' as const, label: 'Line Items', count: lineItems.length }] : []),
+    ...(showQuotesTab ? [{ id: 'quotes' as const, label: 'Quotations' }] : []),
+    {
+      id: 'history',
+      label: 'History',
+      count: approvalHistory.length > 0 ? approvalHistory.length : undefined,
+    },
+  ];
+  const tabKey = tabs.map((t) => t.id).join('|');
+
+  // Slide the active-tab pill under whichever tab is selected.
+  useLayoutEffect(() => {
+    const root = tabsRef.current;
+    const btn = root?.querySelector<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
+    if (root && btn) setIndicator({ left: btn.offsetLeft, width: btn.offsetWidth });
+  }, [activeTab, tabKey, task.id, loading]);
+
+  const money = (n: number) =>
+    formatMoney(Number(n || 0), task.currency, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-[2px]" onClick={onClose} />
-      <div
-        className="relative flex h-full w-full max-w-xl flex-col shadow-[0_24px_64px_-24px_rgba(15,23,42,0.35)] animate-slide-in-right"
-        style={{
-          background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)',
-        }}
-      >
-        {/* Header */}
-        <div className="relative z-10 shrink-0 overflow-hidden border-b border-white/60 bg-gradient-to-b from-[#edf1ff]/95 to-[#eef2ff]/90 px-4 py-3 sm:px-6 sm:py-4">
-          <div className="pointer-events-none absolute inset-0" style={softWash} />
+    <div className={`dfx-root fixed inset-0 z-40 flex justify-end${closing ? ' is-closing' : ''}`}>
+      <div className="dfx-overlay absolute inset-0" onClick={requestClose} />
+      <aside className="dfx-panel relative flex h-full w-full max-w-2xl flex-col overflow-hidden">
+        {/* Hero header */}
+        <header className="dfx-hero relative shrink-0 px-5 pb-5 pt-5 sm:px-7">
+          <div className="dfx-art" aria-hidden="true" />
+          <div className="dfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i />
+          </div>
           <div className="relative z-[1] flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-              <i className="ri-file-list-3-line text-lg"></i>
+            <div className="dfx-hero-ic">
+              <i className="ri-file-list-3-line" aria-hidden />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="break-all text-[11px] font-bold tracking-wide text-[#1E88E5]">
-                {task.prNumber}
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                {isOnlinePurchase && (
-                  <span className="rounded-full bg-[#1E88E5] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
-                    ONLINE PURCHASE
-                  </span>
-                )}
-                {isSass && !isOnlinePurchase && (
-                  <span className="rounded-full bg-[#1565C0] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
-                    CLOUD SUBSCRIPTION
-                  </span>
-                )}
+            <div className="dfx-hero-text min-w-0 flex-1">
+              <span className="dfx-prno">{task.prNumber}</span>
+              <h3 className="dfx-title is-clamp" title={task.title}>
+                {task.title}
+              </h3>
+              <div className="dfx-badges mt-2 flex flex-wrap items-center gap-1.5">
+                {isOnlinePurchase && <span className="dfx-pill">ONLINE PURCHASE</span>}
+                {isSass && !isOnlinePurchase && <span className="dfx-pill">CLOUD SUBSCRIPTION</span>}
                 <StatusBadge status={task.status} size="sm" />
                 <PriorityBadge priority={(task.priority || 'medium').toLowerCase()} size="sm" />
               </div>
-              <h3 className="mt-2 break-words text-base font-semibold leading-snug text-[#2C3E50]">
-                {task.title}
-              </h3>
               {isOnlinePurchase && (
-                <p className="mt-1.5 break-words text-xs font-medium text-[#1565C0]">
+                <p className="dfx-path">
                   Online Purchase path: User Approval → Mugesh L1 → Srivaths L2 → Mugesh Invoice Upload →
                   Completed (SCM skipped)
                 </p>
               )}
               {isSass && !isOnlinePurchase && (
-                <p className="mt-1.5 break-words text-xs font-medium text-[#1565C0]">
+                <p className="dfx-path">
                   {String(task.requesterEmail || task.requester || '')
                     .toLowerCase()
                     .includes('mugesh')
@@ -251,170 +293,196 @@ export default function TaskDetailDrawer({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-colors hover:border hover:border-[#90CAF9] hover:text-[#1E88E5]"
-              aria-label="Close"
-            >
-              <i className="ri-close-line text-lg"></i>
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button type="button" onClick={requestClose} className="dfx-close" aria-label="Close">
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
           </div>
-        </div>
+
+          <div className="dfx-stats relative z-[1] mt-5 grid grid-cols-3 gap-2.5">
+            <div className="dfx-stat" style={{ '--i': 0 } as CSSProperties}>
+              <span className="dfx-stat-ic">
+                <i className="ri-bank-card-line" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <small>Total Amount</small>
+                <b className="tabular-nums">{hideLinePricing ? 'Own Vendor' : money(task.totalAmount)}</b>
+              </div>
+            </div>
+            <div className="dfx-stat" style={{ '--i': 1 } as CSSProperties}>
+              <span className="dfx-stat-ic">
+                <i className="ri-box-3-line" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <small>Line Items</small>
+                <b>{lineItems.length}</b>
+              </div>
+            </div>
+            <div className="dfx-stat" style={{ '--i': 2 } as CSSProperties}>
+              <span className="dfx-stat-ic">
+                <i className="ri-calendar-event-line" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <small>Required By</small>
+                <b>{formatDate(task.requiredDate) || '—'}</b>
+              </div>
+            </div>
+          </div>
+        </header>
 
         {loading ? (
-          <div className="flex-1 overflow-y-auto px-6 py-16 text-center text-slate-500">
-            <i className="ri-loader-4-line animate-spin text-2xl text-[#1E88E5]"></i>
-            <p className="mt-3 text-sm">Loading PR details…</p>
+          <div className="dfx-body min-h-0 flex-1 overflow-y-auto">
+            <div className="dfx-loading">
+              <i className="ri-loader-4-line animate-spin"></i>
+              <p className="mt-3 text-sm">Loading PR details…</p>
+            </div>
           </div>
         ) : (
           <>
-            <div className="shrink-0 px-4 pt-4 sm:px-6">
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { id: 'details' as const, label: 'Details' },
-                    ...(showItemsTab
-                      ? [{ id: 'items' as const, label: `Line Items (${lineItems.length})` }]
-                      : []),
-                    ...(showQuotesTab ? [{ id: 'quotes' as const, label: 'Quotations' }] : []),
-                    { id: 'history' as const, label: 'History' },
-                  ]
-                ).map((tab) => (
+            <div className="dfx-tabs-wrap shrink-0 px-5 sm:px-7">
+              <div ref={tabsRef} className="dfx-tabs" role="tablist">
+                <span
+                  className="dfx-tab-ind"
+                  style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
+                />
+                {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
+                    role="tab"
+                    data-tab={tab.id}
+                    aria-selected={activeTab === tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
-                    }`}
+                    className={`dfx-tab${activeTab === tab.id ? ' is-active' : ''}`}
                   >
+                    <i className={TAB_ICON[tab.id]} aria-hidden />
                     {tab.label}
+                    {tab.count !== undefined && <span className="dfx-tab-cnt">{tab.count}</span>}
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
-              {activeTab === 'details' && (
-                <>
-                  <div className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-transparent bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
-                    <div className="pointer-events-none absolute inset-0" style={softWash} />
-                    <div className="relative z-[1] flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#E3F2FD] text-sm font-bold text-[#1E88E5]">
-                      {task.requesterAvatar || 'R'}
-                    </div>
-                    <div className="relative z-[1] min-w-0">
-                      <p className="break-words text-sm font-semibold text-[#2C3E50]">{task.requester}</p>
-                      <p className="break-words text-xs text-slate-500">
-                        {task.requesterRole} &middot; {task.department || '—'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                    <SoftField label="Entity" className="sm:col-span-2">
-                      {task.entityName || '—'}
-                      {task.entityCode ? (
-                        <span className="font-normal text-slate-500"> ({task.entityCode})</span>
-                      ) : null}
-                      {task.entityCostCenter ? (
-                        <p className="mt-1 text-xs font-normal text-slate-500">
-                          Cost Center: {task.entityCostCenter}
+            <div className="dfx-body min-h-0 flex-1 overflow-y-auto">
+              <div className="dfx-pane space-y-4 px-5 py-5 sm:px-7">
+                {activeTab === 'details' && (
+                  <div key="details" className="space-y-4">
+                    <div className="dfx-field" style={{ '--i': 0 } as CSSProperties}>
+                      <span className="dfx-avatar">{task.requesterAvatar || 'R'}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="dfx-label">Requested By</p>
+                        <div className="dfx-value">{task.requester}</div>
+                        <p className="dfx-sub">
+                          {task.requesterRole} &middot; {task.department || '—'}
                         </p>
-                      ) : null}
-                    </SoftField>
-                    <SoftField label="Department">{task.department || '—'}</SoftField>
-                    <SoftField label="Request Type">{task.requestType || '—'}</SoftField>
-                    <SoftField label="Request Category">
-                      {task.requestCategory || task.category || '—'}
-                    </SoftField>
-                    <SoftField label="Project Detail" className="sm:col-span-2">
-                      {task.projectDetail || '—'}
-                    </SoftField>
-                    <SoftField label="Required Date">{formatDate(task.requiredDate)}</SoftField>
-                    <SoftField label="Expected Delivery Timeline">
-                      {task.expectedDeliveryTimeline || '—'}
-                    </SoftField>
-                    <SoftField label="Payment Terms">{task.paymentTerms || '—'}</SoftField>
-                    <SoftField label="Total Amount">
-                      {hideLinePricing ? (
-                        'Own Vendor'
-                      ) : (
-                        <span className="tabular-nums">
-                          {formatMoney(Number(task.totalAmount || 0), task.currency, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </span>
-                      )}
-                    </SoftField>
-                    <SoftField label="Current Stage">{task.currentApprover || '—'}</SoftField>
-                    <SoftField label="Submitted Date">{formatDate(task.submittedDate)}</SoftField>
-                    <SoftField label="Billing Region / GST" className="sm:col-span-2">
-                      {task.billingLocation || '—'}
-                      {task.billingGstNo ? (
-                        <span className="mt-0.5 block font-mono text-xs font-normal text-slate-500">
-                          {task.billingGstNo}
-                        </span>
-                      ) : null}
-                    </SoftField>
-                    <SoftField label="Billing Address" className="sm:col-span-2">
-                      <span className="whitespace-pre-wrap">{task.billingAddress || '—'}</span>
-                    </SoftField>
-                    <SoftField label="Place of Delivery">{task.placeOfDelivery || '—'}</SoftField>
-                    <SoftField label="POC for Delivery">{task.deliveryPoc || '—'}</SoftField>
-                  </div>
+                      </div>
+                    </div>
 
-                  <div>
-                    <h4 className={`${softLabel} mb-2 px-0.5`}>Business Justification</h4>
-                    <div className={softCard}>
-                      <div className="pointer-events-none absolute inset-0" style={softWash} />
-                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="PR Title" icon="ri-text" index={1} wide>
+                        {task.title || '—'}
+                      </Field>
+                      <Field label="Entity" icon="ri-building-2-line" index={1} wide>
+                        {task.entityName || '—'}
+                        {task.entityCode ? <span className="dfx-code ml-2">{task.entityCode}</span> : null}
+                        {task.entityCostCenter ? (
+                          <p className="dfx-sub">Cost Center: {task.entityCostCenter}</p>
+                        ) : null}
+                      </Field>
+                      <Field label="Department" icon="ri-team-line" index={2}>
+                        {task.department || '—'}
+                      </Field>
+                      <Field label="Request Type" icon="ri-price-tag-3-line" index={3}>
+                        {task.requestType || '—'}
+                      </Field>
+                      <Field label="Request Category" icon="ri-folder-3-line" index={4}>
+                        {task.requestCategory || task.category || '—'}
+                      </Field>
+                      <Field label="Payment Terms" icon="ri-bank-card-line" index={5}>
+                        {task.paymentTerms || '—'}
+                      </Field>
+                      <Field label="Project Detail" icon="ri-briefcase-4-line" index={6} wide>
+                        {task.projectDetail || '—'}
+                      </Field>
+                      <Field label="Required Date" icon="ri-calendar-event-line" index={7}>
+                        {formatDate(task.requiredDate)}
+                      </Field>
+                      <Field label="Expected Delivery" icon="ri-truck-line" index={8}>
+                        {task.expectedDeliveryTimeline || '—'}
+                      </Field>
+                      <Field label="Total Amount" icon="ri-money-rupee-circle-line" index={9}>
+                        {hideLinePricing ? (
+                          'Own Vendor'
+                        ) : (
+                          <span className="tabular-nums">{money(task.totalAmount)}</span>
+                        )}
+                      </Field>
+                      <Field label="Current Stage" icon="ri-flag-2-line" index={10}>
+                        {task.currentApprover || '—'}
+                      </Field>
+                      <Field label="Submitted Date" icon="ri-send-plane-line" index={11}>
+                        {formatDate(task.submittedDate)}
+                      </Field>
+                      <Field label="Place of Delivery" icon="ri-map-2-line" index={12}>
+                        {task.placeOfDelivery || '—'}
+                      </Field>
+                      <Field label="Billing Region / GST" icon="ri-map-pin-line" index={13} wide>
+                        {task.billingLocation || '—'}
+                        {task.billingGstNo ? (
+                          <span className="dfx-code ml-2 font-mono">{task.billingGstNo}</span>
+                        ) : null}
+                      </Field>
+                      <Field label="Billing Address" icon="ri-home-office-line" index={14} wide>
+                        <span className="whitespace-pre-wrap">{task.billingAddress || '—'}</span>
+                      </Field>
+                      <Field label="POC for Delivery" icon="ri-contacts-line" index={15} wide>
+                        <span className="whitespace-pre-wrap">{task.deliveryPoc || '—'}</span>
+                      </Field>
+                    </div>
+
+                    <div className="dfx-note" style={{ '--i': 16 } as CSSProperties}>
+                      <p className="dfx-label">
+                        <i className="ri-lightbulb-flash-line mr-1" /> Business Justification
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
                         {task.justification || '—'}
                       </p>
                     </div>
-                  </div>
-                  <div>
-                    <h4 className={`${softLabel} mb-2 px-0.5`}>Special Notes</h4>
-                    <div className={softCard}>
-                      <div className="pointer-events-none absolute inset-0" style={softWash} />
-                      <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                    <div className="dfx-note" style={{ '--i': 17 } as CSSProperties}>
+                      <p className="dfx-label">
+                        <i className="ri-sticky-note-line mr-1" /> Special Notes
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
                         {task.specialNotes || '—'}
                       </p>
                     </div>
-                  </div>
 
-                  {savedQuoteVendors.length > 0 && !hasQuotes && (
-                    <div className="space-y-3">
-                      <h4 className={`${softLabel} px-0.5`}>Vendor quotations</h4>
-                      {savedQuoteVendors.map((vendor) => (
-                        <div key={vendor.invitationId} className={softCard}>
-                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                          <div className="relative z-[1] flex items-center justify-between gap-2 border-b border-slate-100/80 px-4 py-3">
-                            <p className="min-w-0 truncate text-sm font-semibold text-[#2C3E50]">
-                              {vendor.vendorName}
-                            </p>
-                            {vendor.isRecommended ? (
-                              <span className="shrink-0 rounded-full bg-[#1E88E5] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
-                                Recommended
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="relative z-[1] divide-y divide-slate-100/80">
+                    {savedQuoteVendors.length > 0 && !hasQuotes && (
+                      <div className="space-y-3">
+                        <p className="dfx-label px-0.5">Vendor quotations</p>
+                        {savedQuoteVendors.map((vendor, vi) => (
+                          <div
+                            key={vendor.invitationId}
+                            className="dfx-quote"
+                            style={{ '--i': 18 + vi } as CSSProperties}
+                          >
+                            <div className="dfx-quote-head">
+                              <p className="min-w-0 truncate text-sm font-semibold text-slate-800">
+                                {vendor.vendorName}
+                              </p>
+                              {vendor.isRecommended ? <span className="dfx-pill">RECOMMENDED</span> : null}
+                            </div>
                             {[...vendor.rounds]
                               .sort((a, b) => Number(a.round) - Number(b.round))
                               .map((quote, quoteIndex) => (
                                 <div
                                   key={`${vendor.invitationId}-${quote.submissionId || quote.round}-${quoteIndex}`}
-                                  className="flex items-start gap-3 px-4 py-3"
+                                  className="dfx-quote-row"
                                 >
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E3F2FD] text-xs font-bold text-[#1E88E5]">
-                                    Q{Number(quote.round) || 1}
-                                  </span>
+                                  <span className="dfx-item-no">Q{Number(quote.round) || 1}</span>
                                   <div className="min-w-0">
-                                    <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
+                                    <p className="text-sm font-bold tabular-nums text-slate-900">
                                       {formatMoney(Number(quote.quotedPrice) || 0, task.currency)}
                                     </p>
                                     <p className="mt-0.5 text-xs text-slate-500">
@@ -426,7 +494,7 @@ export default function TaskDetailDrawer({
                                         .join(' · ') || 'Quoted'}
                                     </p>
                                     {quote.quotationFileName ? (
-                                      <p className="mt-1 truncate text-xs font-medium text-[#1565C0]">
+                                      <p className="mt-1 truncate text-xs font-medium text-[#0f6b7a]">
                                         {quote.quotationFileName}
                                       </p>
                                     ) : null}
@@ -434,272 +502,107 @@ export default function TaskDetailDrawer({
                                 </div>
                               ))}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
 
-                  {showQuotesTab && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('quotes')}
-                      className="relative flex w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
-                    >
-                      <div className="pointer-events-none absolute inset-0" style={softWash} />
-                      <span className="relative z-[1]">
-                        <span className="block text-sm font-semibold text-[#1565C0]">
-                          View vendor quotations
+                    {showQuotesTab && (
+                      <button type="button" onClick={() => setActiveTab('quotes')} className="dfx-cta-card">
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-800">
+                            View vendor quotations
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            Prices, rounds, and quotation files on this PR
+                          </span>
                         </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">
-                          Prices, rounds, and quotation files on this PR
-                        </span>
-                      </span>
-                      <i className="relative z-[1] ri-arrow-right-s-line text-lg text-[#1E88E5]" />
-                    </button>
-                  )}
-                </>
-              )}
+                        <i className="ri-arrow-right-line text-lg text-[#0f6b7a]" />
+                      </button>
+                    )}
+                  </div>
+                )}
 
-              {task.prId ? (
-                <div className={activeTab === 'quotes' || activeTab === 'details' ? 'mt-2' : 'hidden'}>
-                  <PrVendorQuotationsPanel
-                    prId={task.prId}
-                    currency={task.currency}
-                    onPresenceChange={setHasQuotes}
-                  />
-                </div>
-              ) : null}
+                {task.prId ? (
+                  <div className={activeTab === 'quotes' || activeTab === 'details' ? 'mt-2' : 'hidden'}>
+                    <PrVendorQuotationsPanel
+                      prId={task.prId}
+                      currency={task.currency}
+                      onPresenceChange={setHasQuotes}
+                    />
+                  </div>
+                ) : null}
 
-              {activeTab === 'items' && showItemsTab && (
-                <>
-                  <div className="space-y-3 md:hidden">
+                {activeTab === 'items' && showItemsTab && (
+                  <div key="items" className="space-y-2.5">
                     {lineItems.length === 0 ? (
-                      <p className="rounded-2xl bg-white p-4 text-center text-sm text-slate-400 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]">
-                        No line items
-                      </p>
+                      <div className="dfx-empty">
+                        <i className="ri-list-check-3" />
+                        <p>No line items</p>
+                      </div>
                     ) : (
                       lineItems.map((item, idx) => {
                         const name = String(item.itemName || item.description || '—').trim() || '—';
                         const desc = String(item.description || '').trim();
                         const showDesc = desc && desc !== name;
+                        const unitLabel =
+                          item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? item.unit : '';
                         return (
-                          <div
-                            key={idx}
-                            className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
-                          >
-                            <div className="pointer-events-none absolute inset-0" style={softWash} />
-                            <div className="relative z-[1] mb-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-[#E3F2FD] px-1.5 text-[11px] font-bold text-[#1E88E5]">
-                                  #{idx + 1}
+                          <div key={idx} className="dfx-item" style={{ '--i': idx } as CSSProperties}>
+                            <span className="dfx-item-no">{idx + 1}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words text-sm font-semibold text-slate-800">{name}</p>
+                              {showDesc ? (
+                                <p className="mt-0.5 break-words text-xs text-slate-500">{desc}</p>
+                              ) : null}
+                              <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                <span className="dfx-code">
+                                  Qty {Number(item.qty) || 0}
+                                  {unitLabel ? ` ${unitLabel}` : ''}
                                 </span>
-                                <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
-                                  {name}
-                                </p>
-                                {showDesc ? (
-                                  <p className="mt-0.5 break-words text-xs text-slate-400">{desc}</p>
-                                ) : null}
-                              </div>
-                              {!hideLinePricing && (
-                                <p className="shrink-0 text-sm font-bold text-[#1E88E5]">
-                                  {formatMoney(Number(item.total || 0), task.currency, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}
-                                </p>
-                              )}
+                                {!hideLinePricing && <span>× {money(item.unitCost)}</span>}
+                              </p>
                             </div>
-                            <div
-                              className={`relative z-[1] grid gap-3 ${hideLinePricing ? 'grid-cols-1' : 'grid-cols-2'}`}
-                            >
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                  Qty
-                                </p>
-                                <p className="mt-0.5 text-sm text-[#2C3E50]">
-                                  {Number(item.qty) || 0}
-                                  {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                                    <span className="ml-1 text-xs text-slate-400">{item.unit}</span>
-                                  ) : null}
-                                </p>
-                              </div>
-                              {!hideLinePricing && (
-                                <div>
-                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    Unit Cost
-                                  </p>
-                                  <p className="mt-0.5 text-sm text-[#2C3E50]">
-                                    {formatMoney(Number(item.unitCost || 0), task.currency, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
+                            {!hideLinePricing && (
+                              <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                                {money(item.total)}
+                              </p>
+                            )}
                           </div>
                         );
                       })
                     )}
                     {!hideLinePricing && lineItems.length > 0 && (
-                      <div className="flex items-center justify-between rounded-2xl border border-[#BBDEFB]/80 bg-[#E3F2FD]/40 px-4 py-3 sm:rounded-[18px]">
-                        <p className="text-sm font-semibold text-slate-700">Grand Total</p>
-                        <p className="text-sm font-bold text-[#1E88E5]">
-                          {formatMoney(Number(task.totalAmount || 0), task.currency, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </p>
+                      <div className="dfx-total" style={{ '--i': lineItems.length } as CSSProperties}>
+                        <span>Grand Total</span>
+                        <b className="tabular-nums">{money(task.totalAmount)}</b>
                       </div>
                     )}
                   </div>
+                )}
 
-                  <div className="hidden overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] md:block sm:rounded-[18px]">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-[#F8FAFC]">
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            #
-                          </th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            Item Name
-                          </th>
-                          <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            Description
-                          </th>
-                          <th className="px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                            Qty
-                          </th>
-                          {!hideLinePricing && (
-                            <>
-                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Unit Cost
-                              </th>
-                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                Total
-                              </th>
-                            </>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lineItems.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={hideLinePricing ? 4 : 6}
-                              className="px-3 py-6 text-center text-sm text-slate-400"
-                            >
-                              No line items
-                            </td>
-                          </tr>
-                        ) : (
-                          lineItems.map((item, idx) => {
-                            const name = String(item.itemName || item.description || '—').trim() || '—';
-                            const desc = String(item.description || '').trim();
-                            const showDesc = desc && desc !== name;
-                            return (
-                              <tr key={idx} className="border-t border-slate-100">
-                                <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
-                                <td className="px-3 py-2 font-medium text-[#2C3E50]">{name}</td>
-                                <td className="px-3 py-2 text-slate-600">{showDesc ? desc : '—'}</td>
-                                <td className="px-3 py-2 text-center tabular-nums text-slate-700">
-                                  {Number(item.qty) || 0}
-                                  {item.unit && !/^\d+(\.\d+)?$/.test(String(item.unit).trim()) ? (
-                                    <span className="ml-1 text-xs font-normal text-slate-400">
-                                      {item.unit}
-                                    </span>
-                                  ) : null}
-                                </td>
-                                {!hideLinePricing && (
-                                  <>
-                                    <td className="px-3 py-2 text-right text-slate-700">
-                                      {formatMoney(Number(item.unitCost || 0), task.currency, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </td>
-                                    <td className="px-3 py-2 text-right font-semibold text-[#1E88E5]">
-                                      {formatMoney(Number(item.total || 0), task.currency, {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </td>
-                                  </>
-                                )}
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                      {!hideLinePricing && (
-                        <tfoot>
-                          <tr className="border-t-2 border-[#BBDEFB] bg-[#E3F2FD]/40">
-                            <td
-                              colSpan={5}
-                              className="px-3 py-2 text-right text-xs font-bold uppercase text-slate-700"
-                            >
-                              Grand Total
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-[#1E88E5]">
-                              {formatMoney(Number(task.totalAmount || 0), task.currency, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'history' && (
-                <div className="space-y-3">
-                  {approvalHistory.length === 0 ? (
-                    <div className={`${softCard} py-8 text-center`}>
-                      <div className="pointer-events-none absolute inset-0" style={softWash} />
-                      <p className="relative z-[1] text-sm text-slate-500">No approval history yet</p>
+                {activeTab === 'history' &&
+                  (approvalHistory.length === 0 ? (
+                    <div className="dfx-empty">
+                      <i className="ri-history-line" />
+                      <p>No approval history yet</p>
                     </div>
                   ) : (
-                    approvalHistory.map((step, idx) => {
-                      const stepStatus = String(step.status || '').toLowerCase();
-                      const done =
-                        stepStatus.includes('approv') ||
-                        stepStatus.includes('complet') ||
-                        stepStatus.includes('submit');
-                      const rejected = stepStatus.includes('reject');
-                      const returned =
-                        stepStatus.includes('return') || stepStatus.includes('rework');
-                      return (
-                        <div key={`${step.stage}-${step.date}-${idx}`} className={softCard}>
-                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                          <div className="relative z-[1] flex gap-3">
-                            <div
-                              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
-                                done
-                                  ? 'bg-emerald-50 text-emerald-600'
-                                  : rejected
-                                    ? 'bg-[#FFE4E6] text-[#F43F5E]'
-                                    : returned
-                                      ? 'bg-orange-50 text-orange-600'
-                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
-                              }`}
-                            >
-                              <i
-                                className={`text-sm ${
-                                  rejected
-                                    ? 'ri-close-circle-fill'
-                                    : returned
-                                      ? 'ri-arrow-go-back-fill'
-                                      : 'ri-checkbox-circle-fill'
-                                }`}
-                              ></i>
-                            </div>
-                            <div className="min-w-0 flex-1">
+                    <ol key="history" className="dfx-timeline">
+                      {approvalHistory.map((step, idx) => {
+                        const t = historyTone(step.status);
+                        return (
+                          <li
+                            key={`${step.stage}-${step.date}-${idx}`}
+                            className={`dfx-tl-item tone-${t.tone}`}
+                            style={{ '--i': idx } as CSSProperties}
+                          >
+                            <span className="dfx-tl-dot">
+                              <i className={t.icon} />
+                            </span>
+                            <div className="dfx-tl-card">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <p className="break-words text-sm font-semibold text-[#2C3E50]">
+                                  <p className="break-words text-sm font-semibold text-slate-800">
                                     {step.stage || step.step}
                                   </p>
                                   <p className="break-words text-xs text-slate-500">
@@ -707,77 +610,65 @@ export default function TaskDetailDrawer({
                                     {formatPersonRoleSuffix(step.role, step.approver)}
                                   </p>
                                 </div>
-                                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
-                                  {formatDateTime(step.date)}
-                                </span>
+                                <span className="dfx-tl-date">{formatDateTime(step.date)}</span>
                               </div>
-                              {step.remarks ? (
-                                <p className="mt-2 break-words rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">
-                                  {step.remarks}
-                                </p>
-                              ) : null}
+                              {step.remarks ? <p className="dfx-tl-remark">{step.remarks}</p> : null}
                             </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  ))}
+              </div>
             </div>
           </>
         )}
 
         {/* Footer — pinned so L1/L2 always see Approve / Send Back / Reject */}
         {showActions && (
-          <div className="relative shrink-0 border-t border-slate-100/80 bg-white/90 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
-            <div className="pointer-events-none absolute inset-0 opacity-60" style={softWash} />
-            <div className="relative z-[1] flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => onApprove(task.id)}
-                className={`${PM_BTN_PRIMARY} flex-1 disabled:opacity-50 ${
-                  task.requireInvoiceUpload || task.isSassInvoiceUpload ? '' : ''
-                }`}
-              >
-                <i
-                  className={
-                    task.isMugeshSign || task.requireInvoiceUpload || task.isSassInvoiceUpload
-                      ? 'ri-file-upload-line'
-                      : 'ri-check-double-line'
-                  }
-                ></i>
-                {task.isMugeshSign
-                  ? 'Sign & Upload'
-                  : task.isSassInvoiceUpload || task.requireInvoiceUpload
-                    ? 'Upload Invoice'
-                    : 'Approve'}
-              </button>
-              {!task.isSassInvoiceUpload && !task.isMugeshSign && (
-                <div className="flex gap-2 sm:contents">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => onReturn(task.id)}
-                    className={`${PM_BTN_SECONDARY} flex-1 !text-orange-600 hover:!border-orange-200 disabled:opacity-50`}
-                  >
-                    <i className="ri-arrow-go-back-line"></i> Send Back
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => onReject(task.id)}
-                    className={`${PM_BTN_SECONDARY} flex-1 !text-rose-600 hover:!border-rose-200 disabled:opacity-50`}
-                  >
-                    <i className="ri-close-circle-line"></i> Reject
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <footer className="dfx-foot is-actions shrink-0 px-5 py-4 sm:px-7">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => onApprove(task.id)}
+              className="dfx-btn primary"
+            >
+              <i
+                className={
+                  task.isMugeshSign || task.requireInvoiceUpload || task.isSassInvoiceUpload
+                    ? 'ri-file-upload-line'
+                    : 'ri-check-double-line'
+                }
+              ></i>
+              {task.isMugeshSign
+                ? 'Sign & Upload'
+                : task.isSassInvoiceUpload || task.requireInvoiceUpload
+                  ? 'Upload Invoice'
+                  : 'Approve'}
+            </button>
+            {!task.isSassInvoiceUpload && !task.isMugeshSign && (
+              <div className="flex gap-2 sm:contents">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => onReturn(task.id)}
+                  className="dfx-btn warn"
+                >
+                  <i className="ri-arrow-go-back-line"></i> Send Back
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => onReject(task.id)}
+                  className="dfx-btn danger"
+                >
+                  <i className="ri-close-circle-line"></i> Reject
+                </button>
+              </div>
+            )}
+          </footer>
         )}
-      </div>
+      </aside>
     </div>
   );
 }

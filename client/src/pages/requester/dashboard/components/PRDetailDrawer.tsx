@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import StatusBadge from '../../../../components/base/StatusBadge';
 import PriorityBadge from '../../../../components/base/PriorityBadge';
@@ -7,6 +7,7 @@ import { useAuth } from '../../../../contexts/AuthContext';
 import PrVendorQuotationsPanel from '../../../../components/feature/PrVendorQuotationsPanel';
 import { collapsePrAdminEditHistory } from '../../../../components/feature/ApprovalHistoryPanel';
 import { formatPersonRoleSuffix } from '../../../../utils/roleDisplay';
+import '../../../../styles/drawer-fx.css';
 
 const ADMIN_EDIT_ROLES = [
   'Super Admin',
@@ -99,34 +100,56 @@ interface PRDetailDrawerProps {
   deletingDraft?: boolean;
 }
 
-const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
-const softLabel =
-  'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400';
-const softValue = 'mt-1.5 text-sm font-semibold text-[#2C3E50] break-words';
-const softWash = {
-  background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-} as const;
 
-function SoftField({
+type DrawerTab = 'details' | 'items' | 'quotes' | 'history';
+
+const TAB_META: Record<DrawerTab, { label: string; icon: string }> = {
+  details: { label: 'Details', icon: 'ri-file-info-line' },
+  items: { label: 'Line Items', icon: 'ri-list-check-3' },
+  quotes: { label: 'Quotations', icon: 'ri-price-tag-3-line' },
+  history: { label: 'History', icon: 'ri-history-line' },
+};
+
+/** Duration of the slide-out animation before the parent unmounts the drawer. */
+const EXIT_MS = 280;
+
+const inr = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+function Field({
   label,
+  icon,
+  index,
+  wide = false,
   children,
-  className = '',
 }: {
   label: string;
+  icon: string;
+  index: number;
+  wide?: boolean;
   children: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={`${softCard} ${className}`}>
-      <div className="pointer-events-none absolute inset-0" style={softWash} />
-      <div className="relative z-[1]">
-        <p className={softLabel}>{label}</p>
-        <div className={softValue}>{children}</div>
+    <div
+      className={`dfx-field${wide ? ' sm:col-span-2' : ''}`}
+      style={{ '--i': index } as CSSProperties}
+    >
+      <span className="dfx-field-ic">
+        <i className={icon} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="dfx-label">{label}</p>
+        <div className="dfx-value">{children}</div>
       </div>
     </div>
   );
+}
+
+function historyTone(status: string) {
+  const s = String(status || '').toLowerCase();
+  if (s.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
+  if (s.includes('return')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
+  if (s.includes('approv') || s.includes('complet')) return { tone: 'green', icon: 'ri-check-line' };
+  return { tone: 'teal', icon: 'ri-time-line' };
 }
 
 export default function PRDetailDrawer({
@@ -138,13 +161,40 @@ export default function PRDetailDrawer({
 }: PRDetailDrawerProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'details' | 'items' | 'quotes' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<DrawerTab>('details');
   const [hasQuotes, setHasQuotes] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   useEffect(() => {
     setActiveTab('details');
     setHasQuotes(false);
   }, [pr?.id]);
+
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, EXIT_MS);
+  }, [onClose]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') requestClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [requestClose]);
+
+  const visibleTabs = (['details', 'items', 'quotes', 'history'] as const).filter(
+    (tab) => tab !== 'quotes' || hasQuotes
+  );
+
+  // Slide the active-tab pill under whichever tab is selected.
+  useLayoutEffect(() => {
+    const root = tabsRef.current;
+    const btn = root?.querySelector<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
+    if (root && btn) setIndicator({ left: btn.offsetLeft, width: btn.offsetWidth });
+  }, [activeTab, hasQuotes, pr?.id, loading]);
 
   if (!pr && !loading) return null;
 
@@ -156,39 +206,50 @@ export default function PRDetailDrawer({
     String(pr?.statusUI || '').toLowerCase().includes('return');
   const isDraft = pr?.status === 'DRAFT' || pr?.statusFrontend === 'draft';
 
+  const history = pr
+    ? collapsePrAdminEditHistory(
+        pr.approvalHistory.map((item) => ({
+          stage: item.stage,
+          user: item.user,
+          role: item.role,
+          date: item.date,
+          status: item.status,
+          remarks: item.remarks,
+        }))
+      )
+    : [];
+
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end">
-      <div className="absolute inset-0 bg-slate-900/25 backdrop-blur-[2px]" onClick={onClose} />
-      <div
-        className="relative flex h-full w-full max-w-xl flex-col overflow-hidden shadow-2xl shadow-slate-300/40"
-        style={{ background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)' }}
-      >
-        {/* Header */}
-        <div className="relative sticky top-0 z-10 border-b border-white/60 bg-white/90 px-4 py-3 shadow-[0_8px_24px_-16px_rgba(15,23,42,0.12)] backdrop-blur-md sm:px-6 sm:py-4">
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
-            }}
-          />
+    <div className={`dfx-root fixed inset-0 z-[60] flex justify-end${closing ? ' is-closing' : ''}`}>
+      <div className="dfx-overlay absolute inset-0" onClick={requestClose} />
+      <aside className="dfx-panel relative flex h-full w-full max-w-2xl flex-col overflow-hidden">
+        {/* Hero header */}
+        <header className="dfx-hero relative shrink-0 px-5 pb-5 pt-5 sm:px-7">
+          <div className="dfx-art" aria-hidden="true" />
+          <div className="dfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i />
+          </div>
           <div className="relative z-[1] flex items-start gap-3">
+            <div className="dfx-hero-ic">
+              <i className="ri-file-list-3-line" aria-hidden />
+            </div>
             <div className="min-w-0 flex-1">
-              {pr && (
+              {pr ? (
                 <>
-                  <p className="break-all text-[11px] font-bold tracking-wide text-[#1E88E5]">
-                    {pr.prNumber}
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="dfx-prno">{pr.prNumber}</span>
+                  <h3 className="dfx-title">{pr.title}</h3>
+                  <div className="dfx-badges mt-2 flex flex-wrap items-center gap-1.5">
                     <StatusBadge status={pr.statusUI || pr.statusFrontend} size="sm" />
                     <PriorityBadge priority={pr.priority} size="sm" />
                   </div>
-                  <h3 className="mt-2 break-words text-base font-semibold leading-snug text-slate-800">
-                    {pr.title}
-                  </h3>
                 </>
+              ) : (
+                <div className="space-y-2">
+                  <div className="dfx-skel h-4 w-40" />
+                  <div className="dfx-skel h-6 w-64" />
+                  <div className="dfx-skel h-5 w-32" />
+                </div>
               )}
-              {loading && <p className="text-sm text-slate-500">Loading PR details...</p>}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               {isDraft && user?.role === 'Requester' && onDeleteDraft && pr && (
@@ -196,462 +257,348 @@ export default function PRDetailDrawer({
                   type="button"
                   disabled={deletingDraft}
                   onClick={() => void onDeleteDraft(pr.id)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#FFE4E6] px-2.5 text-sm font-semibold text-[#F43F5E] transition-colors hover:bg-[#FECDD3] disabled:opacity-50"
+                  className="dfx-hbtn danger"
                   title={deletingDraft ? 'Deleting…' : 'Delete draft'}
                 >
                   <i className="ri-delete-bin-line"></i>
-                  <span className="hidden sm:inline">
-                    {deletingDraft ? 'Deleting…' : 'Delete draft'}
-                  </span>
+                  <span className="hidden sm:inline">{deletingDraft ? 'Deleting…' : 'Delete'}</span>
                 </button>
               )}
-              {canEdit && pr && (
-                <Link
-                  to={`/requester/edit-pr/${pr.id}`}
-                  onClick={onClose}
-                  className="hidden h-9 items-center gap-1.5 rounded-xl bg-[#1E88E5] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0] sm:inline-flex"
-                >
-                  <i className="ri-edit-line"></i>
-                  {isReturned ? 'Edit & Resubmit' : 'Edit PR'}
-                </Link>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-transparent bg-white text-slate-500 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9] hover:text-[#1E88E5]"
-                aria-label="Close"
-              >
-                <i className="ri-close-line text-lg"></i>
+              <button type="button" onClick={requestClose} className="dfx-close" aria-label="Close">
+                <i className="ri-close-line text-xl"></i>
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
           {pr && (
-            <>
-              {isReturned && (
-                <div className="relative mx-4 mt-4 overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:mx-6 sm:rounded-[18px]">
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      background:
-                        'radial-gradient(120% 90% at 100% 0%, rgba(249, 115, 22, 0.14) 0%, rgba(255,255,255,0) 55%)',
-                    }}
-                  />
-                  <div className="relative z-[1] flex items-start gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
-                      <i className="ri-arrow-go-back-line text-lg"></i>
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">Returned for Rework</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        Review the feedback in approval history, update if needed, then resubmit.
-                      </p>
-                    </div>
+            <div className="dfx-stats relative z-[1] mt-5 grid grid-cols-3 gap-2.5">
+              <div className="dfx-stat" style={{ '--i': 0 } as CSSProperties}>
+                <span className="dfx-stat-ic">
+                  <i className="ri-bank-card-line" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                <small>Total Amount</small>
+                <b className="tabular-nums">{inr(pr.totalAmount)}</b>
+              </div>
+              </div>
+              <div className="dfx-stat" style={{ '--i': 1 } as CSSProperties}>
+                <span className="dfx-stat-ic">
+                  <i className="ri-box-3-line" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                <small>Line Items</small>
+                <b>{pr.lineItems.length}</b>
+              </div>
+              </div>
+              <div className="dfx-stat" style={{ '--i': 2 } as CSSProperties}>
+                <span className="dfx-stat-ic">
+                  <i className="ri-user-line" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                <small>Required By</small>
+                <b>{pr.requiredDate || '—'}</b>
+              </div>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {pr && (
+          <div className="dfx-tabs-wrap shrink-0 px-5 sm:px-7">
+            <div ref={tabsRef} className="dfx-tabs" role="tablist">
+              <span
+                className="dfx-tab-ind"
+                style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }}
+              />
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  data-tab={tab}
+                  aria-selected={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`dfx-tab${activeTab === tab ? ' is-active' : ''}`}
+                >
+                  <i className={TAB_META[tab].icon} aria-hidden />
+                  {TAB_META[tab].label}
+                  {tab === 'items' && <span className="dfx-tab-cnt">{pr.lineItems.length}</span>}
+                  {tab === 'history' && history.length > 0 && (
+                    <span className="dfx-tab-cnt">{history.length}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="dfx-body min-h-0 flex-1 overflow-y-auto">
+          {!pr && loading && (
+            <div className="space-y-3 p-6">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="dfx-skel h-16 w-full rounded-2xl" />
+              ))}
+            </div>
+          )}
+
+          {pr && (
+            <div key={activeTab} className="dfx-pane space-y-4 px-5 py-5 sm:px-7">
+              {isReturned && activeTab === 'details' && (
+                <div className="dfx-alert">
+                  <span className="dfx-alert-ic">
+                    <i className="ri-arrow-go-back-line" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Returned for Rework</p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Review the feedback in approval history, update if needed, then resubmit.
+                    </p>
                   </div>
                 </div>
               )}
 
-              <div className="px-4 pt-4 sm:px-6">
-                <div className="flex flex-wrap gap-2">
-                  {(['details', 'items', 'quotes', 'history'] as const)
-                    .filter((tab) => tab !== 'quotes' || hasQuotes)
-                    .map((tab) => (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setActiveTab(tab)}
-                        className={`h-10 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
-                          activeTab === tab
-                            ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                            : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
-                        }`}
-                      >
-                        {tab === 'items'
-                          ? `Line Items (${pr.lineItems.length})`
-                          : tab === 'history'
-                            ? 'History'
-                            : tab === 'quotes'
-                              ? 'Quotations'
-                              : 'Details'}
-                      </button>
-                    ))}
-                </div>
-              </div>
-
-              <div className="space-y-3 px-4 py-5 sm:space-y-4 sm:px-6">
-                {activeTab === 'details' && (
-                  <>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                      <SoftField label="Entity" className="sm:col-span-2">
-                        {pr.entityName || '—'}
-                        {pr.entityCode ? (
-                          <span className="font-normal text-slate-500"> ({pr.entityCode})</span>
-                        ) : null}
-                        {pr.entityCostCenter ? (
-                          <p className="mt-1 text-xs font-normal text-slate-500">
-                            Cost Center: {pr.entityCostCenter}
-                          </p>
-                        ) : null}
-                      </SoftField>
-                      <SoftField label="Department">{pr.department}</SoftField>
-                      <SoftField label="Request Type">{pr.requestType}</SoftField>
-                      <SoftField label="Request Category">{pr.requestCategory || '—'}</SoftField>
-                      <SoftField label="Project Detail" className="sm:col-span-2">
-                        {pr.projectDetail || '—'}
-                      </SoftField>
-                      <SoftField label="Required Date">{pr.requiredDate || '—'}</SoftField>
-                      <SoftField label="Expected Delivery Timeline">
-                        {pr.expectedDeliveryTimeline || '—'}
-                      </SoftField>
-                      <SoftField label="Payment Terms">{pr.paymentTerms || '—'}</SoftField>
-                      <SoftField label="Total Amount">
-                        <span className="tabular-nums">
-                          ₹{pr.totalAmount.toLocaleString('en-IN')}
-                        </span>
-                      </SoftField>
-
-                      {pr.poDocumentAvailable && pr.poId ? (
-                        <div className={`${softCard} sm:col-span-2`}>
-                          <div
-                            className="pointer-events-none absolute inset-0"
-                            style={{
-                              background:
-                                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.14) 0%, rgba(255,255,255,0) 55%)',
-                            }}
-                          />
-                          <div className="relative z-[1] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className={softLabel}>Purchase Order</p>
-                              <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
-                                {pr.poNumber || `PO #${pr.poId}`}
-                                {pr.statusUI ? ` · ${pr.statusUI}` : ''}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
-                              className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-[#1E88E5] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0] sm:w-auto"
-                            >
-                              <i className="ri-file-pdf-2-line" />
-                              View PO Document
-                            </button>
-                          </div>
-                        </div>
-                      ) : pr.poId ? (
-                        <SoftField label="Purchase Order" className="sm:col-span-2">
-                          {pr.poNumber || `PO #${pr.poId}`}
-                          {pr.statusUI ? ` · ${pr.statusUI}` : ''}
-                          <p className="mt-1 text-xs font-normal text-slate-500">
-                            PO document will be available after SCM Buyer final verification.
-                          </p>
-                        </SoftField>
+              {activeTab === 'details' && (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Entity" icon="ri-building-2-line" index={0} wide>
+                      {pr.entityName || '—'}
+                      {pr.entityCode ? <span className="dfx-code ml-2">{pr.entityCode}</span> : null}
+                      {pr.entityCostCenter ? (
+                        <p className="dfx-sub">Cost Center: {pr.entityCostCenter}</p>
                       ) : null}
+                    </Field>
+                    <Field label="Department" icon="ri-team-line" index={1}>
+                      {pr.department}
+                    </Field>
+                    <Field label="Request Type" icon="ri-price-tag-3-line" index={2}>
+                      {pr.requestType}
+                    </Field>
+                    <Field label="Request Category" icon="ri-folder-3-line" index={3}>
+                      {pr.requestCategory || '—'}
+                    </Field>
+                    <Field label="Payment Terms" icon="ri-bank-card-line" index={4}>
+                      {pr.paymentTerms || '—'}
+                    </Field>
+                    <Field label="Project Detail" icon="ri-briefcase-4-line" index={5} wide>
+                      {pr.projectDetail || '—'}
+                    </Field>
+                    <Field label="Required Date" icon="ri-calendar-event-line" index={6}>
+                      {pr.requiredDate || '—'}
+                    </Field>
+                    <Field label="Expected Delivery" icon="ri-truck-line" index={7}>
+                      {pr.expectedDeliveryTimeline || '—'}
+                    </Field>
 
-                      <SoftField label="Billing Region / GST" className="sm:col-span-2">
-                        {pr.billingLocation || '—'}
-                        {pr.billingGstNo ? (
-                          <span className="mt-0.5 block font-mono text-xs font-normal text-slate-500">
-                            {pr.billingGstNo}
-                          </span>
-                        ) : null}
-                      </SoftField>
-                      <SoftField label="Billing Address" className="sm:col-span-2">
-                        <span className="whitespace-pre-wrap">{pr.billingAddress || '—'}</span>
-                      </SoftField>
-                      <SoftField label="POC for Delivery">
-                        <span className="whitespace-pre-wrap">{pr.deliveryPoc || '—'}</span>
-                        {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
-                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                            {[pr.deliveryPocPhone, pr.deliveryPocEmail].filter(Boolean).join(' · ')}
-                          </span>
-                        ) : null}
-                      </SoftField>
-                      <SoftField label="Project Manager at HO">
-                        <span className="whitespace-pre-wrap">{pr.projectManagerHo || '—'}</span>
-                        {pr.projectManagerEmail || pr.projectManagerContact ? (
-                          <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                            {[pr.projectManagerContact, pr.projectManagerEmail]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
-                        ) : null}
-                      </SoftField>
-                      <SoftField label="Place of Delivery">{pr.placeOfDelivery || '—'}</SoftField>
-                      <SoftField label="Submitted Date">{pr.submittedDate || '—'}</SoftField>
-                    </div>
-
-                    <div>
-                      <h4 className={`${softLabel} mb-2 px-0.5`}>Business Justification</h4>
-                      <div className={softCard}>
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <p className="relative z-[1] break-words text-sm leading-relaxed text-slate-700">
-                          {pr.justification || '—'}
-                        </p>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className={`${softLabel} mb-2 px-0.5`}>Special Notes</h4>
-                      <div className={softCard}>
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <p className="relative z-[1] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
-                          {pr.specialNotes || '—'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {pr.attachments && pr.attachments.length > 0 && (
-                      <div>
-                        <h4 className={`${softLabel} mb-2 px-0.5`}>Attachments</h4>
-                        <div className="space-y-2">
-                          {pr.attachments.map((file) => (
-                            <button
-                              key={file.id}
-                              type="button"
-                              onClick={() => prApi.downloadAttachment(pr.id, file.id, file.fileName)}
-                              className="relative flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-2xl border border-transparent bg-white px-3 py-2.5 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
-                            >
-                              <div
-                                className="pointer-events-none absolute inset-0"
-                                style={softWash}
-                              />
-                              <i className="ri-attachment-2 relative z-[1] text-[#1E88E5]" />
-                              <span className="relative z-[1] truncate text-sm font-medium text-slate-800">
-                                {file.fileName}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {hasQuotes && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('quotes')}
-                        className="relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-3.5 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
-                      >
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <span className="relative z-[1]">
-                          <span className="block text-sm font-semibold text-slate-800">
-                            View vendor quotations
-                          </span>
-                          <span className="mt-0.5 block text-xs text-slate-500">
-                            Prices, rounds, and quotation files on this PR
-                          </span>
-                        </span>
-                        <i className="ri-arrow-right-s-line relative z-[1] text-lg text-[#1E88E5]" />
-                      </button>
-                    )}
-                  </>
-                )}
-
-                {pr.id ? (
-                  <div className={activeTab === 'quotes' ? '' : 'hidden'}>
-                    <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
-                  </div>
-                ) : null}
-
-                {activeTab === 'items' && (
-                  <>
-                    <div className="space-y-3 md:hidden">
-                      {pr.lineItems.map((item, i) => (
-                        <div key={item.id ?? `line-card-${i}`} className={softCard}>
-                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                          <div className="relative z-[1]">
-                            <div className="mb-3 flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-[#E3F2FD] px-1.5 text-[11px] font-bold text-[#1E88E5]">
-                                  #{i + 1}
-                                </span>
-                                <p className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">
-                                  {item.description}
-                                </p>
-                                <p className="mt-0.5 text-xs text-slate-400">{item.category || '—'}</p>
-                              </div>
-                              <p className="shrink-0 text-sm font-bold tabular-nums text-[#2C3E50]">
-                                ₹{item.total.toLocaleString('en-IN')}
-                              </p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <p className={softLabel}>Qty</p>
-                                <p className="mt-0.5 text-sm text-slate-800">{item.quantity}</p>
-                              </div>
-                              <div>
-                                <p className={softLabel}>Unit</p>
-                                <p className="mt-0.5 text-sm text-slate-800">
-                                  ₹{item.unitCost.toLocaleString('en-IN')}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <div className={softCard}>
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <div className="relative z-[1] flex items-center justify-between">
-                          <p className="text-sm font-semibold text-slate-700">Total</p>
-                          <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
-                            ₹{pr.totalAmount.toLocaleString('en-IN')}
+                    {pr.poDocumentAvailable && pr.poId ? (
+                      <div className="dfx-po sm:col-span-2" style={{ '--i': 8 } as CSSProperties}>
+                        <div className="min-w-0">
+                          <p className="dfx-label !text-white/70">Purchase Order</p>
+                          <p className="mt-1 break-words text-sm font-semibold text-white">
+                            {pr.poNumber || `PO #${pr.poId}`}
+                            {pr.statusUI ? ` · ${pr.statusUI}` : ''}
                           </p>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/requester/po-document?poId=${pr.poId}`)}
+                          className="dfx-po-btn"
+                        >
+                          <i className="ri-file-pdf-2-line" />
+                          View PO Document
+                        </button>
+                      </div>
+                    ) : pr.poId ? (
+                      <Field label="Purchase Order" icon="ri-file-paper-2-line" index={8} wide>
+                        {pr.poNumber || `PO #${pr.poId}`}
+                        {pr.statusUI ? ` · ${pr.statusUI}` : ''}
+                        <p className="dfx-sub">
+                          PO document will be available after SCM Buyer final verification.
+                        </p>
+                      </Field>
+                    ) : null}
+
+                    <Field label="Billing Region / GST" icon="ri-map-pin-line" index={9} wide>
+                      {pr.billingLocation || '—'}
+                      {pr.billingGstNo ? <span className="dfx-code ml-2 font-mono">{pr.billingGstNo}</span> : null}
+                    </Field>
+                    <Field label="Billing Address" icon="ri-home-office-line" index={10} wide>
+                      <span className="whitespace-pre-wrap">{pr.billingAddress || '—'}</span>
+                    </Field>
+                    <Field label="POC for Delivery" icon="ri-contacts-line" index={11}>
+                      <span className="whitespace-pre-wrap">{pr.deliveryPoc || '—'}</span>
+                      {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
+                        <p className="dfx-sub">
+                          {[pr.deliveryPocPhone, pr.deliveryPocEmail].filter(Boolean).join(' · ')}
+                        </p>
+                      ) : null}
+                    </Field>
+                    <Field label="Project Manager at HO" icon="ri-user-star-line" index={12}>
+                      <span className="whitespace-pre-wrap">{pr.projectManagerHo || '—'}</span>
+                      {pr.projectManagerEmail || pr.projectManagerContact ? (
+                        <p className="dfx-sub">
+                          {[pr.projectManagerContact, pr.projectManagerEmail].filter(Boolean).join(' · ')}
+                        </p>
+                      ) : null}
+                    </Field>
+                    <Field label="Place of Delivery" icon="ri-map-2-line" index={13}>
+                      {pr.placeOfDelivery || '—'}
+                    </Field>
+                    <Field label="Submitted Date" icon="ri-send-plane-line" index={14}>
+                      {pr.submittedDate || '—'}
+                    </Field>
+                  </div>
+
+                  <div className="dfx-note" style={{ '--i': 15 } as CSSProperties}>
+                    <p className="dfx-label">
+                      <i className="ri-lightbulb-flash-line mr-1" /> Business Justification
+                    </p>
+                    <p className="mt-2 break-words text-sm leading-relaxed text-slate-700">
+                      {pr.justification || '—'}
+                    </p>
+                  </div>
+                  <div className="dfx-note" style={{ '--i': 16 } as CSSProperties}>
+                    <p className="dfx-label">
+                      <i className="ri-sticky-note-line mr-1" /> Special Notes
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                      {pr.specialNotes || '—'}
+                    </p>
+                  </div>
+
+                  {pr.attachments && pr.attachments.length > 0 && (
+                    <div>
+                      <p className="dfx-label mb-2 px-0.5">Attachments</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {pr.attachments.map((file, i) => (
+                          <button
+                            key={file.id}
+                            type="button"
+                            onClick={() => prApi.downloadAttachment(pr.id, file.id, file.fileName)}
+                            className="dfx-file"
+                            style={{ '--i': 17 + i } as CSSProperties}
+                          >
+                            <span className="dfx-file-ic">
+                              {(file.fileName.split('.').pop() || 'FILE').slice(0, 4).toUpperCase()}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                              {file.fileName}
+                            </span>
+                            <i className="ri-download-2-line text-[#0f6b7a]" />
+                          </button>
+                        ))}
                       </div>
                     </div>
+                  )}
 
-                    <div className="relative hidden overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] md:block sm:rounded-[18px]">
-                      <div className="pointer-events-none absolute inset-0" style={softWash} />
-                      <table className="relative z-[1] w-full text-sm">
-                        <thead>
-                          <tr>
-                            <th className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              #
-                            </th>
-                            <th className="px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Description
-                            </th>
-                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Qty
-                            </th>
-                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Unit
-                            </th>
-                            <th className="px-3 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                              Total
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pr.lineItems.map((item, i) => (
-                            <tr key={item.id ?? `line-${i}`} className="border-t border-slate-100/80">
-                              <td className="px-3 py-3 text-slate-500">{i + 1}</td>
-                              <td className="px-3 py-3">
-                                <p className="font-semibold text-[#2C3E50]">{item.description}</p>
-                                <p className="text-xs text-slate-400">{item.category}</p>
-                              </td>
-                              <td className="px-3 py-3 text-right tabular-nums">{item.quantity}</td>
-                              <td className="px-3 py-3 text-right tabular-nums">
-                                ₹{item.unitCost.toLocaleString('en-IN')}
-                              </td>
-                              <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#2C3E50]">
-                                ₹{item.total.toLocaleString('en-IN')}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="border-t border-slate-100/80">
-                            <td
-                              colSpan={4}
-                              className="px-3 py-3 text-right text-sm font-semibold text-slate-700"
-                            >
-                              Total
-                            </td>
-                            <td className="px-3 py-3 text-right text-sm font-bold tabular-nums text-[#2C3E50]">
-                              ₹{pr.totalAmount.toLocaleString('en-IN')}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </>
-                )}
+                  {hasQuotes && (
+                    <button type="button" onClick={() => setActiveTab('quotes')} className="dfx-cta-card">
+                      <span>
+                        <span className="block text-sm font-semibold text-slate-800">
+                          View vendor quotations
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          Prices, rounds, and quotation files on this PR
+                        </span>
+                      </span>
+                      <i className="ri-arrow-right-line text-lg text-[#0f6b7a]" />
+                    </button>
+                  )}
+                </>
+              )}
 
-                {activeTab === 'history' && (
-                  <div className="space-y-3">
-                    {pr.approvalHistory.length === 0 ? (
-                      <div className={`${softCard} py-8 text-center`}>
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <p className="relative z-[1] text-sm text-slate-500">
-                          No approval history yet
+              {activeTab === 'items' && (
+                <div className="space-y-2.5">
+                  {pr.lineItems.map((item, i) => (
+                    <div
+                      key={item.id ?? `line-${i}`}
+                      className="dfx-item"
+                      style={{ '--i': i } as CSSProperties}
+                    >
+                      <span className="dfx-item-no">{i + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-semibold text-slate-800">
+                          {item.description}
+                        </p>
+                        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          {item.category ? <span className="dfx-code">{item.category}</span> : null}
+                          <span>
+                            {item.quantity} × {inr(item.unitCost)}
+                          </span>
                         </p>
                       </div>
-                    ) : (
-                      collapsePrAdminEditHistory(
-                        pr.approvalHistory.map((item) => ({
-                          stage: item.stage,
-                          user: item.user,
-                          role: item.role,
-                          date: item.date,
-                          status: item.status,
-                          remarks: item.remarks,
-                        }))
-                      ).map((item, index) => (
-                        <div key={index} className={softCard}>
-                          <div className="pointer-events-none absolute inset-0" style={softWash} />
-                          <div className="relative z-[1] flex gap-3">
-                            <div
-                              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${
-                                item.status === 'Completed' ||
-                                item.status === 'Approved' ||
-                                item.status === 'Approve'
-                                  ? 'bg-emerald-50 text-emerald-600'
-                                  : item.status === 'Rejected' || item.status === 'Reject'
-                                    ? 'bg-[#FFE4E6] text-[#F43F5E]'
-                                    : item.status === 'Returned' ||
-                                        item.status?.toLowerCase().includes('return')
-                                      ? 'bg-orange-50 text-orange-600'
-                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
-                              }`}
-                            >
-                              <i
-                                className={`text-sm ${
-                                  item.status === 'Rejected' || item.status === 'Reject'
-                                    ? 'ri-close-circle-fill'
-                                    : item.status === 'Returned'
-                                      ? 'ri-arrow-go-back-fill'
-                                      : 'ri-checkbox-circle-fill'
-                                }`}
-                              ></i>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="break-words text-sm font-semibold text-[#2C3E50]">
-                                    {item.stage}
-                                  </p>
-                                  <p className="break-words text-xs text-slate-500">
-                                    {item.user}
-                                    {formatPersonRoleSuffix(item.role, item.user)}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 whitespace-nowrap text-xs text-slate-400">
-                                  {item.date}
-                                </span>
-                              </div>
-                              {item.remarks && (
-                                <p className="mt-2 break-words rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">
-                                  {item.remarks}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                      <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                        {inr(item.total)}
+                      </p>
+                    </div>
+                  ))}
+                  <div className="dfx-total" style={{ '--i': pr.lineItems.length } as CSSProperties}>
+                    <span>Grand Total</span>
+                    <b className="tabular-nums">{inr(pr.totalAmount)}</b>
                   </div>
-                )}
-              </div>
-            </>
+                </div>
+              )}
+
+              {pr.id ? (
+                <div className={activeTab === 'quotes' ? '' : 'hidden'}>
+                  <PrVendorQuotationsPanel prId={pr.id} onPresenceChange={setHasQuotes} />
+                </div>
+              ) : null}
+
+              {activeTab === 'history' &&
+                (history.length === 0 ? (
+                  <div className="dfx-empty">
+                    <i className="ri-history-line" />
+                    <p>No approval history yet</p>
+                  </div>
+                ) : (
+                  <ol className="dfx-timeline">
+                    {history.map((item, index) => {
+                      const t = historyTone(item.status);
+                      return (
+                        <li
+                          key={index}
+                          className={`dfx-tl-item tone-${t.tone}`}
+                          style={{ '--i': index } as CSSProperties}
+                        >
+                          <span className="dfx-tl-dot">
+                            <i className={t.icon} />
+                          </span>
+                          <div className="dfx-tl-card">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="break-words text-sm font-semibold text-slate-800">
+                                  {item.stage}
+                                </p>
+                                <p className="break-words text-xs text-slate-500">
+                                  {item.user}
+                                  {formatPersonRoleSuffix(item.role, item.user)}
+                                </p>
+                              </div>
+                              <span className="dfx-tl-date">{item.date}</span>
+                            </div>
+                            {item.remarks && <p className="dfx-tl-remark">{item.remarks}</p>}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ))}
+            </div>
           )}
         </div>
 
         {canEdit && pr && (
-          <div className="shrink-0 border-t border-white/60 bg-white/90 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
-            <Link
-              to={`/requester/edit-pr/${pr.id}`}
-              onClick={onClose}
-              className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#1E88E5] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1565C0] sm:ml-auto sm:w-auto"
-            >
-              <i
-                className={`${isReturned ? 'ri-edit-line' : isDraft ? 'ri-send-plane-fill' : 'ri-edit-line'} mr-1.5`}
-              ></i>
+          <footer className="dfx-foot shrink-0 px-5 py-4 sm:px-7">
+            <button type="button" onClick={requestClose} className="dfx-btn ghost">
+              Close
+            </button>
+            <Link to={`/requester/edit-pr/${pr.id}`} onClick={onClose} className="dfx-btn primary">
+              <i className={isDraft && !isReturned ? 'ri-send-plane-fill' : 'ri-edit-line'}></i>
               {isReturned ? 'Edit & Resubmit' : isDraft ? 'Edit & Submit' : 'Edit PR'}
             </Link>
-          </div>
+          </footer>
         )}
-      </div>
+      </aside>
     </div>
   );
 }

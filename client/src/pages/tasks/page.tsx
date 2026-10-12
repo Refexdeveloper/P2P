@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import StatusBadge from '../../components/base/StatusBadge';
@@ -13,6 +13,8 @@ import { formatDisplayDate } from '../../utils/formatDate';
 import { formatMoney, normalizeCurrency } from '../../constants/currency';
 import TasksMobileFilters from './components/TasksMobileFilters';
 import PeriodPicker from '../dashboard/components/PeriodPicker';
+import '../../styles/dashboard-fx.css';
+import { statusFx } from '../../utils/fx';
 
 function greetingForNow() {
   const hour = new Date().getHours();
@@ -826,6 +828,15 @@ export default function TasksPage() {
     return { pending, approved, rejected, overdue };
   }, [processedTasks]);
 
+  const tabCounts: Record<string, number> = {
+    all: processedTasks.length,
+    pending_approval: stats.pending,
+    approved: stats.approved,
+    rejected: stats.rejected,
+    returned: processedTasks.filter((t) => t.status === 'returned').length,
+    overdue: stats.overdue,
+  };
+
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
 
   const formatAmount = (amount: number, currency?: string) =>
@@ -983,65 +994,65 @@ export default function TasksPage() {
 
   return (
     <DashboardLayout>
-      <div
-        className="min-h-full font-sans text-[#0F172A]"
-        style={{ background: 'linear-gradient(180deg, #edf1ff 0%, #f6f8ff 45%, #f2ecff 100%)' }}
-      >
-      <div className="p-2 pb-4 sm:p-3 lg:p-4">
-      <header className="mb-3 border-b border-white/50 px-1 pb-2 pt-0.5">
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 shrink text-center lg:text-left">
-            <h1 className="text-lg font-semibold leading-snug tracking-tight text-slate-800 sm:text-xl">
-              {greetingForNow()}, <span className="font-semibold text-slate-900">{user?.name || 'User'}</span>
-            </h1>
-            <p className="text-[11px] font-medium text-slate-500">
-              Logged in as <span className="text-slate-600">{roleLabel}</span>
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-center lg:w-auto lg:justify-end">
-            <TasksMobileFilters
-              value={{
-                search: searchTerm,
-                status: filter,
-                priority: priorityFilter,
-                sortBy,
-                dateFrom,
-                dateTo,
-              }}
-              onApply={(next) => {
-                setSearchTerm(next.search);
-                setFilter(next.status);
-                setPriorityFilter(next.priority);
-                setSortBy(next.sortBy);
-                setDateFrom(next.dateFrom);
-                setDateTo(next.dateTo);
-              }}
-            />
-            <div className="hidden min-w-[168px] min-[992px]:block sm:w-[200px]">
-              <PeriodPicker
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                fullWidth
-                onChange={({ dateFrom: from, dateTo: to }) => {
-                  setDateFrom(from);
-                  setDateTo(to);
-                }}
-              />
-            </div>
-          </div>
+      <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
+      <section className="tfx-hero">
+        <div className="tfx-bubbles" aria-hidden="true">
+          <i /><i /><i /><i /><i /><i /><i />
         </div>
-      </header>
+        <div className="tfx-hero-content">
+          <div className="tfx-hi">
+            {greetingForNow()}, <span className="tfx-wave">👋</span>
+          </div>
+          <h1>
+            <span className="tfx-shimmer">{user?.name || 'User'}</span>
+          </h1>
+          <p>
+            Here&apos;s what&apos;s happening with your purchase requests today
+            <span className="tfx-role-inline"> · {roleLabel}</span>
+          </p>
+        </div>
+        <div className="tfx-mobile-filters min-[992px]:hidden">
+          <TasksMobileFilters
+            value={{
+              search: searchTerm,
+              status: filter,
+              priority: priorityFilter,
+              sortBy,
+              dateFrom,
+              dateTo,
+            }}
+            onApply={(next) => {
+              setSearchTerm(next.search);
+              setFilter(next.status);
+              setPriorityFilter(next.priority);
+              setSortBy(next.sortBy);
+              setDateFrom(next.dateFrom);
+              setDateTo(next.dateTo);
+            }}
+          />
+        </div>
+        <div className="tfx-period hidden min-[992px]:block">
+          <p className="tfx-period-lbl">Period</p>
+          <PeriodPicker
+            hideLabel
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            fullWidth
+            onChange={({ dateFrom: from, dateTo: to }) => {
+              setDateFrom(from);
+              setDateTo(to);
+            }}
+          />
+        </div>
+      </section>
 
-      <section className="mb-3">
-        <div className="mb-1.5 px-0.5">
-          <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-sm">Task Insights</h2>
-        </div>
+      <section className="tfx-kpis mb-4">
         {loading ? (
           <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="min-h-[128px] animate-pulse rounded-2xl border border-slate-200/88 bg-white sm:min-h-[140px]"
+                className="min-h-[170px] animate-pulse rounded-[18px] bg-white/90 shadow-[0_10px_30px_rgba(20,90,120,0.08)]"
               />
             ))}
           </div>
@@ -1050,42 +1061,49 @@ export default function TasksPage() {
             cards={widgetCards}
             selectedFilter={filter}
             onSelect={selectCardFilter}
+            total={processedTasks.length}
           />
         )}
       </section>
 
+      <div className="p-2 pb-4 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
       <div
         id="tasks-pr-table"
-        className="relative scroll-mt-24 overflow-hidden rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+        className="tfx-panel relative scroll-mt-24 overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
       >
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(120% 90% at 100% 0%, rgba(37, 99, 235, 0.10) 0%, rgba(248,250,252,0) 55%)',
+              'radial-gradient(120% 90% at 100% 0%, rgba(23, 162, 180, 0.10) 0%, rgba(248,250,252,0) 55%)',
           }}
         />
 
         {/* Desktop (≥992px) inline filters */}
         <div className="relative z-[1] hidden border-b border-slate-100/80 min-[992px]:block">
           <div className="flex flex-col gap-2 px-3 py-3 sm:px-4">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#DBEAFE] text-[#2563EB]">
-                <i className="ri-task-line text-base" aria-hidden />
+            <div className="flex items-center gap-3.5 pb-1">
+              <div className="tfx-panel-ic flex h-12 w-12 items-center justify-center rounded-xl">
+                <i className="ri-task-line text-lg" aria-hidden />
               </div>
-              <h2 className="text-sm font-semibold text-slate-800">
-                Purchase Request Approvals
-              </h2>
+              <div>
+                <h2 className="tfx-panel-title text-lg font-semibold text-slate-900">
+                  Purchase Request Approvals
+                </h2>
+                <p className="mt-1.5 text-sm text-slate-500">
+                  Review and take action on pending purchase requests
+                </p>
+              </div>
             </div>
             <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
               <div className="relative shrink-0">
                 <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input
                   type="text"
-                  placeholder="Search PR..."
+                  placeholder="Search PR number, title, requester..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-9 w-44 rounded-xl border border-transparent bg-white pl-9 pr-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+                  className="tfx-input h-10 w-72 rounded-xl border bg-white pl-9 pr-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
                 />
               </div>
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -1100,14 +1118,22 @@ export default function TasksPage() {
                     <button
                       key={tab.key}
                       type="button"
-                      onClick={() => setFilter(tab.key)}
-                      className={`h-9 cursor-pointer whitespace-nowrap rounded-xl px-3 text-xs font-semibold transition-all duration-200 ${
+                      onClick={() => {
+                        // Play the matching KPI card's animation on the card itself.
+                        const card = document.querySelector<HTMLElement>(`.tfx-kpi.${tab.key}`);
+                        if (card) statusFx(tab.key, card);
+                        setFilter(tab.key);
+                      }}
+                      className={`tfx-tab inline-flex h-10 items-center gap-2 cursor-pointer whitespace-nowrap rounded-xl px-3 text-xs font-semibold ${
+                        filter === tab.key ? 'is-active ' : ''
+                      }${
                         filter === tab.key
-                          ? 'bg-[#2563EB] text-white shadow-[0_8px_24px_-12px_rgba(37,99,235,0.35)]'
-                          : 'border border-transparent bg-white text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#93C5FD]/60'
+                          ? 'border border-transparent text-white'
+                          : 'border border-[#e3eaef] bg-white text-slate-700'
                       }`}
                     >
                       {tab.label}
+                      <span className="tfx-cnt">{tabCounts[tab.key] ?? 0}</span>
                     </button>
                   ))}
                 </div>
@@ -1118,7 +1144,7 @@ export default function TasksPage() {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="h-9 min-w-[140px] cursor-pointer rounded-xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+              className="tfx-input h-10 min-w-[170px] cursor-pointer rounded-xl border bg-white px-3 text-sm outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
             >
               <option value="all">All Priorities</option>
               <option value="high">High Priority</option>
@@ -1129,7 +1155,7 @@ export default function TasksPage() {
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="h-9 min-w-[180px] cursor-pointer rounded-xl border border-transparent bg-white px-3 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
+              className="tfx-input h-10 min-w-[200px] cursor-pointer rounded-xl border bg-white px-3 text-sm outline-none focus:border-[#93C5FD] focus:ring-2 focus:ring-[#2563EB]/15"
             >
               <option value="sla">Sort: SLA Urgency</option>
               <option value="amount_high">Sort: Amount (High to Low)</option>
@@ -1208,7 +1234,7 @@ export default function TasksPage() {
 
         {/* Mobile — soft spaced cards */}
         <div className="relative z-[1] space-y-3 p-3 sm:space-y-4 sm:p-4 min-[992px]:hidden">
-          {pagedTasks.map((task) => {
+          {pagedTasks.map((task, rowIndex) => {
             const slaInfo = getSlaInfo(task);
             const isPending = task.status === 'pending_approval';
             const sass = isSassTask(task);
@@ -1218,13 +1244,14 @@ export default function TasksPage() {
                 role="button"
                 tabIndex={0}
                 onClick={() => openTaskDetail(task.id)}
+                style={{ '--r': rowIndex } as CSSProperties}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     openTaskDetail(task.id);
                   }
                 }}
-                className={`cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:border-[#93C5FD] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-[18px] sm:p-5 ${
+                className={`tfx-card cursor-pointer overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:border-[#93C5FD] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-[18px] sm:p-5 ${
                   task.isOverdue && isPending
                     ? 'ring-1 ring-red-200'
                     : sass
@@ -1334,7 +1361,7 @@ export default function TasksPage() {
                 ].map((label) => (
                   <th
                     key={label}
-                    className={`pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px] ${
+                    className={`tfx-th py-3.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 sm:text-xs ${
                       label === 'PR Number' || label === 'Actions' ? 'px-5' : 'px-3'
                     } ${label === 'Title' ? 'w-[240px] max-w-[240px]' : 'whitespace-nowrap'} ${
                       label === 'Amount' || label === 'Actions' ? 'text-right' : 'text-left'
@@ -1346,7 +1373,7 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {pagedTasks.map((task) => {
+              {pagedTasks.map((task, rowIndex) => {
                 const slaInfo = getSlaInfo(task);
                 const isPending = task.status === 'pending_approval';
                 const sass = isSassTask(task);
@@ -1363,10 +1390,11 @@ export default function TasksPage() {
                   <tr
                     key={task.id}
                     onClick={() => openTaskDetail(task.id)}
-                    className="group cursor-pointer"
+                    className="tfx-row group cursor-pointer"
+                    style={{ '--r': rowIndex } as CSSProperties}
                   >
                     <td
-                      className={`rounded-l-2xl border border-r-0 pl-5 pr-3 text-sm font-bold text-[#2563EB] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-l-[18px] ${cellBase} ${ringHint}`}
+                      className={`tfx-first rounded-l-2xl border border-r-0 pl-5 pr-3 text-sm font-semibold text-[#0f6b7a] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:rounded-l-[18px] ${cellBase} ${ringHint}`}
                     >
                       <div className="flex flex-col items-start gap-1">
                         <span className="whitespace-nowrap" title={task.prNumber}>{task.prNumber}</span>

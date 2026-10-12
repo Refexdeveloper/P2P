@@ -278,8 +278,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         onClick={handleNavigate}
         className={`flex items-center ${collapsed ? 'justify-center' : 'justify-between'} ${
           nested ? 'px-3 py-2 ml-2' : 'px-3 py-2.5'
-        } rounded-lg transition-colors ${
-          isActive ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-700 hover:bg-gray-50'
+        } rounded-xl transition-all duration-200 ${
+          isActive
+            ? 'bg-white text-[#0f6b7a] shadow-[0_6px_18px_rgba(0,0,0,0.15)]'
+            : 'text-[#e9f5f7] hover:bg-white/10 hover:translate-x-0.5'
         }`}
       >
         <div className={`flex items-center ${collapsed ? '' : 'space-x-3'}`}>
@@ -288,7 +290,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             {collapsed && item.badge != null && (
               <span
                 className={`absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 text-white text-[9px] font-semibold rounded-full flex items-center justify-center ${
-                  isAlertBadge ? 'bg-red-600' : 'bg-[#1E88E5]'
+                  isAlertBadge ? 'bg-[#e8343f]' : 'bg-[#17a2b4]'
                 }`}
               >
                 {item.badge}
@@ -304,7 +306,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         {!collapsed && item.badge != null && (
           <span
             className={`px-2 py-0.5 text-white text-xs font-semibold rounded-full ${
-              isAlertBadge ? 'bg-red-600' : 'bg-[#1E88E5]'
+              isAlertBadge ? 'bg-[#e8343f]' : 'bg-[#17a2b4]'
             }`}
           >
             {item.badge}
@@ -323,43 +325,43 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         if (window.innerWidth >= 1024) setHovered(false);
       }}
       className={`
-        bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-out z-50
+        bg-[linear-gradient(180deg,#0e5b69_0%,#0b5361_55%,#0a4c59_100%)] text-white flex flex-col transition-all duration-300 ease-out z-50 overflow-hidden
         fixed inset-y-0 left-0 w-64 h-[100dvh] max-h-[100dvh]
         ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}
-        lg:static lg:translate-x-0 lg:shadow-none lg:shrink-0 lg:h-full lg:max-h-full lg:min-h-0
+        lg:relative lg:translate-x-0 lg:shadow-none lg:shrink-0 lg:h-full lg:max-h-full lg:min-h-0
         ${collapsed ? 'lg:w-20' : 'lg:w-64'}
       `}
     >
       <div
-        className={`h-16 flex items-center border-b border-gray-200 ${
+        className={`h-16 flex items-center border-b border-white/10 ${
           collapsed ? 'lg:justify-center lg:px-2 justify-between px-4' : 'justify-between px-4'
         }`}
       >
         <div className="flex items-center space-x-2 min-w-0">
-          <div className="w-8 h-8 bg-[#1E88E5] rounded-lg flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center shrink-0">
             <i className="ri-shopping-cart-2-line text-white text-lg"></i>
           </div>
           {(!collapsed || mobileOpen) && (
-            <span className="font-semibold text-gray-900 whitespace-nowrap">P2P System</span>
+            <span className="font-semibold text-white whitespace-nowrap">P2P System</span>
           )}
           {collapsed && !mobileOpen && (
-            <span className="font-semibold text-gray-900 whitespace-nowrap lg:hidden">P2P</span>
+            <span className="font-semibold text-white whitespace-nowrap lg:hidden">P2P</span>
           )}
         </div>
         <button
           type="button"
           onClick={onMobileClose}
-          className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 cursor-pointer"
+          className="lg:hidden p-2 rounded-lg text-white/80 hover:bg-white/10 cursor-pointer"
           aria-label="Close navigation"
         >
           <i className="ri-close-line text-xl"></i>
         </button>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
+      <nav className="relative z-[1] flex-1 p-3 space-y-1.5 overflow-y-auto overflow-x-hidden">
         {menuItems.length === 0 ? (
           !collapsed && (
-            <p className="text-xs text-gray-400 px-3 py-2">No navigation assigned. Contact Super Admin.</p>
+            <p className="text-xs text-white/60 px-3 py-2">No navigation assigned. Contact Super Admin.</p>
           )
         ) : (
           menuItems.map((item) => {
@@ -375,7 +377,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                 <div key={item.key} className="space-y-1">
                   <div
                     className={`flex items-center justify-center px-3 py-2.5 rounded-lg ${
-                      childActive ? 'bg-[#E3F2FD] text-[#1E88E5]' : 'text-gray-700'
+                      childActive ? 'bg-white text-[#0f6b7a]' : 'text-[#e9f5f7]'
                     }`}
                     title={item.label}
                   >
@@ -392,7 +394,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                   type="button"
                   onClick={() => setMastersOpen((v) => !v)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
-                    childActive ? 'bg-[#E3F2FD] text-[#1565C0]' : 'text-gray-700 hover:bg-gray-50'
+                    childActive ? 'bg-white/15 text-white' : 'text-[#e9f5f7] hover:bg-white/10'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -401,10 +403,10 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
                     </div>
                     <span className="font-medium text-sm whitespace-nowrap">{item.label}</span>
                   </div>
-                  <i className={`ri-arrow-${open ? 'up' : 'down'}-s-line text-gray-400`}></i>
+                  <i className={`ri-arrow-${open ? 'up' : 'down'}-s-line text-white/60`}></i>
                 </button>
                 {open && (
-                  <div className="mt-0.5 space-y-0.5 border-l border-gray-100 ml-5 pl-1">
+                  <div className="mt-0.5 space-y-0.5 border-l border-white/15 ml-5 pl-1">
                     {item.children.map((child) => renderLink(child, true))}
                   </div>
                 )}
@@ -414,14 +416,18 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
         )}
       </nav>
 
-      <div className={`border-t border-gray-200 ${collapsed ? 'p-3' : 'p-4'}`}>
+      <div
+        className="pointer-events-none absolute -bottom-16 -left-10 -right-10 h-60"
+        style={{ background: 'radial-gradient(ellipse at 50% 100%, rgba(40,170,180,0.28), transparent 70%)' }}
+      />
+      <div className={`relative z-[1] border-t border-white/10 ${collapsed ? 'p-3' : 'p-4'}`}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <div
-              className="w-10 h-10 bg-[#E3F2FD] rounded-full flex items-center justify-center"
+              className="w-10 h-10 bg-[#0c5866] border-2 border-[#4cc3c8] rounded-full flex items-center justify-center"
               title={user?.name || 'User'}
             >
-              <span className="text-[#1E88E5] font-semibold text-sm">
+              <span className="text-white font-semibold text-sm">
                 {user?.name
                   ?.split(' ')
                   .map((n) => n[0])
@@ -431,16 +437,16 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
             </div>
             <button
               onClick={logout}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
               title="Logout"
             >
-              <i className="ri-logout-box-r-line text-gray-400 text-base"></i>
+              <i className="ri-logout-box-r-line text-white/70 text-base"></i>
             </button>
           </div>
         ) : (
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-[#E3F2FD] rounded-full flex items-center justify-center shrink-0">
-              <span className="text-[#1E88E5] font-semibold text-sm">
+            <div className="w-10 h-10 bg-[#0c5866] border-2 border-[#4cc3c8] rounded-full flex items-center justify-center shrink-0">
+              <span className="text-white font-semibold text-sm">
                 {user?.name
                   ?.split(' ')
                   .map((n) => n[0])
@@ -449,20 +455,20 @@ export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarPr
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{user?.name || 'User'}</p>
+              <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
               {getUserDesignation(user) ? (
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-xs text-white/70 truncate">
                   {getUserDesignation(user)}
                 </p>
               ) : null}
             </div>
             <button
               onClick={logout}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
               title="Logout"
             >
               <div className="w-4 h-4 flex items-center justify-center">
-                <i className="ri-logout-box-r-line text-gray-400 text-base"></i>
+                <i className="ri-logout-box-r-line text-white/70 text-base"></i>
               </div>
             </button>
           </div>
