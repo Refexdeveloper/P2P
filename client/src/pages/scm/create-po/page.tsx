@@ -4144,7 +4144,30 @@ export default function CreatePOPage() {
     return (
       <DashboardLayout>
         <div className="tasks-fx po-fx min-h-full font-sans text-[#0F172A]">
-          <section className="po-hero">
+          <section
+            className="po-hero po-hero-v2"
+            onMouseMove={(e) => {
+              // subtle parallax: art/halo drift a few px toward the cursor
+              const r = e.currentTarget.getBoundingClientRect();
+              e.currentTarget.style.setProperty('--px', String((e.clientX - r.left) / r.width - 0.5));
+              e.currentTarget.style.setProperty('--py', String((e.clientY - r.top) / r.height - 0.5));
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.setProperty('--px', '0');
+              e.currentTarget.style.setProperty('--py', '0');
+            }}
+          >
+            <div className="po-stage" aria-hidden="true">
+              <span className="po-halo" />
+              <span className="po-orbit">
+                <i /><i /><i />
+              </span>
+              <span className="po-art" />
+              <span className="po-spark s1">✦</span>
+              <span className="po-spark s2">✦</span>
+              <span className="po-spark s3">✦</span>
+            </div>
+            <span className="po-sweep" aria-hidden="true" />
             <div className="tfx-bubbles" aria-hidden="true">
               <i /><i /><i /><i /><i /><i /><i />
             </div>
@@ -4164,7 +4187,9 @@ export default function CreatePOPage() {
                   <i className="ri-arrow-right-s-line" aria-hidden />
                   <span>PO/WO Workspace</span>
                 </nav>
-                <h1>PO/WO Workspace</h1>
+                <h1>
+                  PO/WO <span className="po-grad">Workspace</span>
+                </h1>
                 <p>
                   {user?.role === 'Requester'
                     ? 'Create the purchase order when your PR is ready for you'

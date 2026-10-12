@@ -18,7 +18,7 @@ import {
   parsePoImportCsv,
   storePoCsvImport,
 } from '../../../../utils/poCsvImport';
-import { allFx, confetti, draftFx, fxToast, pendingFx, rejectFx } from '../../../../utils/fx';
+import AnimatedKpiCard, { type KpiVariant } from '../../../../components/feature/AnimatedKpiCard';
 
 export type PurchaseRequestsPanelHandle = {
   openImport: () => void;
@@ -91,56 +91,35 @@ const formatCurrency = (amount: number) =>
 
 type WorkspaceFilter = 'all' | 'ready' | 'draft' | 'created' | 'approved' | 'rejected';
 
-/** Workspace KPI cards: colour tone, sparkline, and a click animation that matches the meaning. */
+/** Workspace KPI cards — rendered with the shared AnimatedKpiCard (same look as the requester dashboard). */
 const PO_KPIS: {
   label: string;
   caption: string;
-  toast: string;
+  emptyCaption: string;
   stat: 'total' | 'readyForPO' | 'draft' | 'pendingApproval' | 'poApproved' | 'poRejected';
   filter: WorkspaceFilter;
   icon: string;
-  tone: string;
-  fx: (el: HTMLElement) => void;
-  /** Scroll to the table straight away instead of letting the animation play first. */
-  instant?: boolean;
+  variant: KpiVariant;
+  /** Pulsing dot when there is something waiting. */
+  live?: boolean;
 }[] = [
-  { label: 'Total PRs', caption: 'All purchase requests', toast: 'all purchase requests', stat: 'total', filter: 'all', icon: 'ri-file-list-3-line', tone: 'blue', fx: allFx },
-  { label: 'Ready for PO', caption: 'PRs ready to convert', toast: 'PRs ready for PO', stat: 'readyForPO', filter: 'ready', icon: 'ri-checkbox-circle-fill', tone: 'green', fx: (el) => confetti(el, 36), instant: true },
-  { label: 'Draft POs', caption: 'Draft purchase orders', toast: 'draft POs', stat: 'draft', filter: 'draft', icon: 'ri-draft-line', tone: 'violet', fx: draftFx },
-  { label: 'With SCM Manager', caption: 'Awaiting SCM approval', toast: 'POs with SCM Manager', stat: 'pendingApproval', filter: 'created', icon: 'ri-team-line', tone: 'teal', fx: pendingFx },
-  { label: 'PO Approved', caption: 'Approved purchase orders', toast: 'approved POs', stat: 'poApproved', filter: 'approved', icon: 'ri-file-check-line', tone: 'indigo', fx: (el) => confetti(el), instant: true },
-  { label: 'PO Rejected', caption: 'Rejected purchase orders', toast: 'rejected POs', stat: 'poRejected', filter: 'rejected', icon: 'ri-close-circle-line', tone: 'red', fx: rejectFx },
+  { label: 'Total PRs', caption: 'All purchase requests', emptyCaption: 'No requests yet', stat: 'total', filter: 'all', icon: 'ri-file-list-3-line', variant: 'all' },
+  { label: 'Ready for PO', caption: 'PRs ready to convert', emptyCaption: 'Nothing ready yet', stat: 'readyForPO', filter: 'ready', icon: 'ri-shopping-cart-2-line', variant: 'ready', live: true },
+  { label: 'Draft POs', caption: 'Draft purchase orders', emptyCaption: 'No drafts', stat: 'draft', filter: 'draft', icon: 'ri-draft-line', variant: 'draft' },
+  { label: 'With SCM Manager', caption: 'Awaiting SCM approval', emptyCaption: 'Nothing awaiting', stat: 'pendingApproval', filter: 'created', icon: 'ri-team-line', variant: 'pending_approval', live: true },
+  { label: 'PO Approved', caption: 'Approved purchase orders', emptyCaption: 'No approvals yet', stat: 'poApproved', filter: 'approved', icon: 'ri-file-check-line', variant: 'approved' },
+  { label: 'PO Rejected', caption: 'Rejected purchase orders', emptyCaption: 'No rejected POs', stat: 'poRejected', filter: 'rejected', icon: 'ri-close-circle-line', variant: 'rejected' },
 ];
 
-/** Decorative sparkline shapes (0–100 × 0–40 viewBox). */
-const SPARKS = [
-  'M0 34 C12 30,18 36,30 30 S48 26,56 28 S70 8,80 10 S92 24,100 26',
-  'M0 36 C10 34,20 32,32 28 S50 30,60 24 S76 6,86 8 S96 20,100 22',
-  'M0 32 C14 34,22 30,34 30 S52 34,62 24 S78 10,86 12 S96 22,100 24',
-  'M0 34 C12 32,24 34,36 28 S54 30,64 22 S78 12,88 14 S96 24,100 22',
-  'M0 36 C14 32,24 34,34 30 S52 24,62 26 S76 8,86 10 S96 22,100 24',
-  'M0 34 C12 34,22 32,34 32 S52 30,60 26 S74 8,84 10 S94 20,100 18',
-];
+/** Rotating colours for the document icon on each row. */
+const DOC_TONES = ['blue', 'violet', 'green', 'orange', 'red', 'teal'] as const;
 
-/** Number that counts up from 0 when it first shows or changes. */
-function CountUp({ value, className }: { value: number; className?: string }) {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    if (!value) {
-      setN(0);
-      return;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / 900);
-      setN(Math.round(value * (1 - Math.pow(1 - t, 3))));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return <p className={className}>{n}</p>;
+/** Stable avatar colour from a name. */
+function avatarTone(name: string): string {
+  const tones = ['blue', 'violet', 'green', 'orange', 'teal', 'red'];
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return tones[h % tones.length];
 }
 
 /** Page buttons with ellipses: 1 … 4 5 6 … 12 */
@@ -235,6 +214,15 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
   const [importChecking, setImportChecking] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
+  /** Row whose "⋯" actions menu is open. */
+  const [menuKey, setMenuKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!menuKey) return;
+    const close = () => setMenuKey(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menuKey]);
   const csvFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -489,54 +477,29 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
         <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">{error}</div>
       )}
 
-      <div className="po-kpis mb-5 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="tfx-kpis-6 mb-5 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
         {PO_KPIS.map((k, i) => {
-          const selected = statusFilter === k.filter;
           const value = Number(stats[k.stat]) || 0;
           return (
-            <button
+            <AnimatedKpiCard
               key={k.label}
-              type="button"
-              onClick={(e) => {
-                const el = e.currentTarget;
-                k.fx(el);
-                fxToast(`Showing ${k.toast}`, k.filter === 'rejected' ? 'error' : 'info');
-                const go = () => {
-                  setStatusFilter(k.filter);
-                  setPage(1);
-                  setExpandedKey(null);
-                  document.getElementById('po-workspace-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                };
-                if (k.instant) go();
-                else window.setTimeout(go, 750);
+              title={k.label}
+              value={value}
+              variant={k.variant}
+              index={i}
+              total={Number(stats.total) || 0}
+              subtitle={value ? k.caption : k.emptyCaption}
+              live={Boolean(k.live && value)}
+              selected={statusFilter === k.filter}
+              fallbackIcon={k.icon}
+              chart="spark"
+              onClick={() => {
+                setStatusFilter(k.filter);
+                setPage(1);
+                setExpandedKey(null);
+                document.getElementById('po-workspace-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
-              aria-pressed={selected}
-              title={`View ${k.label} in table`}
-              className={`pok tone-${k.tone}${selected ? ' selected' : ''}`}
-              style={{ '--i': i } as CSSProperties}
-            >
-              <span className="pok-shine" />
-              <div className="pok-top">
-                <span className="pok-ic">
-                  <i className={k.icon} aria-hidden />
-                </span>
-                <div className="min-w-0">
-                  <p className="pok-label">{k.label}</p>
-                  <CountUp className="pok-num" value={value} />
-                </div>
-              </div>
-              <svg className="pok-spark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden>
-                <defs>
-                  <linearGradient id={`pokg-${k.tone}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="currentColor" stopOpacity=".28" />
-                    <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path className="area" d={`${SPARKS[i % SPARKS.length]} L100 40 L0 40 Z`} fill={`url(#pokg-${k.tone})`} />
-                <path className="line" d={SPARKS[i % SPARKS.length]} pathLength={1} />
-              </svg>
-              <p className="pok-caption">{k.caption}</p>
-            </button>
+            />
           );
         })}
       </div>
@@ -557,9 +520,9 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
             {(
               [
                 ['all', 'All', stats.total, 'teal'],
-                ['ready', 'Ready', stats.readyForPO, 'green'],
+                ['ready', 'Ready', stats.readyForPO, 'blue'],
                 ['created', 'SCM Sign', stats.pendingApproval, 'blue'],
-                ['approved', 'Approved', stats.poApproved, 'indigo'],
+                ['approved', 'Approved', stats.poApproved, 'green'],
                 ['rejected', 'Rejected', stats.poRejected, 'red'],
                 ['draft', 'Draft', stats.draft, 'violet'],
                 ['cancelled', 'Cancelled', stats.cancelled, 'gray'],
@@ -573,9 +536,10 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                   setPage(1);
                   setExpandedKey(null);
                 }}
-                className={`tfx-tab po-tab tone-${tone}${statusFilter === key ? ' is-active' : ''}`}
+                className={`tfx-tab po-tab3 tone-${tone}${statusFilter === key ? ' is-active' : ''}`}
               >
-                {label} ({count})
+                {label}
+                <span className="tfx-cnt">{count}</span>
               </button>
             ))}
           </div>
@@ -591,15 +555,15 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
           ) : (
             <table className="po-table w-full min-w-[1120px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2 text-sm">
               <colgroup>
-                <col className="w-[18%]" />
-                <col className="w-[8%]" />
-                <col className="w-[8%]" />
+                <col className="w-[17%]" />
+                <col className="w-[7%]" />
+                <col className="w-[9%]" />
                 <col className="w-[12%]" />
                 <col className="w-[8%]" />
-                <col className="w-[8%]" />
+                <col className="w-[10%]" />
                 <col className="w-[9%]" />
                 <col className="w-[11%]" />
-                <col className="w-[18%]" />
+                <col className="w-[17%]" />
               </colgroup>
               <thead>
                 <tr>
@@ -647,7 +611,7 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               >
                                 <i className="ri-arrow-right-s-line" aria-hidden />
                               </span>
-                              <span className="po-docic" aria-hidden>
+                              <span className={`po-docic tone-${DOC_TONES[rowIndex % DOC_TONES.length]}`} aria-hidden>
                                 <i className="ri-file-text-line" />
                               </span>
                               <div
@@ -667,10 +631,26 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                             <p className="truncate font-semibold text-slate-800">{pr.title}</p>
                           </td>
                           <td className="truncate px-3 text-slate-600" title={pr.department}>
-                            {pr.department || '—'}
+                            {pr.department ? (
+                              <>
+                                <i className={`po-dot tone-${avatarTone(pr.department)}`} aria-hidden />
+                                {pr.department}
+                              </>
+                            ) : (
+                              '—'
+                            )}
                           </td>
-                          <td className="truncate px-3 text-slate-600" title={pr.requester}>
-                            {pr.requester || '—'}
+                          <td className="px-3" title={pr.requester}>
+                            {pr.requester ? (
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className={`po-avatar tone-${avatarTone(pr.requester)}`} aria-hidden>
+                                  {pr.requester.trim().charAt(0).toUpperCase()}
+                                </span>
+                                <span className="truncate text-slate-600">{pr.requester}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-3 text-right font-bold tabular-nums text-slate-900">
                             {formatCurrency(pr.amount)}
@@ -685,34 +665,17 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                             </span>
                           </td>
                           <td className="pl-3 pr-4" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-nowrap items-center justify-end gap-1.5">
-                              {pr.status === 'Ready for PO' && (
+                            <div className="relative flex flex-nowrap items-center justify-end gap-1.5">
+                              {pr.status === 'Ready for PO' ? (
                                 <button type="button" onClick={() => openCreatePo(pr.prId)} className="po-act solid">
                                   Create PO
                                 </button>
-                              )}
-                              {pr.status === 'Draft' && pr.poId && (
+                              ) : pr.status === 'Draft' && pr.poId ? (
                                 <button type="button" onClick={() => openEditDraft(pr.poId!)} className="po-act tint">
-                                  Edit Draft
+                                  <i className="ri-edit-line mr-1.5" aria-hidden />
+                                  Edit
                                 </button>
-                              )}
-                              {isSuperAdmin && pr.poId && pr.status !== 'Draft' && pr.status !== 'Cancelled' && (
-                                <button
-                                  type="button"
-                                  onClick={() => openAdminEditPo(pr.poId!)}
-                                  className="po-act icon"
-                                  title="Edit this purchase order / work order"
-                                  aria-label="Edit"
-                                >
-                                  <i className="ri-edit-line" />
-                                </button>
-                              )}
-                              {pr.status === 'Pending Approval' && pr.poId && !isSuperAdmin && (
-                                <span className="po-act warn" title="Sent to SCM Manager for sign / approval">
-                                  SCM Manager
-                                </span>
-                              )}
-                              {pr.status === 'Cancelled' && pr.poId && (
+                              ) : pr.status === 'Cancelled' && pr.poId ? (
                                 <button
                                   type="button"
                                   disabled={retrievingKey === pr.key}
@@ -721,6 +684,16 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                                   title="Retrieve cancelled PO as draft"
                                 >
                                   {retrievingKey === pr.key ? 'Retrieving…' : 'Retrieve'}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpand(pr.key)}
+                                  className={`po-act icon${isExpanded ? ' is-on' : ''}`}
+                                  title={isExpanded ? 'Hide details' : 'View details'}
+                                  aria-label={isExpanded ? 'Hide details' : 'View details'}
+                                >
+                                  <i className={isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'} />
                                 </button>
                               )}
                               {pr.poId && (
@@ -733,33 +706,65 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                                   View PDF
                                 </button>
                               )}
-                              {isSuperAdmin && (pr.poId || pr.prId > 0) && (
-                                <button
-                                  type="button"
-                                  disabled={deletingKey === pr.key}
-                                  onClick={() => void handleAdminDelete(pr)}
-                                  className="po-act danger icon"
-                                  title={
-                                    deletingKey === pr.key
-                                      ? 'Deleting…'
-                                      : pr.poId
-                                        ? 'Permanently delete this PO'
-                                        : 'Permanently delete this PR'
-                                  }
-                                  aria-label="Delete"
-                                >
-                                  <i className={deletingKey === pr.key ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-line'} />
-                                </button>
-                              )}
-                              {pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/scm/rfq-entry/${pr.prId}`)}
-                                  className="po-act warn"
-                                >
-                                  RFQ
-                                </button>
-                              )}
+                              {(() => {
+                                const items: { label: string; icon: string; danger?: boolean; disabled?: boolean; run: () => void }[] = [];
+                                // When the primary button is Create PO / Edit / Retrieve, "View details" moves into the menu.
+                                if (pr.status === 'Ready for PO' || (pr.status === 'Draft' && pr.poId) || (pr.status === 'Cancelled' && pr.poId)) {
+                                  items.push({ label: isExpanded ? 'Hide details' : 'View details', icon: 'ri-eye-line', run: () => toggleExpand(pr.key) });
+                                }
+                                if (isSuperAdmin && pr.poId && pr.status !== 'Draft' && pr.status !== 'Cancelled') {
+                                  items.push({ label: 'Edit PO / WO', icon: 'ri-edit-line', run: () => openAdminEditPo(pr.poId!) });
+                                }
+                                if (pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0) {
+                                  items.push({ label: 'Open RFQ', icon: 'ri-file-list-3-line', run: () => navigate(`/scm/rfq-entry/${pr.prId}`) });
+                                }
+                                if (isSuperAdmin && (pr.poId || pr.prId > 0)) {
+                                  items.push({
+                                    label: deletingKey === pr.key ? 'Deleting…' : pr.poId ? 'Delete PO' : 'Delete PR',
+                                    icon: 'ri-delete-bin-line',
+                                    danger: true,
+                                    disabled: deletingKey === pr.key,
+                                    run: () => void handleAdminDelete(pr),
+                                  });
+                                }
+                                if (items.length === 0) return null;
+                                return (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuKey((k) => (k === pr.key ? null : pr.key));
+                                      }}
+                                      className={`po-act icon${menuKey === pr.key ? ' is-on' : ''}`}
+                                      aria-label="More actions"
+                                      aria-expanded={menuKey === pr.key}
+                                    >
+                                      <i className="ri-more-fill" />
+                                    </button>
+                                    {menuKey === pr.key && (
+                                      <div className="po-menu" role="menu" onClick={(e) => e.stopPropagation()}>
+                                        {items.map((it) => (
+                                          <button
+                                            key={it.label}
+                                            type="button"
+                                            role="menuitem"
+                                            disabled={it.disabled}
+                                            onClick={() => {
+                                              setMenuKey(null);
+                                              it.run();
+                                            }}
+                                            className={it.danger ? 'danger' : undefined}
+                                          >
+                                            <i className={it.icon} aria-hidden />
+                                            {it.label}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </td>
                         </tr>

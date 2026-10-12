@@ -651,3 +651,24 @@
 @keyframes fx-ring { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
 @keyframes fx-alarmIn { 0% { transform: scale(0); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 30%,80% { transform: scale(1); opacity: 1; } 100% { transform: scale(.7); opacity: 0; } }
 .tfx-kpi.tfx-entered { animation: none; }
+
+/* "ready" variant (e.g. Ready for PO) — sky blue, cart rolls in and a tick draws */
+.tfx-kpi.ready { --c1: #38bdf8; --c2: #0284c7; --soft: #e0f2fe; --glow: rgba(2,132,199,.3); }
+.tfx-ico-cart { animation: tfx-cartRoll 3.2s ease-in-out infinite; }
+.tfx-ico-cart .tick { stroke-dasharray: 10; stroke-dashoffset: 10; animation: tfx-draw .6s ease forwards 1s; }
+@keyframes tfx-cartRoll { 0%,70%,100% { transform: none; } 78% { transform: translateX(-2px) rotate(-6deg); } 88% { transform: translateX(2px) rotate(4deg); } }
+
+/* sparkline variant of the KPI mini chart */
+.tfx-kpi-spark { width: 46%; max-width: 120px; height: 46px; flex-shrink: 0; color: var(--c2); overflow: visible; }
+.tfx-kpi-spark .line {
+  fill: none; stroke: var(--c2); stroke-width: 2; stroke-linecap: round; vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: tfx-sparkDraw 1.3s cubic-bezier(.4,0,.2,1) forwards; animation-delay: calc(var(--i,0) * .09s + .45s);
+}
+.tfx-kpi-spark .area { opacity: 0; animation: tfx-sparkFade .8s ease forwards; animation-delay: calc(var(--i,0) * .09s + 1.1s); }
+.tfx-kpi-spark .dot { fill: #fff; stroke: var(--c2); stroke-width: 2; vector-effect: non-scaling-stroke; opacity: 0; animation: tfx-sparkFade .4s ease forwards, tfx-sparkPulse 2s ease-in-out 2s infinite; animation-delay: calc(var(--i,0) * .09s + 1.6s), calc(var(--i,0) * .09s + 2.2s); }
+@keyframes tfx-sparkDraw { to { stroke-dashoffset: 0; } }
+@keyframes tfx-sparkFade { to { opacity: 1; } }
+@keyframes tfx-sparkPulse { 0%,100% { r: 2.4; } 50% { r: 3.6; } }
+.tfx-kpi:hover .tfx-kpi-spark .line { animation: tfx-sparkRedraw 1s cubic-bezier(.4,0,.2,1); stroke-dashoffset: 0; }
+@keyframes tfx-sparkRedraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }

@@ -21,7 +21,8 @@ export type KpiVariant =
   | 'rejected'
   | 'returned'
   | 'overdue'
-  | 'draft';
+  | 'draft'
+  | 'ready';
 
 const svg = (className: string, children: ReactNode, strokeWidth = 2) => (
   <svg
@@ -38,6 +39,15 @@ const svg = (className: string, children: ReactNode, strokeWidth = 2) => (
 );
 
 const ICONS: Record<KpiVariant, ReactNode> = {
+  ready: svg(
+    'tfx-ico-cart',
+    <>
+      <path d="M3 4h2l2.2 10.2a1.5 1.5 0 0 0 1.5 1.2h8.6a1.5 1.5 0 0 0 1.5-1.1L21 8H6.2" />
+      <circle cx="9.5" cy="19.5" r="1.4" />
+      <circle cx="17" cy="19.5" r="1.4" />
+      <path className="tick" d="m10.5 10.5 2 2 3.5-3.6" />
+    </>
+  ),
   all: svg(
     'tfx-ico-doc',
     <>
@@ -97,6 +107,16 @@ const ICONS: Record<KpiVariant, ReactNode> = {
 
 const BAR_HEIGHTS = [22, 34, 28, 46, 40, 62, 88];
 
+/** Decorative rising sparkline shapes (100 × 40 viewBox), varied per card. */
+const SPARKS = [
+  'M0 34 C12 30,18 36,30 30 S48 26,56 28 S70 8,80 10 S92 4,100 2',
+  'M0 36 C10 34,20 32,32 28 S50 30,60 24 S76 10,86 8 S96 6,100 4',
+  'M0 32 C14 34,22 30,34 30 S52 34,62 24 S78 12,86 10 S96 4,100 3',
+  'M0 34 C12 32,24 34,36 28 S54 30,64 22 S78 14,88 12 S96 6,100 5',
+  'M0 36 C14 32,24 34,34 30 S52 24,62 26 S76 10,86 8 S96 4,100 2',
+  'M0 34 C12 34,22 32,34 32 S52 30,60 26 S74 10,84 10 S94 6,100 4',
+];
+
 /** Click animation for each card — each one acts out what the status means. */
 const CLICK_FX: Record<KpiVariant, (el: HTMLElement) => void> = {
   all: allFx,
@@ -106,6 +126,7 @@ const CLICK_FX: Record<KpiVariant, (el: HTMLElement) => void> = {
   draft: draftFx,
   returned: returnedFx,
   overdue: overdueFx,
+  ready: (el) => confetti(el, 36),
 };
 
 /** Animates 0 → target once per target change. */
@@ -139,6 +160,7 @@ export default function AnimatedKpiCard({
   live = false,
   selected = false,
   fallbackIcon,
+  chart = 'bars',
   onClick,
 }: {
   title: string;
@@ -154,6 +176,8 @@ export default function AnimatedKpiCard({
   selected?: boolean;
   /** Remix icon class used when the variant has no custom SVG. */
   fallbackIcon?: string;
+  /** Mini chart style: growing bars (default) or an animated sparkline. */
+  chart?: 'bars' | 'spark';
   onClick: () => void;
 }) {
   const safeValue = Number(value) || 0;
@@ -171,7 +195,7 @@ export default function AnimatedKpiCard({
     CLICK_FX[variant](e.currentTarget);
     fxToast(`Showing ${title.toLowerCase()} requests`, variant === 'rejected' ? 'error' : 'info');
     // Let the card's animation play before the page scrolls to the table.
-    window.setTimeout(onClick, variant === 'approved' ? 0 : 750);
+    window.setTimeout(onClick, variant === 'approved' || variant === 'ready' ? 0 : 750);
   };
 
   // 3D tilt + spotlight that follows the cursor (pointer devices only).
@@ -230,11 +254,25 @@ export default function AnimatedKpiCard({
             <b>{pct}%</b> of {total} total
           </div>
         </div>
-        <div className="tfx-kpi-bars" aria-hidden>
-          {BAR_HEIGHTS.map((h, n) => (
-            <i key={n} style={{ '--h': `${h}%`, '--n': n } as CSSProperties} />
-          ))}
-        </div>
+        {chart === 'spark' ? (
+          <svg className="tfx-kpi-spark" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden>
+            <defs>
+              <linearGradient id={`spk-${variant}-${index}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="currentColor" stopOpacity=".32" />
+                <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path className="area" d={`${SPARKS[index % SPARKS.length]} L100 40 L0 40 Z`} fill={`url(#spk-${variant}-${index})`} />
+            <path className="line" d={SPARKS[index % SPARKS.length]} pathLength={1} />
+            <circle className="dot" cx="100" cy={SPARKS[index % SPARKS.length].split(' ').pop()} r="2.4" />
+          </svg>
+        ) : (
+          <div className="tfx-kpi-bars" aria-hidden>
+            {BAR_HEIGHTS.map((h, n) => (
+              <i key={n} style={{ '--h': `${h}%`, '--n': n } as CSSProperties} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="tfx-kpi-progress">
         <div className="track">

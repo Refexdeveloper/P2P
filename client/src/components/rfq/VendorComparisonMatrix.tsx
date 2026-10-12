@@ -37,11 +37,11 @@ function paramKeys(p: { id: string; label: string }) {
 }
 
 const VENDOR_THEMES = [
-  { bar: 'bg-[#1E88E5] text-white border-[#1565C0]', soft: 'bg-[#E3F2FD]/70', head: 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]', text: 'text-[#1565C0]' },
-  { bar: 'bg-[#1565C0] text-white border-[#0D47A1]', soft: 'bg-[#E3F2FD]/50', head: 'bg-[#BBDEFB]/60 text-[#0D47A1] border-[#90CAF9]', text: 'text-[#0D47A1]' },
-  { bar: 'bg-sky-500 text-white border-sky-600', soft: 'bg-sky-50/70', head: 'bg-sky-100 text-sky-900 border-sky-200', text: 'text-sky-900' },
+  { bar: 'bg-[#0f6b7a] text-white border-[#0b5361]', soft: 'bg-[#e6f6f8]/70', head: 'bg-[#e6f6f8] text-[#0b5361] border-[#c5e6eb]', text: 'text-[#0b5361]' },
+  { bar: 'bg-[#17a2b4] text-white border-[#0e8a9a]', soft: 'bg-cyan-50/70', head: 'bg-cyan-100/70 text-cyan-900 border-cyan-200', text: 'text-cyan-900' },
+  { bar: 'bg-emerald-600 text-white border-emerald-700', soft: 'bg-emerald-50/70', head: 'bg-emerald-100 text-emerald-900 border-emerald-200', text: 'text-emerald-900' },
   { bar: 'bg-violet-500 text-white border-violet-600', soft: 'bg-violet-50/70', head: 'bg-violet-100 text-violet-900 border-violet-200', text: 'text-violet-900' },
-  { bar: 'bg-indigo-500 text-white border-indigo-600', soft: 'bg-indigo-50/70', head: 'bg-indigo-100 text-indigo-900 border-indigo-200', text: 'text-indigo-900' },
+  { bar: 'bg-amber-500 text-white border-amber-600', soft: 'bg-amber-50/70', head: 'bg-amber-100 text-amber-900 border-amber-200', text: 'text-amber-900' },
   { bar: 'bg-slate-600 text-white border-slate-700', soft: 'bg-slate-50/70', head: 'bg-slate-100 text-slate-800 border-slate-200', text: 'text-slate-800' },
 ];
 
@@ -50,7 +50,7 @@ function vendorTheme(index: number) {
 }
 
 function columnFill(_isBest: boolean, isRec: boolean, themeSoft: string, extra = '') {
-  if (isRec) return `bg-[#E3F2FD]/80 border-[#BBDEFB] ${extra}`;
+  if (isRec) return `bg-[#e6f6f8]/80 border-[#c5e6eb] ${extra}`;
   return `${themeSoft} border-[#E5EAF0] ${extra}`;
 }
 
@@ -596,7 +596,7 @@ export default function VendorComparisonMatrix({
                   type="button"
                   disabled={fileBusy === `${busyBase}-view`}
                   onClick={() => void openQuoteFile(file, vendor.name, 'view')}
-                  className={`${btn} border-[#BBDEFB] text-[#1E88E5] hover:bg-[#E3F2FD] disabled:opacity-50`}
+                  className={`${btn} border-[#c5e6eb] text-[#0f6b7a] hover:bg-[#e6f6f8] disabled:opacity-50`}
                 >
                   <i className="ri-eye-line"></i>
                   View
@@ -630,12 +630,12 @@ export default function VendorComparisonMatrix({
                 'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.12) 0%, rgba(255,255,255,0) 55%)',
             }}
           />
-          <div className="relative z-[1] flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+          <div className="relative z-[1] flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/40 px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
               <i className="ri-award-fill text-lg" aria-hidden />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#1E88E5]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#0f6b7a]">
                 Vendor Recommendation
               </p>
               <p className="mt-0.5 truncate text-sm font-bold text-[#2C3E50]">
@@ -660,27 +660,27 @@ export default function VendorComparisonMatrix({
         <section className={`${cardClass} p-4 sm:p-6`}>
           <div className="flex flex-col gap-4">
             <div className="min-w-0">
-              <h1 className="text-lg sm:text-[22px] md:text-[28px] lg:text-[30px] font-bold text-[#12284A] tracking-tight leading-snug break-words">
+              <h1 className="text-lg sm:text-[22px] md:text-[28px] lg:text-[30px] font-bold text-[#0f172a] tracking-tight leading-snug break-words">
                 Comparative Statement for {pr.title || pr.prNumber}
               </h1>
               <p className="text-xs text-[#64748B] mt-1">
-                PR: <span className="font-semibold text-[#12284A]">{pr.prNumber}</span>
+                PR: <span className="font-semibold text-[#0f172a]">{pr.prNumber}</span>
               </p>
             </div>
 
             <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
-              <div className="min-w-[88px] flex-1 sm:flex-none rounded-xl bg-[#EEF2FF] border border-[#E0E7FF] px-3 sm:px-4 py-3">
+              <div className="min-w-[88px] flex-1 sm:flex-none rounded-xl bg-[#eef8fa] border border-[#d7eef2] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Latest quote</p>
-                <p className="text-xl sm:text-2xl font-bold text-[#12284A] mt-0.5 leading-none">{revisionLabel(Math.max(1, totalRounds))}</p>
+                <p className="text-xl sm:text-2xl font-bold text-[#0f172a] mt-0.5 leading-none">{revisionLabel(Math.max(1, totalRounds))}</p>
               </div>
-              <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#E3F2FD] border border-[#BBDEFB] px-3 sm:px-4 py-3">
+              <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#e6f6f8] border border-[#c5e6eb] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Date</p>
-                <p className="text-base sm:text-lg font-bold text-[#12284A] mt-0.5 leading-tight">{statementDate}</p>
+                <p className="text-base sm:text-lg font-bold text-[#0f172a] mt-0.5 leading-tight">{statementDate}</p>
               </div>
               <button
                 type="button"
                 onClick={handlePrint}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#1E88E5] text-[#1E88E5] text-sm font-semibold hover:bg-[#E3F2FD] transition-colors print:hidden"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border-2 border-[#0f6b7a] text-[#0f6b7a] text-sm font-semibold hover:bg-[#e6f6f8] transition-colors print:hidden"
               >
                 <i className="ri-file-pdf-2-line text-base"></i>
                 Download PDF
@@ -691,20 +691,20 @@ export default function VendorComparisonMatrix({
           {/* Site details bar */}
           <div className="mt-5 pt-4 border-t border-[#E5EAF0] flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="w-8 h-8 rounded-full bg-[#EEF2FF] text-[#1E88E5] flex items-center justify-center shrink-0">
+              <span className="w-8 h-8 rounded-full bg-[#eef8fa] text-[#0f6b7a] flex items-center justify-center shrink-0">
                 <i className="ri-map-pin-line"></i>
               </span>
-              <p className="text-[#12284A]">
+              <p className="text-[#0f172a]">
                 <span className="font-bold">Site Details :</span>{' '}
                 <span className="text-[#334155]">{siteLabel}</span>
               </p>
             </div>
             <div className="hidden sm:block w-px h-6 bg-[#E5EAF0]" />
             <div className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-full bg-[#E3F2FD] text-[#1E88E5] flex items-center justify-center shrink-0">
+              <span className="w-8 h-8 rounded-full bg-[#e6f6f8] text-[#0f6b7a] flex items-center justify-center shrink-0">
                 <i className="ri-calendar-line"></i>
               </span>
-              <p className="text-[#12284A]">
+              <p className="text-[#0f172a]">
                 <span className="font-bold">Date :</span>{' '}
                 <span className="text-[#334155]">{siteDate.replace(/\./g, '/')}</span>
               </p>
@@ -721,8 +721,8 @@ export default function VendorComparisonMatrix({
 
       {vendorGroups.length > 0 && (
         <section className={`${cardClass} print:hidden`}>
-          <div className="flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3 sm:px-5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+          <div className="flex items-center gap-2 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/40 px-4 py-3 sm:px-5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
               <i className="ri-file-pdf-2-line"></i>
             </span>
             <div>
@@ -748,7 +748,7 @@ export default function VendorComparisonMatrix({
                   <p className="relative z-[1] mb-2 truncate text-xs font-bold text-[#2C3E50]" title={vendor.name}>
                     {vendor.name}
                     {vendor.isRecommended ? (
-                      <span className="ml-1 text-[10px] font-semibold text-[#1E88E5]">Recommended</span>
+                      <span className="ml-1 text-[10px] font-semibold text-[#0f6b7a]">Recommended</span>
                     ) : null}
                   </p>
                   <div className="relative z-[1]">{renderFileActions(latestCol, vendor, 'md')}</div>
@@ -763,12 +763,12 @@ export default function VendorComparisonMatrix({
       <section className={cardClass} aria-label="Price comparison">
         <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
           <p className="text-sm font-semibold text-[#64748B]">Compare vendors</p>
-          <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Price comparison</h2>
+          <h2 className="text-lg font-bold text-[#0f172a] mt-0.5">Price comparison</h2>
           <p className="text-xs text-slate-500 mt-1">
             Recommended vendor is always first. Green = vendor you chose.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1E88E5] text-white text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#0f6b7a] text-white text-[11px] font-bold">
               <i className="ri-checkbox-circle-fill" /> Recommended
             </span>
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-semibold">
@@ -784,7 +784,7 @@ export default function VendorComparisonMatrix({
                     key={`lbl-${p.id}`}
                     className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
                       isMakeLikeParam(p)
-                        ? 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]'
+                        ? 'bg-[#e6f6f8] text-[#0b5361] border-[#c5e6eb]'
                         : 'bg-slate-50 text-slate-700 border-slate-200'
                     }`}
                   >
@@ -797,10 +797,10 @@ export default function VendorComparisonMatrix({
         </div>
         {revColumns.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#EEF2FF] text-[#1E88E5] flex items-center justify-center mx-auto mb-3">
+            <div className="w-14 h-14 rounded-2xl bg-[#eef8fa] text-[#0f6b7a] flex items-center justify-center mx-auto mb-3">
               <i className="ri-inbox-line text-2xl"></i>
             </div>
-            <p className="text-sm font-semibold text-[#12284A]">No vendor quotations available</p>
+            <p className="text-sm font-semibold text-[#0f172a]">No vendor quotations available</p>
             <p className="text-xs text-[#64748B] mt-1">Invite vendors and collect quotes to build this statement.</p>
           </div>
         ) : (
@@ -813,13 +813,13 @@ export default function VendorComparisonMatrix({
                     key={`m-card-${col.key}`}
                     className={`rounded-xl border overflow-hidden ${
                       isRecRev
-                        ? 'border-[#90CAF9] bg-[#E3F2FD]/40'
+                        ? 'border-[#a9dbe2] bg-[#e6f6f8]/40'
                         : 'border-[#E5EAF0] bg-white'
                     }`}
                   >
                     <div
                       className={`px-3 py-2.5 flex flex-wrap items-start justify-between gap-2 ${
-                        isRecRev ? 'bg-[#1E88E5] text-white' : theme.bar
+                        isRecRev ? 'bg-gradient-to-br from-[#17a2b4] to-[#0b5361] text-white shadow-[0_10px_20px_-12px_rgba(13,95,110,0.8)]' : theme.bar
                       }`}
                     >
                       <div className="min-w-0">
@@ -830,7 +830,7 @@ export default function VendorComparisonMatrix({
                       </div>
                       <div className="flex flex-wrap gap-1 justify-end">
                         {isRecRev && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#1E88E5] text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#0f6b7a] text-[10px] font-bold">
                             <i className="ri-checkbox-circle-fill text-[10px]"></i>
                             Recommended
                           </span>
@@ -845,7 +845,7 @@ export default function VendorComparisonMatrix({
                           name="vendor-select-mobile"
                           checked={activeVendorId === col.vendorId}
                           onChange={() => onSelectVendor(col.vendorId)}
-                          className="accent-[#1E88E5]"
+                          className="accent-[#0f6b7a]"
                         />
                         Select this vendor
                       </label>
@@ -865,7 +865,7 @@ export default function VendorComparisonMatrix({
                             <p className="text-[11px] font-semibold text-slate-500 uppercase">
                               Item {lineIdx + 1}
                             </p>
-                            <p className="text-sm font-bold text-[#12284A] leading-snug mt-0.5 break-words">
+                            <p className="text-sm font-bold text-[#0f172a] leading-snug mt-0.5 break-words">
                               {li.description}
                             </p>
                             {li.category ? (
@@ -883,7 +883,7 @@ export default function VendorComparisonMatrix({
                               </div>
                               <div className="rounded-lg bg-slate-50 px-2.5 py-2 text-right">
                                 <p className="text-[10px] font-semibold uppercase text-slate-500">Amount</p>
-                                <p className="font-bold tabular-nums text-[#12284A]">
+                                <p className="font-bold tabular-nums text-[#0f172a]">
                                   {amount > 0 ? `₹${formatNum(amount)}` : '—'}
                                 </p>
                               </div>
@@ -914,7 +914,7 @@ export default function VendorComparisonMatrix({
                             className="px-3 py-2.5 flex items-start justify-between gap-3"
                           >
                             <span className="text-xs font-semibold text-slate-600">{param.label}</span>
-                            <span className="text-sm font-semibold text-[#12284A] text-right break-words">
+                            <span className="text-sm font-semibold text-[#0f172a] text-right break-words">
                               {display}
                             </span>
                           </div>
@@ -939,7 +939,7 @@ export default function VendorComparisonMatrix({
                             className="px-3 py-2.5 flex items-center justify-between gap-3"
                           >
                             <span className="text-xs font-semibold text-slate-600">{param.label}</span>
-                            <span className="text-sm font-semibold text-[#12284A] text-right">
+                            <span className="text-sm font-semibold text-[#0f172a] text-right">
                               {d.mode === 'number'
                                 ? `₹${formatNum(d.value)}`
                                 : d.mode === 'included' || d.mode === 'extra' || d.mode === 'text'
@@ -952,13 +952,13 @@ export default function VendorComparisonMatrix({
 
                       <div
                         className={`px-3 py-3 flex items-center justify-between gap-3 ${
-                          isRecRev ? 'bg-[#E3F2FD]/70' : 'bg-[#F8FBFF]'
+                          isRecRev ? 'bg-[#e6f6f8]/70' : 'bg-[#f6fbfc]'
                         }`}
                       >
-                        <span className="text-sm font-bold text-[#12284A]">Total cost</span>
+                        <span className="text-sm font-bold text-[#0f172a]">Total cost</span>
                         <span
                           className={`text-base font-bold tabular-nums ${
-                            isRecRev ? 'text-[#1E88E5]' : 'text-[#2C3E50]'
+                            isRecRev ? 'text-[#0f6b7a]' : 'text-[#2C3E50]'
                           }`}
                         >
                           {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
@@ -973,8 +973,8 @@ export default function VendorComparisonMatrix({
             {/* Desktop / tablet: horizontally scrollable table */}
             <div className="hidden md:block w-full min-w-0 max-w-full">
             {needsSideScroll && (
-              <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-slate-50">
-                <i className="ri-arrow-left-right-line"></i>
+              <p className="px-4 py-2 text-xs text-slate-500 flex items-center gap-1.5 print:hidden border-b border-[#E5EAF0] bg-[#f3fafc] text-[#0f6b7a]">
+                <i className="ri-arrow-left-right-line vcm-nudge"></i>
                 Scroll sideways to see every quote round. Recommended vendor is first.
               </p>
             )}
@@ -984,22 +984,22 @@ export default function VendorComparisonMatrix({
                   {/* Row 1: revision labels */}
                   <tr>
                     <th
-                      className={`${stSr} z-40 px-1 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[10px] md:text-[12px] font-bold uppercase`}
+                      className={`${stSr} z-40 px-1 py-3 border-b border-[#E5EAF0] bg-[#edf3f6] text-[#0f172a] text-center text-[10px] md:text-[12px] font-bold uppercase`}
                     >
                       Sr
                     </th>
                     <th
-                      className={`${stDesc} z-40 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase`}
+                      className={`${stDesc} z-40 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-[#edf3f6] text-[#0f172a] text-left text-[10px] md:text-[12px] font-bold uppercase`}
                     >
                       Description
                     </th>
                     <th
-                      className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[12px] font-bold uppercase`}
+                      className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-[#edf3f6] text-[#0f172a] text-center text-[12px] font-bold uppercase`}
                     >
                       Qty
                     </th>
                     <th
-                      className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-center text-[12px] font-bold uppercase`}
+                      className={`${stUom} px-2 py-3 border-b border-r border-[#E5EAF0] bg-[#edf3f6] text-[#0f172a] text-center text-[12px] font-bold uppercase`}
                     >
                       UOM
                     </th>
@@ -1010,14 +1010,14 @@ export default function VendorComparisonMatrix({
                           colSpan={2}
                           className={`px-2 py-2.5 border-b border-l text-center text-xs font-bold whitespace-nowrap align-middle ${
                             isRecRev
-                              ? 'bg-[#1E88E5] text-white border-[#1565C0]'
+                              ? 'bg-gradient-to-br from-[#17a2b4] to-[#0b5361] text-white border-[#0b5361] shadow-[inset_0_-3px_0_rgba(255,255,255,0.25)]'
                               : theme.bar
                           }`}
                         >
                           <span className="inline-flex flex-col items-center gap-1">
                             <span>{col.revisionLabel}</span>
                             {isRecRev && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#1E88E5] text-[10px] font-bold uppercase tracking-wide">
+                              <span className="vcm-rec-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#0f6b7a] text-[10px] font-bold uppercase tracking-wide">
                                 <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                 Recommended
                               </span>
@@ -1030,10 +1030,10 @@ export default function VendorComparisonMatrix({
                   </tr>
                   {/* Row 2: vendor names */}
                   <tr>
-                    <th className={`${stSr} z-40 bg-slate-100 border-b border-[#E5EAF0]`} />
-                    <th className={`${stDesc} z-40 bg-slate-100 border-b border-[#E5EAF0]`} />
-                    <th className={`${stQty} bg-slate-100 border-b border-[#E5EAF0]`} />
-                    <th className={`${stUom} bg-slate-100 border-b border-r border-[#E5EAF0]`} />
+                    <th className={`${stSr} z-40 bg-[#edf3f6] border-b border-[#E5EAF0]`} />
+                    <th className={`${stDesc} z-40 bg-[#edf3f6] border-b border-[#E5EAF0]`} />
+                    <th className={`${stQty} bg-[#edf3f6] border-b border-[#E5EAF0]`} />
+                    <th className={`${stUom} bg-[#edf3f6] border-b border-r border-[#E5EAF0]`} />
                     {columnMeta.map(({ col, isBest, isRecRev, theme }) => {
                       return (
                         <th
@@ -1041,7 +1041,7 @@ export default function VendorComparisonMatrix({
                           colSpan={2}
                           className={`px-2 py-3 border-b border-l text-center text-xs sm:text-sm font-bold align-middle ${
                             isRecRev
-                              ? 'bg-[#E3F2FD] text-[#1565C0] border-[#BBDEFB]'
+                              ? 'bg-[#dff4f6] text-[#0b5361] border-[#a9dbe2]'
                               : theme.head
                           }`}
                         >
@@ -1052,7 +1052,7 @@ export default function VendorComparisonMatrix({
                                 name="vendor-select"
                                 checked={activeVendorId === col.vendorId}
                                 onChange={() => onSelectVendor(col.vendorId)}
-                                className="accent-[#1E88E5] shrink-0"
+                                className="accent-[#0f6b7a] shrink-0"
                               />
                               <span className="inline-block max-w-[160px] lg:max-w-[220px] leading-tight break-words" title={col.vendorName}>
                                 {col.vendorName}
@@ -1076,10 +1076,10 @@ export default function VendorComparisonMatrix({
                     <th className={`${stUom} bg-white border-b border-r border-[#E5EAF0]`} />
                     {columnMeta.map(({ col, isBest, isRecRev, theme }) => (
                       <Fragment key={`${col.key}-ra`}>
-                        <th className={`px-2 py-2 border-b border-l text-center text-[11px] font-bold uppercase ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)} text-[#12284A]`}>
+                        <th className={`px-2 py-2 border-b border-l text-center text-[11px] font-bold uppercase ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)} text-[#0f172a]`}>
                           Unit price
                         </th>
-                        <th className={`px-2 py-2 border-b text-center text-[11px] font-bold uppercase ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)} text-[#12284A]`}>
+                        <th className={`px-2 py-2 border-b text-center text-[11px] font-bold uppercase ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)} text-[#0f172a]`}>
                           Amount
                         </th>
                       </Fragment>
@@ -1092,12 +1092,12 @@ export default function VendorComparisonMatrix({
                   {displayLines.map((li, lineIdx) => (
                     <tr key={String(li.id)} className="hover:bg-[#F8FAFC]">
                       <td
-                        className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A] text-xs md:text-sm`}
+                        className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#0f172a] text-xs md:text-sm`}
                       >
                         {lineIdx + 1}
                       </td>
                       <td className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white`}>
-                        <p className="font-bold text-[#12284A] text-[13px] md:text-[15px] leading-snug break-words">
+                        <p className="font-bold text-[#0f172a] text-[13px] md:text-[15px] leading-snug break-words">
                           {li.description}
                         </p>
                         {li.category ? (
@@ -1108,7 +1108,7 @@ export default function VendorComparisonMatrix({
                         </p>
                       </td>
                       <td
-                        className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#12284A]`}
+                        className={`${stQty} px-2 py-3 border-b border-[#E5EAF0] bg-white text-center font-semibold text-[#0f172a]`}
                       >
                         {li.quantity}
                       </td>
@@ -1130,7 +1130,7 @@ export default function VendorComparisonMatrix({
                             <td className={`px-2 sm:px-3 py-3 border-b border-l text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {rate > 0 ? `₹${formatNum(rate)}` : '—'}
                             </td>
-                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold tabular-nums text-[#12284A] text-xs sm:text-sm whitespace-nowrap ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold tabular-nums text-[#0f172a] text-xs sm:text-sm whitespace-nowrap ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {amount > 0 ? `₹${formatNum(amount)}` : '—'}
                             </td>
                           </Fragment>
@@ -1145,7 +1145,7 @@ export default function VendorComparisonMatrix({
                     <tr key={`info-${param.id}`} className="hover:bg-[#F8FAFC]">
                       <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
                       <td
-                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs md:text-sm`}
+                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#0f172a] text-xs md:text-sm`}
                       >
                         {param.label}
                       </td>
@@ -1172,7 +1172,7 @@ export default function VendorComparisonMatrix({
                             <td className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               —
                             </td>
-                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold text-[#12284A] text-xs sm:text-sm ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
+                            <td className={`px-2 sm:px-3 py-3 border-b text-right font-semibold text-[#0f172a] text-xs sm:text-sm ${colAmount} ${columnFill(isBest, isRecRev, theme.soft)}`}>
                               {display}
                             </td>
                           </Fragment>
@@ -1210,7 +1210,7 @@ export default function VendorComparisonMatrix({
                     <tr key={`cost-${param.id}`} className="hover:bg-[#F8FAFC]">
                       <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-white`} />
                       <td
-                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#12284A] text-xs md:text-sm`}
+                        className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white font-semibold text-[#0f172a] text-xs md:text-sm`}
                       >
                         {param.label}
                       </td>
@@ -1229,7 +1229,7 @@ export default function VendorComparisonMatrix({
                               {d.mode === 'number' ? (
                                 isFreight ? (
                                   <span className="inline-flex flex-col items-end gap-0.5">
-                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-700">
+                                    <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-[#edf3f6] text-[#0f172a]">
                                       Extra
                                     </span>
                                     <span className="font-semibold tabular-nums text-slate-800 text-xs sm:text-sm whitespace-nowrap">
@@ -1242,7 +1242,7 @@ export default function VendorComparisonMatrix({
                                   </span>
                                 )
                               ) : d.mode === 'included' || d.mode === 'extra' || d.mode === 'text' ? (
-                                <span className="inline-flex max-w-full px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-slate-100 text-slate-700 truncate">
+                                <span className="inline-flex max-w-full px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-[#edf3f6] text-[#0f172a] truncate">
                                   {d.value}
                                 </span>
                               ) : (
@@ -1260,7 +1260,7 @@ export default function VendorComparisonMatrix({
                   <tr>
                     <td className={`${stSr} z-10 px-1 py-3 border-b border-[#E5EAF0] bg-[#F8FAFC]`} />
                     <td className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-[#F8FAFC]`}>
-                      <span className="font-bold text-[#12284A] text-sm md:text-base">Total cost</span>
+                      <span className="font-bold text-[#0f172a] text-sm md:text-base">Total cost</span>
                       <span className="block md:inline md:ml-2 text-[10px] md:text-xs font-medium text-slate-500">
                         including GST
                       </span>
@@ -1273,7 +1273,7 @@ export default function VendorComparisonMatrix({
                           <td
                             className={`px-2 sm:px-3 py-3 border-b border-l text-right text-slate-300 tabular-nums ${colUnit} ${
                               isRecRev
-                                ? 'bg-[#E3F2FD]/80 border-[#BBDEFB]'
+                                ? 'bg-[#e6f6f8]/80 border-[#c5e6eb]'
                                 : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
@@ -1282,20 +1282,20 @@ export default function VendorComparisonMatrix({
                           <td
                             className={`px-2 sm:px-3 py-3 border-b text-right align-middle ${colAmount} ${
                               isRecRev
-                                ? 'bg-[#E3F2FD]/80 border-[#BBDEFB]'
+                                ? 'bg-[#e6f6f8]/80 border-[#c5e6eb]'
                                 : 'bg-[#F8FAFC] border-[#E5EAF0]'
                             }`}
                           >
                             <div className="flex flex-col items-end gap-1">
                               <span
                                 className={`text-sm sm:text-base font-bold tabular-nums whitespace-nowrap leading-none ${
-                                  isRecRev ? 'text-[#1E88E5]' : 'text-[#2C3E50]'
+                                  isRecRev ? 'text-[#0f6b7a]' : 'text-[#2C3E50]'
                                 }`}
                               >
                                 {t.landed > 0 ? `₹${formatNum(t.landed)}` : '—'}
                               </span>
                               {isRecRev && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#1E88E5] border border-[#1565C0] text-[10px] font-bold text-white whitespace-nowrap">
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-[#0f6b7a] border border-[#0b5361] text-[10px] font-bold text-white whitespace-nowrap">
                                   <i className="ri-checkbox-circle-fill text-[10px]"></i>
                                   Recommended
                                 </span>
@@ -1320,7 +1320,7 @@ export default function VendorComparisonMatrix({
         <section className={cardClass} aria-label="Other terms comparison">
           <div className="px-4 sm:px-5 py-4 border-b border-[#E5EAF0]">
             <p className="text-sm font-semibold text-[#64748B]">Compare vendors</p>
-            <h2 className="text-lg font-bold text-[#12284A] mt-0.5">Other terms</h2>
+            <h2 className="text-lg font-bold text-[#0f172a] mt-0.5">Other terms</h2>
             <p className="text-xs text-slate-500 mt-1">Warranty, delivery, payment, and any extra questions you added.</p>
           </div>
 
@@ -1334,12 +1334,12 @@ export default function VendorComparisonMatrix({
                 <article
                   key={`tech-m-${vendor.id}`}
                   className={`rounded-xl border overflow-hidden ${
-                    isRec ? 'border-[#90CAF9]' : 'border-transparent'
+                    isRec ? 'border-[#a9dbe2]' : 'border-transparent'
                   }`}
                 >
                   <div
                     className={`px-3 py-2.5 flex items-start justify-between gap-2 ${
-                      isRec ? 'bg-[#1E88E5] text-white' : tone.bar
+                      isRec ? 'bg-[#0f6b7a] text-white' : tone.bar
                     }`}
                   >
                     <p className="text-sm font-bold break-words leading-snug">{vendor.name}</p>
@@ -1376,7 +1376,7 @@ export default function VendorComparisonMatrix({
                           <span className="text-xs font-semibold text-slate-600 shrink-0 max-w-[45%]">
                             {param.label}
                           </span>
-                          <span className="text-sm text-[#12284A] text-right break-words font-medium">
+                          <span className="text-sm text-[#0f172a] text-right break-words font-medium">
                             {display}
                           </span>
                         </div>
@@ -1405,7 +1405,7 @@ export default function VendorComparisonMatrix({
               <thead>
                 <tr>
                   <th
-                    className={`${stOtherLabel} z-20 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-slate-100 text-slate-700 text-left text-[10px] md:text-[12px] font-bold uppercase`}
+                    className={`${stOtherLabel} z-20 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-[#edf3f6] text-[#0f172a] text-left text-[10px] md:text-[12px] font-bold uppercase`}
                   >
                     Other terms
                   </th>
@@ -1414,7 +1414,7 @@ export default function VendorComparisonMatrix({
                       key={`tech-h-${col.key}`}
                       className={`px-3 py-3 border-b border-l text-center text-xs font-bold ${colRev} ${
                         isRecRev
-                          ? 'bg-[#1E88E5] text-white border-[#1565C0]'
+                          ? 'bg-[#0f6b7a] text-white border-[#0b5361]'
                           : theme.bar
                       }`}
                     >
@@ -1433,7 +1433,7 @@ export default function VendorComparisonMatrix({
                 {technicalSheetParams.map((param) => (
                   <tr key={param.id} className="hover:bg-[#F8FAFC]">
                     <td
-                      className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm break-words`}
+                      className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#0f172a] text-xs md:text-sm break-words`}
                     >
                       {param.label}
                     </td>
@@ -1474,7 +1474,7 @@ export default function VendorComparisonMatrix({
 
                 <tr>
                   <td
-                    className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#12284A] text-xs md:text-sm`}
+                    className={`${stOtherLabel} z-10 px-2.5 md:px-4 py-3 border-b border-r border-[#E5EAF0] bg-white font-medium text-[#0f172a] text-xs md:text-sm`}
                   >
                     Quotation File
                   </td>
@@ -1500,12 +1500,12 @@ export default function VendorComparisonMatrix({
 
       {/* ── NOTE ── */}
       {!compact && (
-        <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-5 py-4 flex items-start gap-3">
-          <span className="w-8 h-8 rounded-full bg-[#1769E0] text-white flex items-center justify-center shrink-0">
+        <div className="rounded-2xl border border-[#c5e6eb] bg-[#f1fafc] px-5 py-4 flex items-start gap-3">
+          <span className="w-8 h-8 rounded-full bg-[#0f6b7a] text-white flex items-center justify-center shrink-0">
             <i className="ri-information-line"></i>
                         </span>
           <p className="text-sm text-[#334155] leading-relaxed">
-            <span className="font-bold text-[#12284A]">How to read this:</span> The recommended vendor
+            <span className="font-bold text-[#0f172a]">How to read this:</span> The recommended vendor
             is always shown first (green). Each vendor keeps the same color across both tables.
           </p>
         </div>

@@ -666,7 +666,7 @@ export default function PRBucketExpandedRow({
     { key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' },
     {
       key: 'history' as const,
-      label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
+      label: 'Approval History',
       icon: 'ri-history-line',
     },
     ...(poId
@@ -705,7 +705,7 @@ export default function PRBucketExpandedRow({
                   {poSummary?.poNumber || poNumber || pr?.prNumber || (prId > 0 ? `PR #${prId}` : 'Document')}
                 </span>
                 <p
-                  className="xfx-title mt-2 font-bold text-slate-900"
+                  className="xfx-title mt-2 truncate font-bold text-slate-900"
                   title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}
                 >
                   {pr?.title || title || ''}
@@ -713,6 +713,26 @@ export default function PRBucketExpandedRow({
                 <p className="text-xs text-slate-500">
                   {isManualDoc ? 'Expanded WO / PO view (no PR)' : `Expanded PR view${pr?.prNumber ? ` · ${pr.prNumber}` : ''}`}
                 </p>
+                {pr && (
+                  <div className="xfx-stats">
+                    {[
+                      { label: 'Amount', value: formatCurrency(pr.totalAmount), icon: 'ri-money-rupee-circle-line' },
+                      { label: 'Line Items', value: String(pr.lineItems.length), icon: 'ri-list-check-2' },
+                      { label: 'Vendor', value: poSummary?.vendorName || comparison?.recommendedVendorName || '—', icon: 'ri-store-2-line' },
+                      { label: 'Required By', value: pr.requiredDate || '—', icon: 'ri-calendar-event-line' },
+                    ].map((st, i) => (
+                      <div key={st.label} className="xfx-stat" style={{ '--i': i } as CSSProperties} title={st.value}>
+                        <span className="xfx-stat-ic">
+                          <i className={st.icon} aria-hidden />
+                        </span>
+                        <div className="min-w-0">
+                          <small>{st.label}</small>
+                          <b>{st.value}</b>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex max-w-full flex-shrink-0 flex-wrap items-center gap-2">
@@ -756,8 +776,11 @@ export default function PRBucketExpandedRow({
               >
                 <i className={t.icon}></i>
                 {t.label}
-                {t.key === 'items' && pr ? ` (${pr.lineItems.length})` : ''}
-                {t.key === 'vendors' && comparison ? ` (${comparison.vendorCount})` : ''}
+                {t.key === 'items' && pr ? <span className="tfx-cnt">{pr.lineItems.length}</span> : null}
+                {t.key === 'vendors' && comparison ? <span className="tfx-cnt">{comparison.vendorCount}</span> : null}
+                {t.key === 'history' && pr?.approvalHistory?.length ? (
+                  <span className="tfx-cnt">{pr.approvalHistory.length}</span>
+                ) : null}
               </button>
             ))}
           </div>

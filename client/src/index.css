@@ -95,3 +95,10 @@ body,
   right: 0;
   background: linear-gradient(270deg, #fff 0%, rgba(255, 255, 255, 0) 100%);
 }
+
+/* Vendor comparison (VendorComparisonMatrix) — subtle theme motion */
+@keyframes vcm-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,.55); } 50% { box-shadow: 0 0 0 5px rgba(255,255,255,0); } }
+.vcm-rec-badge { animation: vcm-glow 2.2s ease-out infinite; }
+@keyframes vcm-nudge { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+.vcm-nudge { display: inline-block; animation: vcm-nudge 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .vcm-rec-badge, .vcm-nudge { animation: none; } }

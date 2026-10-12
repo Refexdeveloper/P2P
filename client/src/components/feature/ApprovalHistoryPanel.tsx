@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react';
+import '../../styles/approval-history.css';
 import { formatRoleDisplayName, isMugeshUser } from '../../utils/roleDisplay';
 
 function roleLabelForEntry(entry: ApprovalHistoryEntry): string {
@@ -103,6 +105,18 @@ export function pickLatestComment(
   return matches.length ? matches[matches.length - 1] : null;
 }
 
+/** Colour + icon for a history step, from its action/status text. */
+function stepTone(action: string): { tone: string; icon: string } {
+  const a = action.toLowerCase();
+  if (a.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
+  if (a.includes('return') || a.includes('send back') || a.includes('sent back')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
+  if (a.includes('pending') || a.includes('waiting')) return { tone: 'amber', icon: 'ri-time-line' };
+  if (a.includes('approv') || a.includes('complet') || a.includes('verif')) return { tone: 'green', icon: 'ri-check-line' };
+  if (a.includes('creat')) return { tone: 'teal', icon: 'ri-file-add-line' };
+  if (a.includes('submit')) return { tone: 'teal', icon: 'ri-send-plane-line' };
+  return { tone: 'teal', icon: 'ri-history-line' };
+}
+
 export function ManagerL2CommentsHighlight({
   history,
 }: {
@@ -111,67 +125,36 @@ export function ManagerL2CommentsHighlight({
   const manager = pickLatestComment(history, isManagerEntry);
   const l2 = pickLatestComment(history, isL2ManagerEntry);
 
-  const softWash = {
-    background:
-      'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-  } as const;
-
-  const softCard =
-    'relative overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
+  const cards = [
+    { key: 'mgr', title: 'Manager Comments', icon: 'ri-user-star-line', tone: 'teal', entry: manager, fallbackWho: 'Manager', empty: 'No manager comments recorded.' },
+    { key: 'l2', title: 'L2 Manager Comments', icon: 'ri-shield-user-line', tone: 'violet', entry: l2, fallbackWho: 'L2 Manager', empty: 'No L2 manager comments recorded.' },
+  ];
 
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-      <div className={softCard}>
-        <div className="pointer-events-none absolute inset-0" style={softWash} />
-        <div className="relative z-[1]">
-          <h4 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-              <i className="ri-user-star-line text-sm"></i>
+      {cards.map((c, i) => (
+        <div key={c.key} className={`ahx-comment tone-${c.tone}${c.entry ? '' : ' is-empty'}`} style={{ '--i': i } as CSSProperties}>
+          <div className="flex items-center gap-2.5">
+            <span className="ahx-comment-ic">
+              <i className={c.icon} aria-hidden />
             </span>
-            Manager Comments
-          </h4>
-          {manager ? (
+            <h4 className="ahx-comment-title">{c.title}</h4>
+          </div>
+          {c.entry ? (
             <>
-              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
-                {manager.remarks}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                {manager.approver || manager.user || 'Manager'}
-                {roleLabelForEntry(manager) ? ` · ${roleLabelForEntry(manager)}` : ''}
-                {manager.date ? ` · ${manager.date}` : ''}
+              <p className="ahx-quote">{c.entry.remarks}</p>
+              <p className="ahx-meta">
+                <span className="ahx-avatar">{(c.entry.approver || c.entry.user || c.fallbackWho).trim().charAt(0).toUpperCase()}</span>
+                {c.entry.approver || c.entry.user || c.fallbackWho}
+                {roleLabelForEntry(c.entry) ? ` · ${roleLabelForEntry(c.entry)}` : ''}
+                {c.entry.date ? <span className="ahx-date"><i className="ri-calendar-line" aria-hidden /> {c.entry.date}</span> : null}
               </p>
             </>
           ) : (
-            <p className="text-sm italic text-slate-400">No manager comments recorded.</p>
+            <p className="ahx-empty-text">{c.empty}</p>
           )}
         </div>
-      </div>
-
-      <div className={softCard}>
-        <div className="pointer-events-none absolute inset-0" style={softWash} />
-        <div className="relative z-[1]">
-          <h4 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-              <i className="ri-shield-user-line text-sm"></i>
-            </span>
-            L2 Manager Comments
-          </h4>
-          {l2 ? (
-            <>
-              <p className="whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
-                {l2.remarks}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                {l2.approver || l2.user || 'L2 Manager'}
-                {roleLabelForEntry(l2) ? ` · ${roleLabelForEntry(l2)}` : ''}
-                {l2.date ? ` · ${l2.date}` : ''}
-              </p>
-            </>
-          ) : (
-            <p className="text-sm italic text-slate-400">No L2 manager comments recorded.</p>
-          )}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -184,26 +167,15 @@ export default function ApprovalHistoryPanel({
   const items = collapsePrAdminEditHistory(history);
   if (!items.length) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-8 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-          }}
-        />
-        <p className="relative z-[1] text-sm italic text-slate-500">No approval history available.</p>
+      <div className="ahx-empty">
+        <i className="ri-history-line" aria-hidden />
+        <p>No approval history available.</p>
       </div>
     );
   }
 
-  const softWash = {
-    background:
-      'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-  } as const;
-
   return (
-    <div className="space-y-0">
+    <ol className="ahx-timeline">
       {items.map((item, idx) => {
         const action = item.action || item.status || 'Updated';
         const who = item.approver || item.user || 'System';
@@ -211,101 +183,57 @@ export default function ApprovalHistoryPanel({
         const isMgr = isManagerEntry(item);
         const isBuyerSel = isScmBuyerSelectionEntry(item);
         const isVendorFinal = isVendorFinalEntry(item) && !isL2 && !isMgr;
-        const isPositive =
-          action === 'Approved' ||
-          action === 'Created' ||
-          action === 'Submitted' ||
-          action === 'Completed' ||
-          action === 'Verified';
-        const isRejected = action === 'Rejected';
+        const { tone, icon } = stepTone(action);
+        const tags = [
+          isMgr && 'Manager',
+          isL2 && 'L2 Manager',
+          isBuyerSel && 'SCM Buyer Selection',
+          isVendorFinal && 'Vendor Final',
+        ].filter(Boolean) as string[];
 
         return (
-          <div key={`${item.stage}-${item.date}-${idx}`} className="relative flex gap-4 pb-5">
-            {idx !== items.length - 1 && (
-              <div className="absolute left-4 top-10 h-full w-0.5 bg-[#BBDEFB]/70"></div>
-            )}
-            <div
-              className={`z-10 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
-                isPositive
-                  ? 'bg-[#E3F2FD] text-[#1E88E5]'
-                  : isRejected
-                    ? 'bg-rose-50 text-rose-500'
-                    : 'bg-[#E3F2FD] text-[#1E88E5]'
-              }`}
-            >
-              <i
-                className={`text-sm ${
-                  isPositive && action === 'Created'
-                    ? 'ri-file-add-line'
-                    : isPositive && action === 'Submitted'
-                      ? 'ri-send-plane-line'
-                      : isPositive
-                        ? 'ri-check-line'
-                        : isRejected
-                          ? 'ri-close-line'
-                          : 'ri-time-line'
-                }`}
-              ></i>
-            </div>
-            <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
-              <div className="pointer-events-none absolute inset-0" style={softWash} />
-              <div className="relative z-[1]">
-                <div className="mb-1 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold text-[#2C3E50]">{item.stage}</p>
-                      {isMgr && (
-                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
-                          Manager
-                        </span>
-                      )}
-                      {isL2 && (
-                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
-                          L2 Manager
-                        </span>
-                      )}
-                      {isBuyerSel && (
-                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
-                          SCM Buyer Selection
-                        </span>
-                      )}
-                      {isVendorFinal && (
-                        <span className="rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase text-[#1E88E5]">
-                          Vendor Final
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {who}
-                      {roleLabelForEntry(item) ? ` · ${roleLabelForEntry(item)}` : ''}
-                    </p>
+          <li
+            key={`${item.stage}-${item.date}-${idx}`}
+            className={`ahx-step tone-${tone}`}
+            style={{ '--i': idx } as CSSProperties}
+          >
+            <span className="ahx-dot" aria-hidden>
+              <i className={icon} />
+              <b>{idx + 1}</b>
+            </span>
+            <div className="ahx-card">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="ahx-stage">{item.stage}</p>
+                    {tags.map((t) => (
+                      <span key={t} className="ahx-tag">
+                        {t}
+                      </span>
+                    ))}
                   </div>
-                  <span
-                    className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      isPositive
-                        ? 'bg-[#E3F2FD] text-[#1E88E5]'
-                        : isRejected
-                          ? 'bg-rose-50 text-rose-600'
-                          : 'bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {action}
-                  </span>
-                </div>
-                {item.remarks && (
-                  <p className="mt-2 whitespace-pre-wrap text-sm font-medium leading-relaxed text-[#2C3E50]">
-                    {item.remarks}
+                  <p className="ahx-who">
+                    <span className="ahx-avatar">{who.trim().charAt(0).toUpperCase()}</span>
+                    {who}
+                    {roleLabelForEntry(item) ? <span className="text-slate-400"> · {roleLabelForEntry(item)}</span> : null}
                   </p>
-                )}
-                <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-                  <i className="ri-calendar-line"></i>
-                  {item.date}
-                </p>
+                </div>
+                <span className="ahx-status">
+                  <i className={icon} aria-hidden />
+                  {action}
+                </span>
               </div>
+              {item.remarks && <p className="ahx-quote">{item.remarks}</p>}
+              {item.date && (
+                <span className="ahx-date">
+                  <i className="ri-calendar-line" aria-hidden />
+                  {item.date}
+                </span>
+              )}
             </div>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
