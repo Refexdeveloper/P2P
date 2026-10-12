@@ -332,7 +332,38 @@
 
 /* extra room above the stat cards so the full illustration shows */
 .dfx-stats { margin-top: 44px !important; }
-@media (max-width: 640px) { .dfx-stats { margin-top: 20px !important; } .dfx-art { right: 0; } }
+@media (max-width: 640px) {
+  .dfx-stats { margin-top: 16px !important; gap: 8px; }
+  .dfx-art { right: 0; }
+  .dfx-stat {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 10px 6px;
+    text-align: center;
+  }
+  .dfx-stat-ic { width: 32px; height: 32px; border-radius: 10px; font-size: 16px; }
+  .dfx-stat .min-w-0 { width: 100%; min-width: 0; }
+  .dfx-stat small {
+    min-height: 2.4em;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .dfx-stat b {
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 1.25;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+  }
+}
 
 /* ---------------- task drawer extras (approve / send back / reject footer) ---------------- */
 .dfx-btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }

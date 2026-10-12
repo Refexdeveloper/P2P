@@ -234,7 +234,7 @@ function HighlightInfoCard({
       </span>
       <div className="min-w-0 flex-1">
         <p className="xfx-label">{label}</p>
-        <p className="mt-1.5 break-words whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-800">
+        <p className="xfx-content mt-1.5 break-words whitespace-pre-wrap">
           {value?.trim() ? value : '—'}
         </p>
       </div>

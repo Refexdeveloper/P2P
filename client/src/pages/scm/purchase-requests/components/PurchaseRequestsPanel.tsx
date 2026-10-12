@@ -607,7 +607,7 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                     (label) => (
                       <th
                         key={label}
-                        className={`tfx-th px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 first:pl-4 last:pr-4 ${
+                        className={`tfx-th px-3 py-3 text-[13px] font-extrabold uppercase tracking-[0.06em] text-[#0F172A] first:pl-4 last:pr-4 ${
                           label === 'Amount' || label === 'Actions' ? 'text-right' : 'text-left'
                         }`}
                       >

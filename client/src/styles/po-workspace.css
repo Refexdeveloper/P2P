@@ -113,7 +113,7 @@
 
 /* ---------------- table ---------------- */
 .po-table thead tr { animation: tfx-fadeUp .5s ease .55s both; }
-.po-table .tfx-th { background: #f5f8fa; }
+.po-table .tfx-th { background: #f5f8fa; color: #0f172a; font-weight: 800; }
 .po-row { animation: rfx-rowIn .6s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(.15s + var(--r, 0) * .06s); transition: transform .3s cubic-bezier(.2,.8,.2,1), filter .3s; }
 .po-row > td {
   background: #fff; padding-top: 14px; padding-bottom: 14px; vertical-align: middle;
@@ -244,7 +244,7 @@ button.po-act.warn { cursor: pointer; }
 
 .xfx-body { animation: tfx-fadeUp .4s cubic-bezier(.2,.8,.2,1) both; }
 
-.xfx-label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #8a95a3; }
+.xfx-label { font-size: 10.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #0f172a; }
 .xfx-value { margin-top: 4px; font-size: 14px; font-weight: 600; color: #1b2533; word-break: break-word; }
 
 .xfx-field {
@@ -285,7 +285,7 @@ button.po-act.warn { cursor: pointer; }
 /* line items */
 .xfx-items { border-collapse: separate; border-spacing: 0 6px; }
 .xfx-items thead th {
-  padding: 10px 12px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #6b7684;
+  padding: 10px 12px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #0f172a;
   background: #edf3f6; text-align: inherit;
 }
 .xfx-items thead th:first-child { border-radius: 10px 0 0 10px; }
@@ -443,7 +443,7 @@ button.xfx-hbtn:hover { transform: translateY(-2px); color: #0f6b7a; box-shadow:
     url('/images/po-expand-hero.webp') no-repeat;
   background-size: auto, 1400px auto; background-position: 0 0, 30% 82%;
 }
-.xfx-hl.tone-entity .xfx-label { text-transform: uppercase; letter-spacing: .1em; font-size: 11px; font-weight: 700; color: #8a95a3; }
+.xfx-hl.tone-entity .xfx-label { text-transform: uppercase; letter-spacing: .1em; font-size: 11px; font-weight: 800; color: #0f172a; }
 .xfx-hl.tone-entity .xfx-hl-ic { width: 52px; height: 52px; }
 
 /* coloured icon tiles */
@@ -552,3 +552,24 @@ button.xfx-hbtn:hover { transform: translateY(-2px); color: #0f6b7a; box-shadow:
 .xfx-art { background-size: 780px auto; background-position: -400px 6px; }
 /* entity waves: scale with card width so the cart never shows */
 .xfx-hl.tone-entity { background-size: auto, max(2600px, 210%) auto; background-position: 0 0, 0 78%; }
+
+/* headings large and bold; card values light and small */
+.po-table .tfx-th { font-size: 13px; font-weight: 800; color: #0f172a; }
+.xfx-title { font-size: 22px !important; font-weight: 800; color: #0f172a; line-height: 1.25; }
+.xfx-label,
+.xfx-hl .xfx-label,
+.xfx-hl.tone-entity .xfx-label {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #0f172a;
+}
+.xfx-value,
+.xfx-hl .xfx-content {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+  line-height: 1.4;
+}
+.xfx-items thead th { font-size: 13px; font-weight: 800; color: #0f172a; }
