@@ -325,7 +325,6 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
             </section>
           );
         })}
-    </div>
 
       {vendors.length > 0 ? (
         <section className="rounded-xl overflow-hidden border border-slate-200">

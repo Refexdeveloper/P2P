@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import SoftInsightCard from '../../../components/base/SoftInsightCard';
-import { PM_PAGE_BG } from '../../../constants/pmTheme';
+import AnimatedKpiCard from '../../../components/feature/AnimatedKpiCard';
+import '../../../styles/dashboard-fx.css';
 import { poApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
@@ -184,32 +184,68 @@ export default function BuyerFinalVerifyPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="space-y-4 p-2 pb-6 sm:p-4 lg:p-6">
-          <header className="border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
-            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">
-              Approved PO verification
+      <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
+        <section className="tfx-hero">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
+            <div className="tfx-hi">
+              {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'},{' '}
+              {user?.name || 'there'} <span className="tfx-wave">👋</span>
+            </div>
+            <h1>
+              <span className="tfx-shimmer">Approved PO verification</span>
             </h1>
-            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+            <p className="max-w-[640px]">
               {requesterVerify
                 ? 'Review the PO after Mugesh signs. Verify sends it on for vendor acceptance. SCM team is not notified.'
                 : 'Review Manager-signed POs. Own vendor: verify sends PO release mail. SCM vendor / Manual: no PO release mail.'}
             </p>
-          </header>
+          </div>
+        </section>
 
-          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3 sm:gap-4">
-            <SoftInsightCard title="Pending verification" value={rows.length} icon="ri-shield-check-line" theme="cyan" />
-            <SoftInsightCard title="Pending Value" value={formatCurrency(totalValue)} icon="ri-money-rupee-circle-line" theme="blue" />
-            <SoftInsightCard
-              title="Workflow Step"
-              value="After Sign"
-              icon="ri-flow-chart"
-              theme="violet"
+        <section className="tfx-kpis mb-4">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3 sm:gap-4 md:gap-5">
+            <AnimatedKpiCard
+              title="Pending verification"
+              value={rows.length}
+              variant="pending_approval"
+              index={0}
+              total={rows.length}
+              subtitle={rows.length ? 'Awaiting your verify' : 'Nothing waiting'}
+              live={rows.length > 0}
+              interactive={false}
+            />
+            <AnimatedKpiCard
+              title="Pending value"
+              value={totalValue}
+              displayValue={formatCurrency(totalValue)}
+              variant="payments"
+              index={1}
+              total={totalValue}
+              percent={100}
+              subtitle="Total of POs to verify"
+              footText={<span>{rows.length} PO{rows.length === 1 ? '' : 's'}</span>}
+              interactive={false}
+            />
+            <AnimatedKpiCard
+              title="Workflow step"
+              value={0}
+              displayValue="After Sign"
+              variant="ready"
+              index={2}
+              total={0}
+              percent={100}
               subtitle={requesterVerify ? 'After Mugesh sign' : 'After SCM Manager sign'}
+              footText={<span>Next: vendor acceptance</span>}
+              interactive={false}
             />
           </div>
+        </section>
 
-          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
+        <div className="space-y-4 p-2 pb-6 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
+          <div className="tfx-panel relative overflow-hidden rounded-2xl border border-white/70 bg-white px-4 py-4 sm:px-5">
             <div className="pointer-events-none absolute inset-0" style={softWash} />
             <div className="relative z-[1] flex flex-wrap items-center gap-3">
               <div className="relative min-w-[220px] flex-1">
@@ -218,7 +254,7 @@ export default function BuyerFinalVerifyPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search PO, PR, vendor..."
-                  className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  className="tfx-input box-border h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm outline-none"
                 />
               </div>
               <p className="text-sm text-slate-500">
@@ -227,7 +263,7 @@ export default function BuyerFinalVerifyPage() {
             </div>
           </div>
 
-          <div className="relative overflow-x-clip rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div className="tfx-panel relative overflow-x-clip rounded-2xl border border-white/70">
             <div className="pointer-events-none absolute inset-0" style={softWash} />
             {loading ? (
               <p className="relative z-[1] px-6 py-12 text-center text-sm text-slate-500">Loading POs...</p>
@@ -239,28 +275,28 @@ export default function BuyerFinalVerifyPage() {
               </div>
             ) : (
               <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
-                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                <table className="trk-table w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PO Number
                       </th>
-                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="w-[240px] max-w-[240px] bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PR
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Vendor
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Requester
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Signed
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Amount
                       </th>
-                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Actions
                       </th>
                     </tr>
@@ -269,27 +305,27 @@ export default function BuyerFinalVerifyPage() {
                     {filtered.map((po) => {
                       const open = expandedId === po.id;
                       const rowBorder = open
-                        ? 'border-[#90CAF9]'
-                        : 'border-transparent group-hover:border-[#90CAF9]';
+                        ? 'border-[#a9dbe2]'
+                        : 'border-transparent group-hover:border-[#a9dbe2]';
                       const rowShadow = open
                         ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
                         : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
                       return (
                         <Fragment key={po.id}>
                           <tr className="group cursor-pointer" onClick={() => setExpandedId(open ? null : po.id)}>
-                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                            <td className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]">
                               <div className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                                 <button
                                   type="button"
                                   className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
-                                    open ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                    open ? 'bg-[#0f6b7a] text-white' : 'bg-[#e6f6f8] text-[#0f6b7a] hover:bg-[#c5e6eb]'
                                   }`}
                                   aria-expanded={open}
                                   aria-label={open ? 'Collapse details' : 'Expand details'}
                                 >
                                   <i className={`ri-arrow-${open ? 'down' : 'right'}-s-line text-base`}></i>
                                 </button>
-                                <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
+                                <span className="text-sm font-bold text-[#0f6b7a]">{po.poNumber}</span>
                               </div>
                             </td>
                             <td className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`} title={po.prTitle}>
@@ -322,28 +358,28 @@ export default function BuyerFinalVerifyPage() {
                               {formatCurrency(po.grandTotal)}
                             </td>
                             <td
-                              className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                              className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/create-po?poId=${po.id}&from=buyer-verify`)}
-                                  className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0f6b7a] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                 >
                                   Edit PO
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => openModal(po)}
-                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                  className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
                                 >
                                   Verify
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/scm/po-pdf-view?poId=${po.id}&from=buyer-final-verify`)}
-                                  className="cursor-pointer rounded-xl bg-[#1E88E5] p-2 text-white hover:bg-[#1565C0]"
+                                  className="cursor-pointer rounded-xl bg-[#0f6b7a] p-2 text-white hover:bg-[#0b5361]"
                                   title="View signed PO"
                                 >
                                   <i className="ri-file-pdf-line"></i>
@@ -420,12 +456,12 @@ export default function BuyerFinalVerifyPage() {
                                                       {formatPersonRoleSuffix(item.role, item.approver)}
                                                     </p>
                                                   </div>
-                                                  <span className="shrink-0 rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-semibold text-[#1565C0]">
+                                                  <span className="shrink-0 rounded-full bg-[#e6f6f8] px-2 py-0.5 text-[10px] font-semibold text-[#0b5361]">
                                                     {item.action}
                                                   </span>
                                                 </div>
                                                 {item.remarks ? (
-                                                  <p className="mt-2 rounded-xl bg-[#F8FAFC] p-2.5 text-sm text-slate-700">{item.remarks}</p>
+                                                  <p className="mt-2 rounded-xl bg-[#f7fafb] p-2.5 text-sm text-slate-700">{item.remarks}</p>
                                                 ) : null}
                                                 <p className="mt-2 text-xs text-slate-400">{item.date}</p>
                                               </div>
@@ -437,14 +473,14 @@ export default function BuyerFinalVerifyPage() {
                                         <button
                                           type="button"
                                           onClick={() => navigate(`/scm/create-po?poId=${po.id}&from=buyer-verify`)}
-                                          className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                          className="cursor-pointer rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-[#0f6b7a] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                         >
                                           Edit PO
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => openModal(po)}
-                                          className="cursor-pointer rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0]"
+                                          className="cursor-pointer rounded-xl bg-[#0f6b7a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0b5361]"
                                         >
                                           Verify
                                         </button>
@@ -470,7 +506,7 @@ export default function BuyerFinalVerifyPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 bg-[#E3F2FD]">
+            <div className="px-6 py-4 bg-[#e6f6f8]">
               <h3 className="text-base font-bold text-[#0D47A1]">Approved PO verification</h3>
               <p className="text-xs text-gray-500 mt-0.5">
                 Email goes to the requester, approvers, and SCM team with the signed PO attached. Vendor is not copied.
@@ -480,7 +516,7 @@ export default function BuyerFinalVerifyPage() {
               <div className="bg-gray-50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-gray-500">{modal.po.poNumber}</span>
-                  <span className="text-sm font-bold text-[#1565C0]">{formatCurrency(modal.po.grandTotal)}</span>
+                  <span className="text-sm font-bold text-[#0b5361]">{formatCurrency(modal.po.grandTotal)}</span>
                 </div>
                 <p className="text-sm font-medium text-gray-800">{modal.po.prTitle}</p>
                 <p className="text-xs text-gray-500 mt-1">{modal.po.vendorName}</p>
@@ -493,7 +529,7 @@ export default function BuyerFinalVerifyPage() {
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20 focus:border-[#1E88E5]"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0f6b7a]/20 focus:border-[#0f6b7a]"
                   placeholder="Optional notes for audit trail"
                 />
               </div>
@@ -515,7 +551,7 @@ export default function BuyerFinalVerifyPage() {
                   type="button"
                   onClick={handleConfirm}
                   disabled={submitting}
-                  className="px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 bg-[#1E88E5] hover:bg-[#1565C0]"
+                  className="px-5 py-2 text-sm font-semibold text-white rounded-lg cursor-pointer disabled:opacity-50 bg-[#0f6b7a] hover:bg-[#0b5361]"
                 >
                   {submitting ? 'Processing...' : 'Verify'}
                 </button>

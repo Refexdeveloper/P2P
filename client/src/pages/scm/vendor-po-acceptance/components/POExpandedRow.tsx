@@ -156,7 +156,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                 <button
                   type="button"
                   onClick={onViewPdf}
-                  className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
+                  className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#0b5361] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)]"
                 >
                   <i className="ri-file-pdf-line mr-1"></i> Signed PO
                 </button>
@@ -167,7 +167,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                       disabled={busy}
                       onClick={onSendMail}
                       title="Email requester to upload Vendor Signed PO (CC: L1, SCM Manager, user approvers)"
-                      className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      className="cursor-pointer rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       Send Mail
                     </button>
@@ -204,7 +204,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   type="button"
                   onClick={() => setActiveTab(tab.key as typeof activeTab)}
                   className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold ${
-                    activeTab === tab.key ? 'bg-[#1E88E5] text-white' : 'bg-white text-slate-600'
+                    activeTab === tab.key ? 'bg-[#0f6b7a] text-white' : 'bg-white text-slate-600'
                   }`}
                 >
                   {tab.label}
@@ -238,7 +238,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                   {po.signedPdfPath ? (
                     <button
                       type="button"
-                      className="mt-1 text-sm font-semibold text-[#1565C0] underline"
+                      className="mt-1 text-sm font-semibold text-[#0b5361] underline"
                       onClick={() => {
                         void poApi.fetchPdfBlob(po.id).then((blob) => {
                           const url = URL.createObjectURL(blob);
@@ -326,14 +326,14 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                       {po.vendorAcceptanceFileName ? (
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <span className="inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-[#2C3E50]">
-                            <i className="ri-file-pdf-2-line shrink-0 text-[#1565C0]"></i>
+                            <i className="ri-file-pdf-2-line shrink-0 text-[#0b5361]"></i>
                             <span className="truncate">{po.vendorAcceptanceFileName}</span>
                           </span>
                           <button
                             type="button"
                             disabled={openingFile}
                             onClick={() => void openAcceptanceFile()}
-                            className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#1565C0] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] disabled:opacity-50"
+                            className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-[#0b5361] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] disabled:opacity-50"
                           >
                             {openingFile ? 'Opening…' : 'Open'}
                           </button>
@@ -341,7 +341,7 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                             type="button"
                             disabled={openingFile}
                             onClick={() => void downloadAcceptanceFile()}
-                            className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                            className="cursor-pointer rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                           >
                             Download
                           </button>

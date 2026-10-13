@@ -73,7 +73,7 @@ export default function PODocumentView({ po, onAccept, onReject, onPartial, isPe
           <i className="ri-file-pdf-line text-red-500 text-base"></i>
           <span className="font-semibold text-gray-800">Purchase Order Document</span>
           <span className="text-gray-300 mx-1">|</span>
-          <span className="text-[#1E88E5] font-semibold">{po.poNumber}</span>
+          <span className="text-[#0f6b7a] font-semibold">{po.poNumber}</span>
         </div>
         <div className="flex items-center gap-2">
           {isPending && (
@@ -222,7 +222,7 @@ export default function PODocumentView({ po, onAccept, onReject, onPartial, isPe
 
             {/* ── Delivery Address ── */}
             <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 10, padding: '12px 16px', marginBottom: 24, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              <i className="ri-map-pin-2-line text-[#1E88E5]" style={{ fontSize: 16, marginTop: 1 }}></i>
+              <i className="ri-map-pin-2-line text-[#0f6b7a]" style={{ fontSize: 16, marginTop: 1 }}></i>
               <div>
                 <div style={{ fontSize: 9, fontWeight: 700, color: '#0f766e', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 3 }}>Delivery Address</div>
                 <div style={{ fontSize: 12, color: '#374151' }}>{po.deliveryAddress}</div>

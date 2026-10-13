@@ -1,8 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import SoftInsightCard, { type InsightThemeName } from '../../../components/base/SoftInsightCard';
-import { PM_PAGE_BG } from '../../../constants/pmTheme';
+import AnimatedKpiCard from '../../../components/feature/AnimatedKpiCard';
+import { useAuth } from '../../../contexts/AuthContext';
+import '../../../styles/dashboard-fx.css';
 import { poApi } from '../../../services/api';
 import POExpandedRow, { AcceptancePo } from './components/POExpandedRow';
 
@@ -54,6 +55,7 @@ export default function VendorPOAcceptancePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isRequesterView = location.pathname.startsWith('/requester/');
+  const { user } = useAuth();
   const [rows, setRows] = useState<AcceptancePo[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('pending');
@@ -202,19 +204,55 @@ export default function VendorPOAcceptancePage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="space-y-4 p-2 pb-6 sm:p-4 lg:p-6">
-          <header className="border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:px-0 sm:pb-4">
-            <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl">
-              Vendor PO Acceptance
+      <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
+        <section className="tfx-hero">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
+            <div className="tfx-hi">
+              {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'},{' '}
+              {user?.name || 'there'} <span className="tfx-wave">👋</span>
+            </div>
+            <h1>
+              <span className="tfx-shimmer">Vendor PO Acceptance</span>
             </h1>
-            <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
+            <p className="max-w-[640px]">
               {isRequesterView
                 ? 'Record vendor acceptance after GRN and invoice upload (Work Orders appear right after final verify).'
                 : 'POs awaiting vendor acceptance — send mail to requester to upload Vendor Signed PO, or record manual acceptance.'}
             </p>
-          </header>
+          </div>
+        </section>
 
+        <section className="tfx-kpis mb-4">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+            {(
+              [
+                { key: 'pending', label: 'Pending', value: stats.pending, variant: 'pending_approval', sub: stats.pending ? 'Awaiting vendor acceptance' : 'Nothing waiting' },
+                { key: 'accepted', label: 'Accepted', value: stats.accepted, variant: 'approved', sub: 'Accepted by vendor' },
+                { key: 'rejected', label: 'Rejected', value: stats.rejected, variant: 'rejected', sub: stats.rejected ? 'Declined by vendor' : 'No rejections' },
+                { key: 'all', label: 'Total', value: stats.total, variant: 'all', sub: 'All POs in this queue' },
+              ] as const
+            ).map((c, i) => (
+              <AnimatedKpiCard
+                key={c.key}
+                title={c.label}
+                value={c.value}
+                variant={c.variant}
+                index={i}
+                total={stats.total}
+                subtitle={c.sub}
+                live={c.key === 'pending' && c.value > 0}
+                selected={filter === c.key}
+                toastText={`Showing ${c.label.toLowerCase()} POs`}
+                onClick={() => setFilter(c.key as typeof filter)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <div className="space-y-4 p-2 pb-6 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
           {toast && (
             <div
               className={`rounded-xl px-4 py-3 text-sm ${
@@ -225,28 +263,8 @@ export default function VendorPOAcceptancePage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-            {(
-              [
-                { key: 'pending', label: 'Pending', value: stats.pending, icon: 'ri-time-line', theme: 'cyan' },
-                { key: 'accepted', label: 'Accepted', value: stats.accepted, icon: 'ri-checkbox-circle-line', theme: 'green' },
-                { key: 'rejected', label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', theme: 'rose' },
-                { key: 'all', label: 'Total', value: stats.total, icon: 'ri-file-list-3-line', theme: 'blue' },
-              ] as const
-            ).map((c) => (
-              <SoftInsightCard
-                key={c.key}
-                title={c.label}
-                value={c.value}
-                icon={c.icon}
-                theme={c.theme as InsightThemeName}
-                selected={filter === c.key}
-                onClick={() => setFilter(c.key as typeof filter)}
-              />
-            ))}
-          </div>
 
-          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div className="tfx-panel relative overflow-hidden rounded-2xl border border-white/70 bg-white px-4 py-4">
             <div
               className="pointer-events-none absolute inset-0"
               style={{
@@ -261,13 +279,13 @@ export default function VendorPOAcceptancePage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search PO, vendor, PR..."
-                  className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  className="tfx-input box-border h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm outline-none"
                 />
               </div>
             </div>
           </div>
 
-          <div className="relative overflow-x-clip rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div className="tfx-panel relative overflow-x-clip rounded-2xl border border-white/70">
             <div
               className="pointer-events-none absolute inset-0"
               style={{
@@ -283,28 +301,28 @@ export default function VendorPOAcceptancePage() {
               </p>
             ) : (
               <div className="relative z-[1] overflow-x-auto px-0 pb-3 pt-1">
-                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                <table className="trk-table w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PO Number
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Vendor
                       </th>
-                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="w-[240px] max-w-[240px] bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PR
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Amount
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Mode
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Status
                       </th>
-                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Actions
                       </th>
                     </tr>
@@ -316,27 +334,27 @@ export default function VendorPOAcceptancePage() {
                         po.vendorAcceptanceStatus === 'accepted' || po.vendorAcceptanceStatus === 'partial';
                       const isExpanded = expandedId === po.id;
                       const rowBorder = isExpanded
-                        ? 'border-[#90CAF9]'
-                        : 'border-transparent group-hover:border-[#90CAF9]';
+                        ? 'border-[#a9dbe2]'
+                        : 'border-transparent group-hover:border-[#a9dbe2]';
                       const rowShadow = isExpanded
                         ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
                         : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
                       return (
                         <Fragment key={po.id}>
                           <tr className="group cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : po.id)}>
-                            <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                            <td className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]">
                               <div className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                                 <button
                                   type="button"
                                   className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
-                                    isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                    isExpanded ? 'bg-[#0f6b7a] text-white' : 'bg-[#e6f6f8] text-[#0f6b7a] hover:bg-[#c5e6eb]'
                                   }`}
                                   aria-expanded={isExpanded}
                                   aria-label={isExpanded ? 'Collapse details' : 'Expand details'}
                                 >
                                   <i className={`ri-arrow-${isExpanded ? 'down' : 'right'}-s-line text-base`}></i>
                                 </button>
-                                <span className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</span>
+                                <span className="text-sm font-bold text-[#0f6b7a]">{po.poNumber}</span>
                               </div>
                             </td>
                             <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`}>
@@ -356,13 +374,13 @@ export default function VendorPOAcceptancePage() {
                             <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 align-middle transition-[border-color] sm:py-5 ${rowBorder}`}>
                               <StatusBadge status={(po.vendorAcceptanceStatus as AcceptanceStatus) || 'pending'} />
                               {!pending && po.vendorAcceptanceFileName ? (
-                                <p className="mt-1 max-w-[140px] truncate text-[10px] text-[#1565C0]" title={po.vendorAcceptanceFileName}>
+                                <p className="mt-1 max-w-[140px] truncate text-[10px] text-[#0b5361]" title={po.vendorAcceptanceFileName}>
                                   <i className="ri-attachment-2"></i> {po.vendorAcceptanceFileName}
                                 </p>
                               ) : null}
                             </td>
                             <td
-                              className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                              className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]"
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
@@ -373,14 +391,14 @@ export default function VendorPOAcceptancePage() {
                                       disabled={busyId === po.id}
                                       onClick={() => openSendMail(po)}
                                       title="Email requester to upload Vendor Signed PO"
-                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
                                     >
                                       {busyId === po.id ? 'Sending…' : 'Send Mail'}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => openManual(po)}
-                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                     >
                                       Manual Entry
                                     </button>
@@ -441,7 +459,7 @@ export default function VendorPOAcceptancePage() {
               value={sendMailComments}
               onChange={(e) => setSendMailComments(e.target.value)}
               rows={4}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0f6b7a]/20"
               placeholder="Add instructions or notes for the requester…"
             />
 
@@ -460,7 +478,7 @@ export default function VendorPOAcceptancePage() {
                 type="button"
                 disabled={busyId === sendMailFor.id}
                 onClick={() => void handleSendMail()}
-                className="px-4 py-2 text-sm font-semibold bg-[#1E88E5] text-white rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold bg-[#0f6b7a] text-white rounded-lg disabled:opacity-50"
               >
                 {busyId === sendMailFor.id ? 'Sending…' : 'Send Mail'}
               </button>
@@ -485,7 +503,7 @@ export default function VendorPOAcceptancePage() {
                   onClick={() => setManualAction(a)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
                     manualAction === a
-                      ? 'bg-[#1E88E5] text-white'
+                      ? 'bg-[#0f6b7a] text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
@@ -499,7 +517,7 @@ export default function VendorPOAcceptancePage() {
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/20"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0f6b7a]/20"
               placeholder="Vendor confirmation notes…"
             />
 
@@ -538,7 +556,7 @@ export default function VendorPOAcceptancePage() {
                 type="button"
                 disabled={busyId === manualFor.id}
                 onClick={submitManual}
-                className="px-4 py-2 text-sm font-semibold bg-[#1E88E5] text-white rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-sm font-semibold bg-[#0f6b7a] text-white rounded-lg disabled:opacity-50"
               >
                 Save &amp; continue
               </button>
