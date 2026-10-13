@@ -672,3 +672,38 @@
 @keyframes tfx-sparkPulse { 0%,100% { r: 2.4; } 50% { r: 3.6; } }
 .tfx-kpi:hover .tfx-kpi-spark .line { animation: tfx-sparkRedraw 1s cubic-bezier(.4,0,.2,1); stroke-dashoffset: 0; }
 @keyframes tfx-sparkRedraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+/* "payments" variant (vendor payments) — amber, coin pulses on the bank icon */
+.tfx-kpi.payments { --c1: #fbbf24; --c2: #d97706; --soft: #fff6dc; --glow: rgba(217,119,6,.3); }
+.tfx-ico-pay .coin { fill: currentColor; animation: tfx-coin 2.4s ease-in-out infinite; transform-origin: 12px 8px; }
+@keyframes tfx-coin { 0%,100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(-2px); opacity: .6; } }
+/* display-only card */
+.tfx-kpi.is-static { cursor: default; }
+.tfx-trend { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; }
+.tfx-trend.up { color: #0c9f68; }
+.tfx-trend.down { color: #e5304a; }
+
+/* ---------------- Financial Insights (dashboard/page.tsx) ---------------- */
+.fi-fx .tfx-hero { min-height: 290px; }
+.fi-back {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 10px; padding: 5px 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: #0f6b7a; background: rgba(255,255,255,.8); cursor: pointer; transition: background .2s, transform .2s;
+}
+.fi-back:hover { background: #fff; transform: translateX(-2px); }
+.fi-actions { position: absolute; z-index: 3; top: 28px; right: 28px; display: flex; gap: 10px; animation: tfx-fadeUp .7s cubic-bezier(.2,.8,.2,1) .4s both; }
+.fi-actions > div { right: 0; top: 52px; }
+.fi-actions .tfx-btn { animation: none; }
+.fi-body { padding: 0 24px 24px; }
+@media (max-width: 991px) {
+  .fi-actions { position: relative; top: auto; right: auto; padding: 14px 20px 0; }
+  .fi-body { padding: 0 12px 16px; }
+}
+/* Financial Insights: hero height follows its text + a reserved strip the cards overlap into,
+   so the greeting/name/subtitle are never covered at any width. */
+.fi-fx .tfx-hero { min-height: 0; padding-bottom: 150px; }
+.fi-fx .tfx-hero-content { padding-top: 40px; }
+.fi-fx .tfx-kpis { margin-top: -118px; }
+@media (max-width: 991px) {
+  .fi-fx .tfx-hero { padding-bottom: 70px; }
+  .fi-fx .tfx-kpis { margin-top: -46px; }
+}

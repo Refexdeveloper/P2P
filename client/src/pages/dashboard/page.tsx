@@ -9,7 +9,6 @@ import BuyerInsightCharts from './components/BuyerInsightCharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { masterApi, poApi } from '../../services/api';
 import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, getUserDesignation, isDineshUser } from '../../utils/roleDisplay';
-import { PM_PAGE_BG } from '../../constants/pmTheme';
 import { parseLooseDate } from './cfoFormat';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
@@ -322,47 +321,47 @@ export default function Dashboard({
     return base;
   }, [entities, data.entityWisePOSummary, lockedEntityId, user?.entityName]);
 
+  const heroName = publicView || isDineshUser(user) ? DINESH_DISPLAY_NAME : user?.name || 'User';
+  const heroSub =
+    publicView || isDineshUser(user)
+      ? DINESH_DESIGNATION
+      : getUserDesignation(user)
+        ? `Financial Insights · ${getUserDesignation(user)}`
+        : 'Financial Insights';
+
   const content = (
-      <div className={`${embedded ? '' : '-m-3 sm:-m-4 lg:-m-6'} min-h-full px-5 py-8 font-sans text-[#0F172A] sm:px-8 lg:px-10`} style={{ background: PM_PAGE_BG }}>
-            <div className="mb-8 flex flex-wrap items-start justify-between gap-5" id="cfo-insights-top">
-          <div>
+      <div
+        className={`${publicView ? '' : 'tasks-fx'} fi-fx min-h-full font-sans text-[#0F172A]`}
+        style={publicView ? { margin: 0 } : embedded ? { marginTop: 0 } : undefined}
+      >
+        <section className="tfx-hero" id="cfo-insights-top">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
             {embedded && onBack ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#1E88E5] hover:text-[#1565C0]"
-              >
+              <button type="button" onClick={onBack} className="fi-back">
                 <i className="ri-arrow-left-line"></i>
                 {backLabel}
               </button>
             ) : null}
-            <h1 className="text-[28px] font-bold text-slate-900 tracking-tight leading-none">
-              {publicView || isDineshUser(user)
-                ? `${greetingForNow()}, ${DINESH_DISPLAY_NAME}`
-                : `${greetingForNow()}, ${user?.name || 'User'}`}
+            <div className="tfx-hi">
+              {greetingForNow()}, <span className="tfx-wave">👋</span>
+            </div>
+            <h1>
+              <span className="tfx-shimmer">{heroName}</span>
             </h1>
-            <p className="text-sm text-slate-500 mt-2">
-              {publicView || isDineshUser(user)
-                ? DINESH_DESIGNATION
-                : getUserDesignation(user)
-                  ? `Financial Insights · ${getUserDesignation(user)}`
-                  : 'Financial Insights'}
+            <p>
+              Here&apos;s your purchase order and spend overview
+              <span className="tfx-role-inline"> · {heroSub}</span>
             </p>
           </div>
-          <div className="flex items-center gap-2 relative" ref={customizeRef}>
-            <button
-              type="button"
-              onClick={handleExport}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-transparent bg-white px-4 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
-            >
+          <div className="fi-actions" ref={customizeRef}>
+            <button type="button" onClick={handleExport} className="tfx-btn secondary">
               <i className="ri-download-2-line"></i>
               Export
             </button>
-            <button
-              type="button"
-              onClick={() => setCustomizeOpen((v) => !v)}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#1E88E5] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1565C0]"
-            >
+            <button type="button" onClick={() => setCustomizeOpen((v) => !v)} className="tfx-btn primary">
               <i className="ri-settings-3-line"></i>
               Customize
             </button>
@@ -393,8 +392,28 @@ export default function Dashboard({
               </div>
             ) : null}
           </div>
-        </div>
+        </section>
 
+        {visible('kpi') ? (
+          <section className="tfx-kpis mb-5">
+            <KPIWidgets
+              kpis={kpis}
+              previousTotal={previousTotal}
+              previousMonthLabel={previousMonthLabel}
+              activeStatus={filters.poStatus}
+              onStatus={(poStatus) => {
+                setFilters((prev) => ({ ...prev, poStatus }));
+                window.requestAnimationFrame(() => {
+                  document.getElementById('cfo-purchase-orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+              }}
+            />
+          </section>
+        ) : (
+          <div className="h-6" />
+        )}
+
+        <div className="fi-body">
         <DashboardFilters
           value={filters}
           resetValue={resetValue}
@@ -411,20 +430,6 @@ export default function Dashboard({
         )}
         {loading && <p className="mb-4 text-sm text-slate-500">Loading live PO insights…</p>}
 
-        {visible('kpi') ? (
-          <KPIWidgets
-            kpis={kpis}
-            previousTotal={previousTotal}
-            previousMonthLabel={previousMonthLabel}
-            activeStatus={filters.poStatus}
-            onStatus={(poStatus) => {
-              setFilters((prev) => ({ ...prev, poStatus }));
-              window.requestAnimationFrame(() => {
-                document.getElementById('cfo-purchase-orders')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              });
-            }}
-          />
-        ) : null}
 
         {showCharts ? (
           <BuyerInsightCharts
@@ -479,10 +484,11 @@ export default function Dashboard({
         ) : null}
 
         <div className="flex items-center justify-center gap-2 text-[12px] text-slate-400 pt-2 pb-4">
-          <button type="button" onClick={() => void load()} className="hover:text-[#1E88E5]" title="Refresh">
+          <button type="button" onClick={() => void load()} className="hover:text-[#0f6b7a]" title="Refresh">
             <i className="ri-refresh-line"></i>
           </button>
           <span>{updatedLabel}</span>
+        </div>
         </div>
       </div>
   );

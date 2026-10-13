@@ -22,7 +22,8 @@ export type KpiVariant =
   | 'returned'
   | 'overdue'
   | 'draft'
-  | 'ready';
+  | 'ready'
+  | 'payments';
 
 const svg = (className: string, children: ReactNode, strokeWidth = 2) => (
   <svg
@@ -39,6 +40,15 @@ const svg = (className: string, children: ReactNode, strokeWidth = 2) => (
 );
 
 const ICONS: Record<KpiVariant, ReactNode> = {
+  payments: svg(
+    'tfx-ico-pay',
+    <>
+      <path d="M3 10.5 12 4l9 6.5" />
+      <path d="M5 10.5v7M9.5 10.5v7M14.5 10.5v7M19 10.5v7" />
+      <path d="M3 20h18" />
+      <circle className="coin" cx="12" cy="8" r="1.4" />
+    </>
+  ),
   ready: svg(
     'tfx-ico-cart',
     <>
@@ -127,6 +137,7 @@ const CLICK_FX: Record<KpiVariant, (el: HTMLElement) => void> = {
   returned: returnedFx,
   overdue: overdueFx,
   ready: (el) => confetti(el, 36),
+  payments: (el) => confetti(el, 30),
 };
 
 /** Animates 0 → target once per target change. */
@@ -161,6 +172,11 @@ export default function AnimatedKpiCard({
   selected = false,
   fallbackIcon,
   chart = 'bars',
+  displayValue,
+  percent,
+  footText,
+  toastText,
+  interactive = true,
   onClick,
 }: {
   title: string;
@@ -178,7 +194,17 @@ export default function AnimatedKpiCard({
   fallbackIcon?: string;
   /** Mini chart style: growing bars (default) or an animated sparkline. */
   chart?: 'bars' | 'spark';
-  onClick: () => void;
+  /** Preformatted value (e.g. "₹1.2 Cr") shown instead of the count-up number. */
+  displayValue?: string;
+  /** Override the share-of-total percentage. */
+  percent?: number;
+  /** Override the line under the number. */
+  footText?: ReactNode;
+  /** Toast on click; null turns it off. */
+  toastText?: string | null;
+  /** false = display-only card (no click effects). */
+  interactive?: boolean;
+  onClick?: () => void;
 }) {
   const safeValue = Number(value) || 0;
   const shown = useCountUp(safeValue);
@@ -189,13 +215,21 @@ export default function AnimatedKpiCard({
     const t = window.setTimeout(() => setEntered(true), index * 90 + 850);
     return () => window.clearTimeout(t);
   }, [index]);
-  const pct = total > 0 ? Math.min(100, Math.round((safeValue / total) * 100)) : 0;
+  const pct =
+    percent != null
+      ? Math.max(0, Math.min(100, Math.round(percent)))
+      : total > 0
+        ? Math.min(100, Math.round((safeValue / total) * 100))
+        : 0;
 
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
+    if (!interactive || !onClick) return;
     CLICK_FX[variant](e.currentTarget);
-    fxToast(`Showing ${title.toLowerCase()} requests`, variant === 'rejected' ? 'error' : 'info');
+    if (toastText !== null) {
+      fxToast(toastText ?? `Showing ${title.toLowerCase()} requests`, variant === 'rejected' ? 'error' : 'info');
+    }
     // Let the card's animation play before the page scrolls to the table.
-    window.setTimeout(onClick, variant === 'approved' || variant === 'ready' ? 0 : 750);
+    window.setTimeout(onClick, variant === 'approved' || variant === 'ready' || variant === 'payments' ? 0 : 750);
   };
 
   // 3D tilt + spotlight that follows the cursor (pointer devices only).
@@ -224,7 +258,7 @@ export default function AnimatedKpiCard({
       onMouseLeave={handleLeave}
       aria-pressed={selected}
       title={`View ${title} in table`}
-      className={`tfx-kpi ${variant}${selected ? ' selected' : ''}${entered ? ' tfx-entered' : ''}`}
+      className={`tfx-kpi ${variant}${selected ? ' selected' : ''}${entered ? ' tfx-entered' : ''}${interactive && onClick ? '' : ' is-static'}`}
       style={{ '--i': index } as CSSProperties}
     >
       <span className="tfx-kpi-shine" />
@@ -249,9 +283,15 @@ export default function AnimatedKpiCard({
       </div>
       <div className="tfx-kpi-body">
         <div>
-          <div className="tfx-kpi-num">{shown}</div>
+          <div className="tfx-kpi-num" title={displayValue ? title : undefined}>
+            {displayValue ?? shown}
+          </div>
           <div className="tfx-kpi-foot">
-            <b>{pct}%</b> of {total} total
+            {footText ?? (
+              <>
+                <b>{pct}%</b> of {total} total
+              </>
+            )}
           </div>
         </div>
         {chart === 'spark' ? (
