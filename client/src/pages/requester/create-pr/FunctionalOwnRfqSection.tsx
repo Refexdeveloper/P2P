@@ -713,7 +713,7 @@ export default function FunctionalOwnRfqSection({
               <span className="vr-badge">2</span>
               <div className="min-w-0 flex-1">
                 <h2>Compare quotes and choose the winner</h2>
-                <p>Each vendor&apos;s price is shown by round. Q1 is the first price; Q2–Q4 are revised prices after negotiation.</p>
+                <p>Each vendor&apos;s quoted price is shown here. Edit a quote, then choose the winner.</p>
               </div>
               <span className="vr-count">
                 {quotedCount} of {rows.length} quotes entered
@@ -726,16 +726,7 @@ export default function FunctionalOwnRfqSection({
                 </span>
                 <div>
                   <b>Edit</b>
-                  <small>Change the price or file for the selected round.</small>
-                </div>
-              </div>
-              <div className="vr-tip amber">
-                <span className="vr-tip-ic">
-                  <i className="ri-refresh-line" />
-                </span>
-                <div>
-                  <b>Re-quote</b>
-                  <small>Vendor sent a revised price? This adds the next round (up to Q4).</small>
+                  <small>Change the price or quotation file.</small>
                 </div>
               </div>
               <div className="vr-tip green">
@@ -749,36 +740,26 @@ export default function FunctionalOwnRfqSection({
               </div>
               <div className="vr-tip red">
                 <span className="vr-tip-ic">
-                  <i className="ri-close-line" />
+                  <i className="ri-delete-bin-line" />
                 </span>
                 <div>
-                  <b>× on a round tab</b>
-                  <small>Deletes only that round. Vendors stay.</small>
+                  <b>Remove</b>
+                  <small>Takes that vendor off this quotation.</small>
                 </div>
               </div>
             </div>
           </div>
-          <RfqVendorQuoteTable
+            <RfqVendorQuoteTable
             rows={comparisonRows}
             currency={moneyCode}
+            singleQuote
             recommendedId={
               recommendedKey
                 ? comparisonRows.find((r) => r.id === recommendedKey)?.invitationId ?? null
                 : null
             }
             quotedCount={quotedCount}
-            maxRounds={visibleRounds}
-            roundCeiling={4}
             preferredTab={focusTab}
-            onNextRound={(next) => {
-              const capped = Math.min(4, Math.max(1, Number(next) || 1));
-              if (capped > visibleRounds) {
-                onMaxRoundsChange(capped);
-                onChange(rows.map((r) => ({ ...r, quotes: syncQuotes(r.quotes, capped) })));
-              }
-              setFocusTab(capped);
-            }}
-            onRemoveRound={removeRound}
             onEdit={(tableRow, targetRound) => {
               const row = rows.find((r) => r.key === tableRow.id);
               if (!row) return;
@@ -828,18 +809,6 @@ export default function FunctionalOwnRfqSection({
                 onRecommendedChange?.({ key: null, justification: '' });
               }
             }}
-            onSendBack={(tableRow) => {
-              const row = rows.find((r) => r.key === tableRow.id);
-              if (!row) return;
-              const next = nextRequoteRound(row);
-              if (next > 4) {
-                showToast('All four rounds are already in use. Edit the latest round to update it.');
-                openQuote(row, 4);
-                return;
-              }
-              openQuote(row, next);
-              showToast(`Round Q${next} added. Enter the re-quote for ${row.name}.`);
-            }}
           />
         </div>
       )}
@@ -861,49 +830,10 @@ export default function FunctionalOwnRfqSection({
             </div>
 
             <div className="flex-1 space-y-5 overflow-y-auto p-5">
-              {/* Round */}
-              <section>
-                <p className="vr-sec-title">
-                  <span>1</span> Which quote is this?
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {editingQuotes.map((q) => (
-                    <button
-                      key={q.round}
-                      type="button"
-                      onClick={() => setQuoteRound(q.round)}
-                      className={`vr-round${quoteRound === q.round ? ' is-active' : ''}`}
-                    >
-                      <b>Round {q.round}</b>
-                      <small>{q.round === 1 ? 'First quote' : 'Revised price'}</small>
-                    </button>
-                  ))}
-                  {quoteRound > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const r = quoteRound;
-                        removeRound(r);
-                        closeQuote();
-                      }}
-                      className="vr-btn sm danger ml-auto"
-                    >
-                      <i className="ri-delete-bin-line" />
-                      Delete round {quoteRound} only
-                    </button>
-                  )}
-                </div>
-                <p className="vr-help">
-                  {quoteRound === 1
-                    ? 'Round 1 is the vendor’s first price. Use Re-quote in the table later if they send a revised price.'
-                    : `Round ${quoteRound} is a revised price after negotiation. Leave it empty if the vendor did not revise.`}
-                </p>
-              </section>
-
               {/* File */}
               <section>
                 <p className="vr-sec-title">
-                  <span>2</span> Quotation file {quoteRound === 1 ? <em>Required</em> : <em className="opt">Optional</em>}
+                  <span>1</span> Quotation file <em>Required</em>
                 </p>
                 {(() => {
                   const locals = localQuoteFiles(editingQuote);
@@ -1024,7 +954,7 @@ export default function FunctionalOwnRfqSection({
               {/* Price */}
               <section>
                 <p className="vr-sec-title">
-                  <span>3</span> Price details
+                  <span>2</span> Price details
                 </p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
@@ -1216,8 +1146,11 @@ export default function FunctionalOwnRfqSection({
           );
           const id = master ? String(master.id) : vendor.id || `manual-${Date.now()}`;
           const existing = rows.find((r) => r.vendorId === id || r.name.toLowerCase() === vendor.name.toLowerCase());
-          const targetRound = existing ? nextRequoteRound(existing) : 1;
-          const nextVisible = Math.min(4, Math.max(visibleRounds, targetRound));
+          const filledRounds = (existing?.quotes || [])
+            .filter((q) => Number(q.quotedPrice) > 0)
+            .map((q) => q.round);
+          const targetRound = filledRounds.length ? Math.max(...filledRounds) : 1;
+          const nextVisible = Math.max(visibleRounds, targetRound, 1);
           onMaxRoundsChange(nextVisible);
           setFocusTab(nextVisible);
           const nextQuotes = syncQuotes(existing?.quotes || emptyQuotes(nextVisible), nextVisible).map((q) =>

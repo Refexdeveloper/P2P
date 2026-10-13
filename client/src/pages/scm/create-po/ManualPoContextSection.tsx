@@ -774,8 +774,7 @@ export default function ManualPoContextSection({
             <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Vendor comparison</p>
             <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Switch tabs, tap <strong>Edit</strong> to fill the round, then <strong>Choose</strong> a vendor.
-              Fill <strong>Q1</strong> first — tap <strong>Next round</strong> to add and show <strong>Q2</strong>.
+              Tap <strong>Edit</strong> to fill the quote, then <strong>Choose</strong> a vendor.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -815,6 +814,7 @@ export default function ManualPoContextSection({
                 : null
             }
             quotedCount={quotedCount}
+            singleQuote
             preferredTab={preferredTab}
             onEdit={(row, targetRound) => openEdit(row.id, targetRound)}
             onChoose={(row) => {
@@ -822,17 +822,6 @@ export default function ManualPoContextSection({
               setRecommendedVendor(row.id);
             }}
             onRemove={(row) => removeVendor(row.id)}
-            onSendBack={(row) => {
-              const vendor = pivoted.find((v) => v.vendorKey === row.id);
-              const latest = vendor
-                ? Array.from(vendor.quotesByRound.keys()).reduce((m, n) => Math.max(m, n), 0)
-                : 0;
-              const next = latest + 1;
-              if (next > 20) return;
-              addNextRound(next);
-              openEdit(row.id, next);
-            }}
-            onNextRound={(nextRound) => addNextRound(nextRound)}
             onViewFile={(row) => void openQuoteFile(row)}
           />
         )}
@@ -857,7 +846,7 @@ export default function ManualPoContextSection({
                   Edit quote — {editingQuote.vendorName || 'Vendor'}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  Round Q{editTarget.roundNum} — upload quotation and enter price ({currencySymbol})
+                  Upload the quotation and enter the price ({currencySymbol})
                 </p>
               </div>
               <button

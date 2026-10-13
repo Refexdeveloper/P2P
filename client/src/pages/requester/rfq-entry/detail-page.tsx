@@ -2145,8 +2145,12 @@ export default function RfqEntryDetailPage() {
     }
 
     if (row.hasActiveQuote || existingRound > 0 || row.status === 'submitted') {
-      void beginNextQuoteRound(row);
-      return;
+      const quote = quoteForRound(row, existingRound) || getDisplayQuote(row);
+      if (quote) {
+        startEditExistingQuote(row, quote);
+        setQuotePopupId(row.invitationId);
+        return;
+      }
     }
 
     const quote = getDisplayQuote(row);
@@ -2543,15 +2547,6 @@ export default function RfqEntryDetailPage() {
                     See each vendor’s price side by side, then go back to pick a winner.
                   </p>
                 </div>
-                {comparison && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#E3F2FD] border border-[#90CAF9] text-xs font-semibold text-[#1565C0]">
-                    <i className="ri-refresh-line"></i>
-                    Total Rounds:{' '}
-                    {comparison.maxRounds != null && comparison.maxRounds > 0
-                      ? `${comparison.totalRounds || 1} of ${comparison.maxRounds}`
-                      : comparison.totalRounds || 1}
-                  </span>
-                )}
               </div>
               {comparisonLoading ? (
                 <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
@@ -2560,6 +2555,7 @@ export default function RfqEntryDetailPage() {
               ) : comparison ? (
                 <VendorComparisonMatrix
                   data={comparison}
+                  latestOnly
                   selectedVendorId={recommendedId}
                   onPreviewFile={(submissionId, _vendorName, fileName) => {
                     void openFilePreview(submissionId, fileName);
@@ -2580,9 +2576,7 @@ export default function RfqEntryDetailPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Step 2 &amp; 3</p>
                   <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
                   <p className="text-sm text-gray-500 mt-1">
-                    Tap <strong>Edit</strong> to fill the current round. Use vendor <strong>Re-quote</strong> for the
-                    next quote round, or header <strong>Send Back</strong> to return the PR to a previous workflow
-                    step. Then <strong>Choose</strong> a vendor.
+                    Tap <strong>Edit</strong> to fill the quote, then <strong>Choose</strong> a vendor.
                   </p>
                 </div>
                 <div className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
@@ -2600,14 +2594,13 @@ export default function RfqEntryDetailPage() {
                 removingId={removingId}
                 resendingId={resendingId}
                 preferredTab={preferredTab}
+                singleQuote
                 onEdit={(row, targetRound) => openQuotePopup(row as TableRow, targetRound)}
                 onChoose={(row) =>
                   row.hasActiveQuote && openRecommendModal(row.invitationId, row.vendorName)
                 }
                 onRemove={(row) => handleRemoveVendor(row as TableRow)}
                 onResend={(row) => handleResendMail(row as TableRow)}
-                onSendBack={(row) => askBeforeRequote(row as TableRow)}
-                onNextRound={(nextRound) => setPreferredTab(nextRound)}
                 onViewFile={(row) => {
                   const extraId = Number(row.quotationExtraFileId) || 0;
                   const submissionId =
@@ -2649,7 +2642,6 @@ export default function RfqEntryDetailPage() {
                     (row.status === 'invited' || row.status === 'sent_back');
                   const isRecommended =
                     Number(recommendedId) === Number(row.invitationId) || Boolean(row.isRecommended);
-                  const displayRound = editingRoundById[row.invitationId] || row.round;
                   const statusLabel = awaitingManualEntry
                     ? 'Your turn — type quote'
                     : awaitingVendorEmail && !quoteFieldsEditable
@@ -2671,9 +2663,6 @@ export default function RfqEntryDetailPage() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <h3 className="text-base font-bold text-gray-900 truncate">Edit quote — {row.vendorName}</h3>
-                              <span className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-[11px] font-semibold text-gray-600">
-                                Round {displayRound}
-                              </span>
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
                                   awaitingManualEntry
@@ -3389,15 +3378,7 @@ export default function RfqEntryDetailPage() {
               <p className="text-sm text-gray-600 mt-1">{quoteAsk.row.vendorName}</p>
             </div>
             <div className="p-5 space-y-3 text-sm text-gray-700">
-              <p>
-                Q{quoteAsk.existingRound} is already saved. Do not create a new round unless you need a
-                re-quote.
-              </p>
-              <p className="text-xs text-gray-500">
-                {quoteAsk.source === 'requote'
-                  ? `Re-quote will start Q${quoteAsk.targetRound}. To change the current price, edit Q${quoteAsk.existingRound}.`
-                  : `Q${quoteAsk.targetRound} is empty. Edit the existing Q${quoteAsk.existingRound} quote, or start a new re-quote round.`}
-              </p>
+              <p>This quote is already saved. Edit it to change the price or file.</p>
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-2">
               <button
@@ -3418,18 +3399,7 @@ export default function RfqEntryDetailPage() {
                 }}
                 className="rounded-lg bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1565C0]"
               >
-                Edit existing Q{quoteAsk.existingRound}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const row = quoteAsk.row;
-                  setQuoteAsk(null);
-                  void beginNextQuoteRound(row);
-                }}
-                className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
-              >
-                Create new round
+                Edit quote
               </button>
             </div>
           </div>

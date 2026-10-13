@@ -81,6 +81,8 @@ interface Props {
   onNextRound?: (nextRound: number) => void;
   /** Delete a quotation round (Q2+) for all vendors — does NOT remove the vendor */
   onRemoveRound?: (round: number) => void;
+  /** One price per vendor. Hides round tabs, Next round, Re-quote, and reduction columns. */
+  singleQuote?: boolean;
   removingId?: number | null;
   resendingId?: number | null;
   preferredTab?: number | null;
@@ -212,6 +214,7 @@ export default function RfqVendorQuoteTable({
   onViewFile,
   onNextRound,
   onRemoveRound,
+  singleQuote = false,
   removingId,
   resendingId,
   preferredTab,
@@ -310,8 +313,9 @@ export default function RfqVendorQuoteTable({
   const quotedInTab =
     activeTab === 'all' ? quotedCount : stats.filter((s) => s.prices[Number(activeTab) - 1] != null).length;
 
-  const tabLabel =
-    activeTab === 'all'
+  const tabLabel = singleQuote
+    ? 'Tap Edit to fill the quote, then Choose a vendor.'
+    : activeTab === 'all'
       ? 'All rounds — Q1 vs latest price'
       : `Round Q${activeTab} — tap Edit to fill this round`;
 
@@ -329,10 +333,13 @@ export default function RfqVendorQuoteTable({
           </div>
         </div>
         <span className="rounded-full bg-[#E3F2FD] px-3 py-1 text-xs font-semibold text-[#1E88E5]">
-          {quotedInTab} of {rows.length} {activeTab === 'all' ? 'quoted' : `quoted in Q${activeTab}`}
+          {singleQuote
+            ? `${quotedCount} of ${rows.length} quoted`
+            : `${quotedInTab} of ${rows.length} ${activeTab === 'all' ? 'quoted' : `quoted in Q${activeTab}`}`}
         </span>
       </div>
 
+      {!singleQuote && (
       <div className="relative z-[1] overflow-x-auto border-b border-slate-100/80 px-5 pb-0 pt-3 sm:px-6">
         <div className="flex items-center gap-1.5 min-w-max">
           {Array.from({ length: roundCount }, (_, i) => i + 1).map((r) => {
@@ -401,28 +408,39 @@ export default function RfqVendorQuoteTable({
           )}
         </div>
       </div>
+      )}
 
       <div className="relative z-[1] overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="bg-[#F8FBFF]">
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vendor</th>
-              {visibleRounds.map((r) => (
-                <th
-                  key={r}
-                  className={`px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider ${roundStyle(r).header} ${
-                    activeTab === r ? 'bg-white' : ''
-                  }`}
-                >
-                  Q{r} Price
+              {singleQuote ? (
+                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#1E88E5]">
+                  Price
                 </th>
-              ))}
+              ) : (
+                visibleRounds.map((r) => (
+                  <th
+                    key={r}
+                    className={`px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider ${roundStyle(r).header} ${
+                      activeTab === r ? 'bg-white' : ''
+                    }`}
+                  >
+                    Q{r} Price
+                  </th>
+                ))
+              )}
+              {!singleQuote && (
+                <>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Reduction ({moneySym})
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Reduction %
               </th>
+                </>
+              )}
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 Progress Bar
               </th>
@@ -435,17 +453,20 @@ export default function RfqVendorQuoteTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {stats.map(({ row, prices, q1, latest, latestRound, focusPrice, reduction, reductionPct }) => {
+            {stats.map(({ row, prices, latest, latestRound, focusPrice, reduction, reductionPct }) => {
               const isRecommended = Number(recommendedId) === Number(row.invitationId) || Boolean(row.isRecommended);
               const awaitingManual = row.inviteMode === 'manual' && !row.hasActiveQuote;
               const awaitingEmail =
                 row.inviteMode !== 'manual' &&
                 !row.hasActiveQuote &&
                 (row.status === 'invited' || row.status === 'sent_back');
-              const tabRound = activeTab === 'all' ? null : Number(activeTab);
+              const tabRound = singleQuote ? null : activeTab === 'all' ? null : Number(activeTab);
               const hasTabQuote = tabRound ? prices[tabRound - 1] != null : row.hasActiveQuote;
-              const barValue = tabRound ? focusPrice : latest;
-              const fileFocusRound = tabRound || latestRound || Number(row.round) || 1;
+              const shownPrice = singleQuote ? (latest > 0 ? latest : null) : tabRound ? focusPrice : latest;
+              const barValue = shownPrice;
+              const fileFocusRound = singleQuote
+                ? latestRound || Number(row.round) || 1
+                : tabRound || latestRound || Number(row.round) || 1;
               const fileMeta = fileMetaForRow(row, fileFocusRound);
               const quoteFiles = filesForRow(row, fileFocusRound);
               const canPreviewFile = (file: RfqQuoteTableFile) =>
@@ -460,7 +481,8 @@ export default function RfqVendorQuoteTable({
                   <td className="px-5 py-3.5">
                     <p className="text-sm font-semibold text-gray-900">{row.vendorName}</p>
                     <div className="flex flex-wrap items-center gap-1 mt-1">
-                      {prices.map((p, i) =>
+                      {!singleQuote &&
+                        prices.map((p, i) =>
                         p != null && visibleRounds.includes(i + 1) ? (
                           <span key={i} className={`px-1.5 py-0.5 rounded text-xs font-bold ${roundStyle(i + 1).badge}`}>
                             Q{i + 1}
@@ -481,7 +503,16 @@ export default function RfqVendorQuoteTable({
                       )}
                     </div>
                   </td>
-                  {visibleRounds.map((r) => {
+                  {singleQuote ? (
+                    <td className="px-4 py-3.5 text-right">
+                      {latest > 0 ? (
+                        <span className="text-sm font-semibold text-gray-900">{formatCurrency(latest)}</span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </td>
+                  ) : (
+                    visibleRounds.map((r) => {
                     const p = prices[r - 1];
                     return (
                       <td key={r} className={`px-4 py-3.5 text-right ${activeTab === r ? 'bg-white' : ''}`}>
@@ -492,7 +523,10 @@ export default function RfqVendorQuoteTable({
                         )}
                       </td>
                     );
-                  })}
+                  })
+                  )}
+                  {!singleQuote && (
+                    <>
                   <td className="px-4 py-3.5 text-right">
                     {(activeTab === 'all' ? latestRound >= 2 : Number(activeTab) >= 2 && focusPrice != null) && reduction !== 0 ? (
                       <span className={`text-sm font-bold ${reduction > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -518,6 +552,8 @@ export default function RfqVendorQuoteTable({
                       <span className="text-xs text-gray-400">{focusPrice != null ? 'No change' : 'No quote yet'}</span>
                     )}
                   </td>
+                    </>
+                  )}
                   <td className="px-5 py-3.5 min-w-[140px]">
                     <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                       <div
@@ -589,7 +625,12 @@ export default function RfqVendorQuoteTable({
                         type="button"
                         onClick={() => {
                           if (quoteEditLocked) return;
-                          onEdit(row, activeTab === 'all' ? undefined : Number(activeTab));
+                          const editRound = singleQuote
+                            ? latestRound || Number(row.round) || 1
+                            : activeTab === 'all'
+                              ? undefined
+                              : Number(activeTab);
+                          onEdit(row, editRound);
                         }}
                         disabled={quoteEditLocked}
                         title={
@@ -626,7 +667,7 @@ export default function RfqVendorQuoteTable({
                           {resendingId === row.invitationId ? '…' : 'Resend'}
                         </button>
                       )}
-                      {row.canSendBack && onSendBack && !isFinalized && (
+                      {row.canSendBack && onSendBack && !isFinalized && !singleQuote && (
                         <button
                           type="button"
                           onClick={() => onSendBack(row)}

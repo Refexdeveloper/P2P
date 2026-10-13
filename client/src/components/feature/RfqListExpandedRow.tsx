@@ -513,6 +513,7 @@ export default function RfqListExpandedRow({
                 <div className="min-w-0 w-full max-w-full space-y-4 rounded-2xl bg-[#F5F7FA] p-3 sm:rounded-[18px] sm:p-4">
                   <VendorComparisonMatrix
                     data={comparison}
+                    latestOnly
                     compact
                     onPreviewFile={(submissionId, vendorName, fileName) => {
                       void handlePreviewFile(submissionId, vendorName, fileName);

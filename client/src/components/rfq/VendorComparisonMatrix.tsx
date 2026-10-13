@@ -105,6 +105,8 @@ interface Props {
   /** Manual Create PO — required to Preview GCS quotation files (submissionId is 0) */
   poId?: number | null;
   compact?: boolean;
+  /** Show only each vendor’s latest quote. Older quotation rounds stay hidden. */
+  latestOnly?: boolean;
 }
 
 function revisionLabel(round: number) {
@@ -338,6 +340,7 @@ export default function VendorComparisonMatrix({
   onPreviewFile,
   poId,
   compact = false,
+  latestOnly = false,
 }: Props) {
   const { pr, vendors, parameters, recommendedVendorId } = data;
   const activeVendorId = selectedVendorId ?? recommendedVendorId;
@@ -414,8 +417,9 @@ export default function VendorComparisonMatrix({
     if (byRound.size === 0) return;
 
     const latestRound = Math.max(...byRound.keys());
-    // Only real quotation rounds for this vendor (e.g. Rev 00 + Rev 01 after Send Back)
-    const vendorRoundNums = [...byRound.keys()].sort((a, b) => a - b);
+    const vendorRoundNums = latestOnly
+      ? [latestRound]
+      : [...byRound.keys()].sort((a, b) => a - b);
 
     for (const roundNum of vendorRoundNums) {
       const r = byRound.get(roundNum)!;
@@ -425,7 +429,7 @@ export default function VendorComparisonMatrix({
         vendorName: vendor.name,
         vendorIndex,
         round: roundNum,
-        revisionLabel: revisionLabel(roundNum),
+        revisionLabel: latestOnly ? '' : revisionLabel(roundNum),
         isRecommended: vendor.isRecommended,
         isLatest: roundNum === latestRound,
         values: (r.values || {}) as Record<string, unknown>,
@@ -669,10 +673,12 @@ export default function VendorComparisonMatrix({
             </div>
 
             <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+              {!latestOnly && (
               <div className="min-w-[88px] flex-1 sm:flex-none rounded-xl bg-[#eef8fa] border border-[#d7eef2] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Latest quote</p>
                 <p className="text-xl sm:text-2xl font-bold text-[#0f172a] mt-0.5 leading-none">{revisionLabel(Math.max(1, totalRounds))}</p>
               </div>
+              )}
               <div className="min-w-[100px] flex-1 sm:flex-none rounded-xl bg-[#e6f6f8] border border-[#c5e6eb] px-3 sm:px-4 py-3">
                 <p className="text-[11px] font-medium text-[#64748B]">Date</p>
                 <p className="text-base sm:text-lg font-bold text-[#0f172a] mt-0.5 leading-tight">{statementDate}</p>
@@ -823,9 +829,11 @@ export default function VendorComparisonMatrix({
                       }`}
                     >
                       <div className="min-w-0">
+                        {col.revisionLabel ? (
                         <p className="text-[11px] font-semibold uppercase tracking-wide opacity-90">
                           {col.revisionLabel}
                         </p>
+                        ) : null}
                         <p className="text-sm font-bold break-words leading-snug mt-0.5">{col.vendorName}</p>
                       </div>
                       <div className="flex flex-wrap gap-1 justify-end">
@@ -1015,7 +1023,7 @@ export default function VendorComparisonMatrix({
                           }`}
                         >
                           <span className="inline-flex flex-col items-center gap-1">
-                            <span>{col.revisionLabel}</span>
+                            {col.revisionLabel ? <span>{col.revisionLabel}</span> : null}
                             {isRecRev && (
                               <span className="vcm-rec-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white text-[#0f6b7a] text-[10px] font-bold uppercase tracking-wide">
                                 <i className="ri-checkbox-circle-fill text-[10px]"></i>
@@ -1422,7 +1430,9 @@ export default function VendorComparisonMatrix({
                         <span className="truncate max-w-[200px]" title={col.vendorName}>
                           {col.vendorName}
                         </span>
+                        {col.revisionLabel ? (
                         <span className="text-[10px] font-semibold opacity-90">{col.revisionLabel}</span>
+                        ) : null}
                       </span>
                     </th>
                   ))}

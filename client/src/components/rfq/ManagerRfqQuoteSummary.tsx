@@ -302,7 +302,6 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
             <p className="text-[11px] font-bold tracking-wider uppercase">Recommended quotation — line items</p>
             <p className="text-sm font-semibold mt-0.5 opacity-95">
               {data.recommendedVendorName || recommended?.name || 'Recommended vendor'}
-              {recommendedRound ? ` · Quote ${recommendedRound}` : ''}
             </p>
           </div>
           {renderQuoteLinesTable(recLines, recommendedQuotedTotal, true)}
@@ -314,123 +313,19 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
         .map((vendor) => {
           const lines = quoteLinesForVendor(vendor);
           if (!lines.length) return null;
-          const lastRound = Math.max(1, ...(vendor.rounds || []).map((r) => Number(r.round) || 1));
           return (
             <section key={`vendor-lines-${vendor.id}`} className="rounded-xl overflow-hidden border border-slate-200">
               <div className="px-4 py-3 bg-slate-700 text-white">
                 <p className="text-[11px] font-bold tracking-wider uppercase">Vendor quotation — line items</p>
                 <p className="text-sm font-semibold mt-0.5 opacity-95">
-                  {vendor.name} · Quote {lastRound}
+                  {vendor.name}
                 </p>
               </div>
               {renderQuoteLinesTable(lines, vendorLatestPrice(vendor), false)}
             </section>
           );
         })}
-
-      {vendors.length > 0 ? (
-        <section className="rounded-xl overflow-hidden border border-[#90CAF9]">
-          <div className="px-4 py-3 bg-[#E3F2FD] border-b border-[#90CAF9] flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-[15px] font-extrabold text-[#0D47A1]">Price Negotiation Trend</h2>
-              <p className="text-xs text-[#1565C0] mt-0.5">How prices changed across quotation rounds.</p>
-            </div>
-            <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#E3F2FD] text-[#1565C0] text-[11px] font-bold">
-              Total Rounds: {roundsLabel}
-            </span>
-          </div>
-          <div className="overflow-x-auto bg-white">
-            <table className="w-full text-sm min-w-[520px]">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    Vendor
-                  </th>
-                  {Array.from({ length: totalRounds }, (_, i) => (
-                    <th
-                      key={`round-h-${i}`}
-                      className="px-3 py-2.5 text-center text-[10px] font-bold uppercase tracking-wide text-[#1565C0]"
-                    >
-                      Quotation Round {i + 1}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vendors.map((vendor) => {
-                  const rounds = [...(vendor.rounds || [])].sort((a, b) => a.round - b.round);
-                  const last = rounds[rounds.length - 1];
-                  const lastPrice = last ? roundQuotedPrice(last) : vendorLatestPrice(vendor);
-                  return (
-                    <tr key={`trend-${vendor.id}`} className="border-t border-slate-100">
-                      <td
-                        className={`px-3 py-3 align-top ${vendor.isRecommended ? 'bg-emerald-50' : ''}`}
-                      >
-                        <p className="text-sm font-bold text-slate-900">{vendor.name}</p>
-                        {vendor.isRecommended ? (
-                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
-                            ★ Recommended
-                          </span>
-                        ) : null}
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          {rounds.length} round{rounds.length === 1 ? '' : 's'}
-                        </p>
-                        <p className="text-[11px] text-slate-500">Last: {lastPrice ? money(lastPrice) : '—'}</p>
-                      </td>
-                      {Array.from({ length: totalRounds }, (_, i) => {
-                        const roundNum = i + 1;
-                        const use = rounds.find((r) => Number(r.round) === roundNum) || null;
-                        if (!use) {
-                          return (
-                            <td key={`${vendor.id}-r${roundNum}`} className="px-3 py-3 text-center text-slate-300">
-                              —
-                            </td>
-                          );
-                        }
-                        const price = roundQuotedPrice(use);
-                        const prev = rounds.find((r) => Number(r.round) === roundNum - 1);
-                        const prevPrice = prev ? roundQuotedPrice(prev) : 0;
-                        const change = prev && prevPrice ? price - prevPrice : 0;
-                        const changePct = prev && prevPrice ? ((change / prevPrice) * 100).toFixed(1) : null;
-                        const isLast = use === last;
-                        return (
-                          <td
-                            key={`${vendor.id}-r${roundNum}`}
-                            className={`px-3 py-3 text-center align-top ${isLast ? 'bg-[#E3F2FD]/70' : ''}`}
-                          >
-                            <p className="text-[10px] font-bold uppercase text-slate-400">Price</p>
-                            <p className={`text-sm font-extrabold mt-0.5 ${isLast ? 'text-[#1565C0]' : 'text-slate-900'}`}>
-                              {price ? money(price) : '—'}
-                            </p>
-                            {changePct != null ? (
-                              <p
-                                className={`text-[11px] font-bold mt-0.5 ${
-                                  change < 0 ? 'text-emerald-600' : 'text-red-600'
-                                }`}
-                              >
-                                {change < 0 ? '▼' : '▲'} {Math.abs(Number(changePct))}%
-                              </p>
-                            ) : null}
-                            <div className="mt-2">
-                              {fileActions(allQuotationFilesForRound(use), vendor.name)}
-                            </div>
-                            {use.submittedAt ? (
-                              <p className="text-[10px] text-slate-400 mt-1">{formatDisplayDateTime(use.submittedAt)}</p>
-                            ) : null}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500">
-            Quotation files for each round can be viewed or downloaded above.
-          </p>
-        </section>
-      ) : null}
+    </div>
 
       {vendors.length > 0 ? (
         <section className="rounded-xl overflow-hidden border border-slate-200">
@@ -503,35 +398,39 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
         <section className="rounded-xl overflow-hidden border border-indigo-200">
           <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-200">
             <h2 className="text-[15px] font-extrabold text-indigo-950">Quotation Files</h2>
-            <p className="text-xs text-indigo-700 mt-0.5">PDFs / images for each vendor quotation round</p>
+            <p className="text-xs text-indigo-700 mt-0.5">Quotation file for each vendor</p>
           </div>
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-white">
-            {vendors.flatMap((vendor) =>
-              (vendor.rounds || [])
-                .filter(
-                  (r) =>
-                    r.quotationFileName ||
-                    r.hasQuotationFile ||
-                    (r.quotationFiles?.length ?? 0) > 0
+            {vendors.flatMap((vendor) => {
+              const rounds = [...(vendor.rounds || [])].sort((a, b) => a.round - b.round);
+              const latest = rounds[rounds.length - 1];
+              if (
+                !latest ||
+                !(
+                  latest.quotationFileName ||
+                  latest.hasQuotationFile ||
+                  (latest.quotationFiles?.length ?? 0) > 0
                 )
-                .map((round) => (
-                  <div
-                    key={`file-${vendor.id}-${round.round}`}
-                    className={`rounded-xl border p-3 ${
-                      vendor.isRecommended ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <p className="text-xs font-bold text-slate-800 truncate" title={vendor.name}>
-                      {vendor.name}
-                      {vendor.isRecommended ? (
-                        <span className="ml-1 text-[10px] font-semibold text-emerald-700">Recommended</span>
-                      ) : null}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mb-2">Quote {round.round}</p>
-                    {fileActions(allQuotationFilesForRound(round), vendor.name)}
-                  </div>
-                ))
-            )}
+              ) {
+                return [];
+              }
+              return [
+                <div
+                  key={`file-${vendor.id}`}
+                  className={`rounded-xl border p-3 ${
+                    vendor.isRecommended ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-bold text-slate-800 truncate mb-2" title={vendor.name}>
+                    {vendor.name}
+                    {vendor.isRecommended ? (
+                      <span className="ml-1 text-[10px] font-semibold text-emerald-700">Recommended</span>
+                    ) : null}
+                  </p>
+                  {fileActions(allQuotationFilesForRound(latest), vendor.name)}
+                </div>,
+              ];
+            })}
           </div>
         </section>
       ) : null}
