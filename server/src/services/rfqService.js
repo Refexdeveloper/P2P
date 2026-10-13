@@ -3305,7 +3305,7 @@ export async function listPostRfqPending(user) {
          FROM purchase_requests pr
          LEFT JOIN departments d ON d.id = pr.department_id
          LEFT JOIN users u ON u.id = pr.requester_id
-         LEFT JOIN entities e ON e.id = pr.entity_id
+         LEFT JOIN entity_masters e ON e.id = pr.entity_id
          WHERE pr.id IN (${idPh})`,
         candidateIds
       ),
