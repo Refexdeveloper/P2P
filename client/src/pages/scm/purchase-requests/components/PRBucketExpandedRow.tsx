@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
 import { poApi, prApi, rfqApi, VendorComparisonData } from '../../../../services/api';
+import '../../../../styles/dashboard-fx.css';
+import '../../../../styles/po-workspace.css';
 
 interface LineItem {
   id?: number;
@@ -155,21 +157,58 @@ function extractPaymentTermsFromPo(po: Record<string, unknown> | null | undefine
   );
 }
 
-const softDetailCard =
-  'relative min-w-0 overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-4';
+const softDetailCard = 'xfx-card-soft relative min-w-0 overflow-hidden';
 
 const softDetailWash = {
   background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+    'radial-gradient(120% 90% at 100% 0%, rgba(23, 162, 180, 0.08) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
-function SoftDetailField({ label, value }: { label: string; value?: string | null }) {
+/** Colour family for a detail field's icon tile, picked from its label. */
+function fieldTone(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('priority')) return 'red';
+  if (l.includes('department') || l === 'requester') return 'orange';
+  if (l.includes('vendor email') || l.includes('document no')) return 'teal';
+  if (l.includes('vendor') || l.includes('request type')) return 'violet';
+  if (l.includes('template') || l.includes('category') || l.includes('required date')) return 'green';
+  return 'blue';
+}
+
+/** Icon for a detail field, picked from its label. */
+function fieldIcon(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('vendor email') || l.includes('email')) return 'ri-mail-line';
+  if (l.includes('vendor')) return 'ri-store-2-line';
+  if (l.includes('document no') || l.includes('po no')) return 'ri-hashtag';
+  if (l.includes('document type') || l.includes('template')) return 'ri-file-copy-2-line';
+  if (l.includes('created by') || l.includes('requester') || l.includes('cancelled by')) return 'ri-user-3-line';
+  if (l.includes('entity')) return 'ri-building-2-line';
+  if (l.includes('department')) return 'ri-team-line';
+  if (l.includes('request type')) return 'ri-price-tag-3-line';
+  if (l.includes('category')) return 'ri-folder-3-line';
+  if (l.includes('project')) return 'ri-briefcase-4-line';
+  if (l.includes('priority')) return 'ri-flag-2-line';
+  if (l.includes('date') || l.includes('submitted') || l.includes('cancelled at')) return 'ri-calendar-event-line';
+  if (l.includes('payment')) return 'ri-bank-card-line';
+  if (l.includes('amount') || l.includes('total')) return 'ri-money-rupee-circle-line';
+  if (l.includes('status')) return 'ri-pulse-line';
+  if (l.includes('poc') || l.includes('manager')) return 'ri-contacts-line';
+  if (l.includes('gst')) return 'ri-government-line';
+  if (l.includes('address')) return 'ri-map-pin-line';
+  if (l.includes('reference')) return 'ri-links-line';
+  return 'ri-information-line';
+}
+
+function SoftDetailField({ label, value, index = 0 }: { label: string; value?: string | null; index?: number }) {
   return (
-    <div className={softDetailCard}>
-      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
-      <div className="relative z-[1]">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
-        <div className="mt-1.5 break-words text-sm font-semibold text-[#2C3E50]">{value?.trim() ? value : '—'}</div>
+    <div className={`xfx-field tone-${fieldTone(label)}`} style={{ '--i': index } as CSSProperties}>
+      <span className="xfx-field-ic">
+        <i className={fieldIcon(label)} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="xfx-label">{label}</p>
+        <div className="xfx-value">{value?.trim() ? value : '—'}</div>
       </div>
     </div>
   );
@@ -188,20 +227,14 @@ function HighlightInfoCard({
   tone: 'entity' | 'address' | 'notes';
   className?: string;
 }) {
-  const iconStyles =
-    tone === 'address' || tone === 'entity'
-      ? 'bg-[#E3F2FD] text-[#1E88E5]'
-      : 'bg-amber-50 text-amber-600';
-
   return (
-    <div className={`${softDetailCard} flex min-h-[120px] gap-3 ${className}`}>
-      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
-      <div className={`relative z-[1] flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconStyles}`}>
-        <i className={`${icon} text-lg`}></i>
-      </div>
-      <div className="relative z-[1] min-w-0 flex-1">
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
-        <p className="break-words text-sm font-semibold leading-relaxed whitespace-pre-wrap text-[#2C3E50]">
+    <div className={`xfx-hl tone-${tone} ${className}`}>
+      <span className="xfx-hl-ic">
+        <i className={icon} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="xfx-label">{label}</p>
+        <p className="xfx-content mt-1.5 break-words whitespace-pre-wrap">
           {value?.trim() ? value : '—'}
         </p>
       </div>
@@ -633,7 +666,7 @@ export default function PRBucketExpandedRow({
     { key: 'vendors' as const, label: 'Vendor Comparison', icon: 'ri-table-line' },
     {
       key: 'history' as const,
-      label: `Approval History${pr?.approvalHistory?.length ? ` (${pr.approvalHistory.length})` : ''}`,
+      label: 'Approval History',
       icon: 'ri-history-line',
     },
     ...(poId
@@ -658,33 +691,56 @@ export default function PRBucketExpandedRow({
             maxWidth: panelWidth ? `${panelWidth}px` : undefined,
           }}
         >
-          <div className="box-border w-full max-w-full overflow-x-hidden px-2 py-2 sm:px-3 sm:py-3">
-            <div className="relative box-border w-full max-w-full overflow-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-            }}
-          />
-          <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-5">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-[#2C3E50]" title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}>
-                <span className="text-[#1E88E5]">
+          <div className="box-border w-full max-w-full overflow-x-hidden px-0 pb-2 pt-0.5">
+            <div className="xfx-card relative box-border w-full max-w-full overflow-hidden">
+          <div className="xfx-top relative">
+          <div className="xfx-art" aria-hidden="true" />
+          <div className="xfx-head relative z-[1] flex flex-wrap items-start justify-between gap-3 px-4 pb-3 pt-5 sm:px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-3.5">
+              <span className="xfx-head-ic">
+                <i className="ri-file-text-line" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <span className="xfx-docno">
                   {poSummary?.poNumber || poNumber || pr?.prNumber || (prId > 0 ? `PR #${prId}` : 'Document')}
                 </span>
-                {pr?.title ? ` — ${pr.title}` : title ? ` — ${title}` : ''}
-              </p>
-              <p className="text-xs text-slate-500">
-                {isManualDoc ? 'Expanded WO / PO view (no PR)' : 'Expanded PR view'}
-              </p>
+                <p
+                  className="xfx-title mt-2 truncate font-bold text-slate-900"
+                  title={pr ? `${pr.prNumber} — ${pr.title}` : undefined}
+                >
+                  {pr?.title || title || ''}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {isManualDoc ? 'Expanded WO / PO view (no PR)' : `Expanded PR view${pr?.prNumber ? ` · ${pr.prNumber}` : ''}`}
+                </p>
+                {pr && (
+                  <div className="xfx-stats">
+                    {[
+                      { label: 'Amount', value: formatCurrency(pr.totalAmount), icon: 'ri-money-rupee-circle-line' },
+                      { label: 'Line Items', value: String(pr.lineItems.length), icon: 'ri-list-check-2' },
+                      { label: 'Vendor', value: poSummary?.vendorName || comparison?.recommendedVendorName || '—', icon: 'ri-store-2-line' },
+                      { label: 'Required By', value: pr.requiredDate || '—', icon: 'ri-calendar-event-line' },
+                    ].map((st, i) => (
+                      <div key={st.label} className="xfx-stat" style={{ '--i': i } as CSSProperties} title={st.value}>
+                        <span className="xfx-stat-ic">
+                          <i className={st.icon} aria-hidden />
+                        </span>
+                        <div className="min-w-0">
+                          <small>{st.label}</small>
+                          <b>{st.value}</b>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex max-w-full flex-shrink-0 flex-wrap items-center gap-2">
               {showCreatePo && (
                 <button
                   type="button"
                   onClick={onCreatePo}
-                  className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                  className="po-act solid"
                 >
                   Create PO
                 </button>
@@ -693,48 +749,51 @@ export default function PRBucketExpandedRow({
                 <button
                   type="button"
                   onClick={onEditPo}
-                  className="cursor-pointer rounded-xl bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                  className="xfx-hbtn"
                 >
+                  <i className="ri-edit-line mr-1.5" aria-hidden />
                   {String(statusRaw).toLowerCase() === 'draft' ||
                   String(statusLabel).toLowerCase() === 'draft'
                     ? 'Edit Draft'
                     : 'Edit'}
                 </button>
               ) : null}
-              <span className="whitespace-nowrap rounded-lg bg-[#E3F2FD] px-2.5 py-1 text-xs font-semibold text-[#1E88E5]">
+              <span className="xfx-hbtn status">
+                <i className="xfx-live" aria-hidden />
                 {pr?.statusUI || statusLabel}
               </span>
             </div>
           </div>
 
-          <div className="relative z-[1] flex flex-wrap gap-x-1 border-b border-slate-100/80 px-2 sm:px-3">
+          <div className="relative z-[1] px-4 pb-4 sm:px-6">
+          <div className="xfx-tabs inline-flex max-w-full flex-wrap gap-1">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className={`flex flex-shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors sm:px-4 ${
-                  tab === t.key
-                    ? 'border-[#1E88E5] text-[#1E88E5]'
-                    : 'border-transparent text-slate-500 hover:text-[#2C3E50]'
-                }`}
+                className={`tfx-tab xfx-tab${tab === t.key ? ' is-active' : ''}`}
               >
                 <i className={t.icon}></i>
                 {t.label}
-                {t.key === 'items' && pr ? ` (${pr.lineItems.length})` : ''}
-                {t.key === 'vendors' && comparison ? ` (${comparison.vendorCount})` : ''}
+                {t.key === 'items' && pr ? <span className="tfx-cnt">{pr.lineItems.length}</span> : null}
+                {t.key === 'vendors' && comparison ? <span className="tfx-cnt">{comparison.vendorCount}</span> : null}
+                {t.key === 'history' && pr?.approvalHistory?.length ? (
+                  <span className="tfx-cnt">{pr.approvalHistory.length}</span>
+                ) : null}
               </button>
             ))}
           </div>
+          </div>
+          </div>
 
           <div
-            className={`relative z-[1] max-w-full overflow-visible p-4 sm:p-5 ${
-              tab === 'details' ? 'bg-[#F5F7FA]' : ''
-            }`}
+            key={tab}
+            className="xfx-body relative z-[1] max-w-full overflow-visible p-4 sm:p-5"
           >
             {loading && (
               <div className="py-8 text-center text-sm text-slate-500">
-                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
+                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#0f6b7a]"></i>
                 Loading details...
               </div>
             )}
@@ -750,12 +809,12 @@ export default function PRBucketExpandedRow({
                       pr.entityCode && pr.entityName
                         ? `${pr.entityCode} — ${pr.entityName}`
                         : pr.entityName || pr.entityCode || '';
-                    const entityValue = poSummary?.entity?.trim() || prEntity || '';
+                    const entityValue = prEntity || poSummary?.entity?.trim() || '';
                     return entityValue ? (
                       <HighlightInfoCard
                         label={poSummary?.entity?.trim() ? 'Entity / Location' : 'PR Entity'}
                         value={entityValue}
-                        icon="ri-building-2-line"
+                        icon="ri-file-text-line"
                         tone="entity"
                       />
                     ) : null;
@@ -792,8 +851,8 @@ export default function PRBucketExpandedRow({
                       ['Submitted', pr.submittedDate || '—'],
                       ['Total Amount', formatCurrency(pr.totalAmount)],
                       ['Status', pr.statusUI],
-                    ].map(([label, value]) => (
-                      <SoftDetailField key={label} label={label} value={value} />
+                    ].map(([label, value], i) => (
+                      <SoftDetailField key={label} label={label} value={value} index={i} />
                     ))}
                   </div>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -825,13 +884,23 @@ export default function PRBucketExpandedRow({
                     tone="notes"
                     className="min-h-[120px]"
                   />
-                  <div>
-                    <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                      Business Justification
-                    </h4>
-                    <div className={softDetailCard}>
-                      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
-                      <p className="relative z-[1] min-h-[80px] break-words whitespace-pre-wrap text-sm leading-relaxed text-[#2C3E50]">
+                  <div className="xfx-desc">
+                    <div className="xfx-desc-side">
+                      <span className="xfx-desc-ic">
+                        <i className="ri-file-text-line" aria-hidden />
+                      </span>
+                      <div>
+                        <p className="text-[15px] font-bold text-slate-900">Business Justification</p>
+                        <p className="mt-0.5 text-[13px] leading-snug text-slate-500">
+                          Why this purchase request was raised
+                        </p>
+                      </div>
+                    </div>
+                    <div className="xfx-desc-body">
+                      <span className="xfx-desc-doc">
+                        <i className="ri-file-text-fill" aria-hidden />
+                      </span>
+                      <p className="min-w-0 break-words whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                         {pr.justification || 'No justification provided.'}
                       </p>
                     </div>
@@ -846,7 +915,7 @@ export default function PRBucketExpandedRow({
                     <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
                       <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
                       <p className="relative z-[1] break-words text-sm text-[#2C3E50]">
-                        <i className="ri-star-fill mr-1 text-[#1E88E5]"></i>
+                        <i className="ri-star-fill mr-1 text-[#f39a1f]"></i>
                         Recommended vendor: <strong>{comparison.recommendedVendorName}</strong>
                       </p>
                     </div>
@@ -866,8 +935,8 @@ export default function PRBucketExpandedRow({
                   {pr.lineItems.length === 0 ? (
                     <p className="text-sm text-gray-500 py-6 text-center">No line items found</p>
                   ) : (
-                    <table className="w-full min-w-[640px] text-sm">
-                      <thead className="border-b border-slate-100 bg-[#F8FBFF]">
+                    <table className="xfx-items w-full min-w-[640px] text-sm">
+                      <thead>
                         <tr>
                           <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 w-10">#</th>
                           <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Description</th>
@@ -879,7 +948,7 @@ export default function PRBucketExpandedRow({
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {pr.lineItems.map((item, idx) => (
-                          <tr key={item.id ?? idx} className="hover:bg-[#E3F2FD]/35">
+                          <tr key={item.id ?? idx} style={{ '--i': idx } as CSSProperties}>
                             <td className="px-3 py-2.5 text-gray-500">{idx + 1}</td>
                             <td className="px-3 py-2.5 font-medium text-gray-900 break-words">{item.description || '—'}</td>
                             <td className="px-3 py-2.5 text-gray-700 truncate" title={item.category || undefined}>
@@ -896,11 +965,11 @@ export default function PRBucketExpandedRow({
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr className="border-t border-slate-100 bg-[#F8FBFF]">
-                          <td colSpan={5} className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        <tr className="xfx-total">
+                          <td colSpan={5} className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.12em]">
                             Grand Total
                           </td>
-                          <td className="px-3 py-2.5 text-right text-sm font-bold text-[#1E88E5] tabular-nums whitespace-nowrap">
+                          <td className="px-3 py-3 text-right text-base font-extrabold tabular-nums whitespace-nowrap">
                             {formatCurrency(pr.totalAmount)}
                           </td>
                         </tr>
@@ -935,7 +1004,7 @@ export default function PRBucketExpandedRow({
                     <iframe
                       title="Document PDF"
                       src={currentPdfUrl}
-                      className="w-full h-[640px] rounded-xl border border-transparent shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] bg-white"
+                      className="xfx-pdf w-full h-[640px] bg-white"
                     />
                   ) : (
                     <p className="text-sm text-gray-500 py-8 text-center">PDF is not available for this document.</p>
@@ -1000,7 +1069,7 @@ export default function PRBucketExpandedRow({
                           <iframe
                             title="Reference PO PDF"
                             src={referencePdfUrl}
-                            className="w-full h-[640px] rounded-xl border border-transparent shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] bg-white"
+                            className="xfx-pdf w-full h-[640px] bg-white"
                           />
                         ) : (
                           <p className="text-sm text-gray-500">Could not load the reference PO PDF.</p>

@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { poApi, rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
 import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
-import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
 import { useAuth } from '../../../contexts/AuthContext';
 import FinancialInsightsDashboard from '../../dashboard/page';
+import '../../../styles/dashboard-fx.css';
+import AnimatedKpiCard, { type KpiVariant } from '../../../components/feature/AnimatedKpiCard';
 
 type DashTask = {
   id: string;
@@ -16,21 +17,6 @@ type DashTask = {
   title: string;
   path: string;
 };
-
-const softWash = {
-  background:
-    'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-} as const;
-
-const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
-
-const KPI_THEMES = [
-  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)' },
-  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)' },
-  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)' },
-  { value: '#8B5CF6', iconBg: '#EDE9FE', wash: 'rgba(139, 92, 246, 0.14)' },
-] as const;
 
 function greetingForNow() {
   const h = new Date().getHours();
@@ -157,9 +143,9 @@ export default function SCMPurchaseRequestsPage() {
       label: 'RFQ Approval',
       value: rfqCardCount,
       sub: rfqGoPo.length ? `${rfqGoPo.length} ready for Go PO` : 'Waiting for SCM Manager',
-      icon: 'ri-bar-chart-box-line',
+      icon: 'ri-file-list-3-line',
       to: '/rfq-approval',
-      theme: KPI_THEMES[0],
+      variant: 'all' as KpiVariant,
     },
     {
       label: 'Create PO',
@@ -167,7 +153,7 @@ export default function SCMPurchaseRequestsPage() {
       sub: 'Pending Create PO tasks',
       icon: 'ri-shopping-cart-2-line',
       to: '/scm/create-po',
-      theme: KPI_THEMES[1],
+      variant: 'ready' as KpiVariant,
     },
     {
       label: 'Approved PO verification',
@@ -175,17 +161,18 @@ export default function SCMPurchaseRequestsPage() {
       sub: 'Pending verification only',
       icon: 'ri-shield-check-line',
       to: '/scm/buyer-final-verify',
-      theme: KPI_THEMES[2],
+      variant: 'approved' as KpiVariant,
     },
     {
       label: 'Vendor Acceptance',
       value: acceptanceTasks.length,
       sub: 'Pending vendor acceptance only',
-      icon: 'ri-handshake-line',
+      icon: 'ri-team-line',
       to: '/scm/vendor-po-acceptance',
-      theme: KPI_THEMES[3],
+      variant: 'pending_approval' as KpiVariant,
     },
   ];
+  const kpiTotal = kpiCards.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
 
   const queuePanels: Array<{
     title: string;
@@ -194,6 +181,9 @@ export default function SCMPurchaseRequestsPage() {
     empty: string;
     tasks: DashTask[];
     badge: string;
+    tone: string;
+    icon: string;
+    art: string;
   }> = [
     {
       title: 'Create PO',
@@ -202,6 +192,9 @@ export default function SCMPurchaseRequestsPage() {
       empty: 'No pending Create PO tasks',
       tasks: createPoTasks,
       badge: 'Create PO',
+      tone: 'green',
+      icon: 'ri-shopping-cart-2-line',
+      art: 'ri-file-list-3-line',
     },
     {
       title: 'Approved PO verification',
@@ -210,6 +203,9 @@ export default function SCMPurchaseRequestsPage() {
       empty: 'No pending final verify tasks',
       tasks: verifyTasks,
       badge: 'Verify',
+      tone: 'orange',
+      icon: 'ri-shield-check-line',
+      art: 'ri-clipboard-line',
     },
     {
       title: 'Vendor Acceptance',
@@ -218,6 +214,9 @@ export default function SCMPurchaseRequestsPage() {
       empty: 'No pending vendor acceptance',
       tasks: acceptanceTasks,
       badge: 'Acceptance',
+      tone: 'violet',
+      icon: 'ri-team-line',
+      art: 'ri-shake-hands-line',
     },
   ];
 
@@ -236,90 +235,60 @@ export default function SCMPurchaseRequestsPage() {
 
   return (
     <DashboardLayout>
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="p-2 pb-6 sm:p-4 lg:p-6">
-          <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-              <div className="min-w-0 shrink text-center lg:text-left">
-                <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
-                  {greetingForNow()},{' '}
-                  <span className="font-semibold text-slate-900">{user?.name || 'Buyer'}</span>
-                </h1>
-                <p className="mt-0.5 text-[11px] font-medium text-slate-500 lg:text-sm">
-                  SCM Buyer Dashboard — RFQ Approval, Create PO, Verify & Vendor Acceptance
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowDetailedView(true)}
-                  className={PM_BTN_PRIMARY}
-                >
-                  <i className="ri-bar-chart-box-line"></i>
-                  Detailed view
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/rfq-approval')}
-                  className={PM_BTN_SECONDARY}
-                >
-                  <i className="ri-file-list-3-line"></i>
-                  RFQ Approval
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('/scm/create-po')}
-                  className={PM_BTN_PRIMARY}
-                >
-                  <i className="ri-shopping-cart-2-line"></i>
-                  Create PO
-                </button>
-              </div>
+      <div className="tasks-fx sbr-fx min-h-full font-sans text-[#0F172A]">
+        <section className="tfx-hero">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
+            <div className="tfx-hi">
+              {greetingForNow()}, <span className="tfx-wave">👋</span>
             </div>
-          </header>
+            <h1>
+              <span className="tfx-shimmer">{user?.name || 'Buyer'}</span>
+            </h1>
+            <p>
+              Manage RFQs, create POs, verify and track vendor acceptance
+              <span className="tfx-role-inline"> · SCM Buyer</span>
+            </p>
+          </div>
+        </section>
 
-          <section className="mb-6">
-            <div className="mb-1.5 px-0.5 sm:mb-3">
-              <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-base">Work Insights</h2>
-            </div>
-            <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-              {kpiCards.map((card) => (
-                <button
-                  key={card.label}
-                  type="button"
-                  onClick={() => navigate(card.to)}
-                  className="group relative box-border flex h-full min-h-[128px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border border-transparent bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:border-[#90CAF9] hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[140px] sm:rounded-[18px] sm:p-5"
-                >
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      background: `radial-gradient(120% 90% at 100% 0%, ${card.theme.wash} 0%, rgba(255,255,255,0) 55%)`,
-                    }}
-                  />
-                  <div className="relative z-[1] flex flex-1 items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
-                        {card.label}
-                      </p>
-                      <p
-                        className="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:mt-3 sm:text-[2.15rem]"
-                        style={{ color: card.theme.value }}
-                      >
-                        {card.value}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">{card.sub}</p>
-                    </div>
-                    <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11"
-                      style={{ backgroundColor: card.theme.iconBg, color: card.theme.value }}
-                    >
-                      <i className={`${card.icon} text-lg sm:text-xl`} aria-hidden />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+        <section className="tfx-kpis mb-4">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+            {kpiCards.map((card, i) => (
+              <AnimatedKpiCard
+                key={card.label}
+                title={card.label}
+                value={card.value}
+                variant={card.variant}
+                index={i}
+                total={kpiTotal}
+                subtitle={card.sub}
+                live={card.value > 0}
+                fallbackIcon={card.icon}
+                toastText={`Opening ${card.label}`}
+                onClick={() => navigate(card.to)}
+              />
+            ))}
+          </div>
+        </section>
+
+        <div className="p-2 pb-4 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <button type="button" onClick={() => setShowDetailedView(true)} className="tfx-btn primary">
+              <i className="ri-bar-chart-box-line text-lg"></i>
+              <span>Detailed view</span>
+            </button>
+            <button type="button" onClick={() => navigate('/rfq-approval')} className="tfx-btn secondary">
+              <i className="ri-file-list-3-line text-lg"></i>
+              <span>RFQ Approval</span>
+            </button>
+            <button type="button" onClick={() => navigate('/scm/create-po')} className="tfx-btn secondary">
+              <i className="ri-shopping-cart-2-line text-lg"></i>
+              <span>Create PO</span>
+            </button>
+          </div>
 
           {goPoError && (
             <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">
@@ -327,41 +296,48 @@ export default function SCMPurchaseRequestsPage() {
             </div>
           )}
 
-          {/* RFQ Approval table */}
-          <div className={`${softCard} mb-5`}>
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-4 sm:px-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                  <i className="ri-bar-chart-box-line text-lg"></i>
+          {/* RFQ Approval — same panel + row-card table as the requester dashboard */}
+          <section className="tfx-panel relative mb-5 overflow-hidden rounded-2xl border border-white/70 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+              <div className="flex items-center gap-3.5 pb-1">
+                <div className="tfx-panel-ic flex h-12 w-12 items-center justify-center rounded-xl">
+                  <i className="ri-file-list-3-line text-lg sm:text-xl" aria-hidden />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-[#2C3E50] sm:text-base">RFQ Approval</h2>
-                  <p className="text-xs text-slate-500">
+                  <h2 className="tfx-panel-title text-lg font-semibold text-slate-900">RFQ Approval</h2>
+                  <p className="mt-1.5 text-sm text-slate-500">
                     Go PO finalizes RFQ. Own vendor goes to Create PO; SCM vendor waits for manager here.
                   </p>
                 </div>
               </div>
-              <Link
-                to="/rfq-approval"
-                className="text-xs font-semibold text-[#1E88E5] transition-colors hover:text-[#1565C0]"
-              >
-                Open queue →
+              <Link to="/rfq-approval" className="tfx-btn secondary sm">
+                Open queue <i className="ri-arrow-right-line" aria-hidden />
               </Link>
             </div>
 
             {rfqGoPo.length === 0 && rfqPendingOnly.length === 0 ? (
-              <p className="relative z-[1] px-5 py-10 text-center text-sm text-slate-400">No RFQ approval tasks</p>
+              <div className="px-5 pb-10 pt-4 text-center text-sm text-slate-400">
+                <i className="ri-file-list-3-line mb-2 block text-4xl text-[#c5e6eb]" aria-hidden />
+                No RFQ approval tasks
+              </div>
             ) : (
-              <div className="relative z-[1] overflow-x-auto px-2 pb-3 pt-1 sm:px-3 sm:pb-4">
-                <table className="w-full min-w-0 border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+              <div className="overflow-x-auto px-4 pb-4 pt-1">
+                <table className="rfx-table w-full min-w-[920px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2.5">
+                  <colgroup>
+                    <col className="w-[19%]" />
+                    <col className="w-[24%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[19%]" />
+                  </colgroup>
                   <thead>
                     <tr>
-                      {['PR Number', 'Title', 'Vendor', 'Requester', 'Amount', 'Status', 'Actions'].map((h) => (
+                      {['PR Number', 'Title', 'Vendor', 'Requester', 'Amount', 'Actions'].map((h) => (
                         <th
                           key={h}
-                          className={`whitespace-nowrap px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
-                            h === 'Actions' ? 'text-right' : ''
+                          className={`tfx-th px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 first:pl-5 last:pr-5 ${
+                            h === 'Amount' || h === 'Actions' ? 'text-right' : 'text-left'
                           }`}
                         >
                           {h}
@@ -370,42 +346,39 @@ export default function SCMPurchaseRequestsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rfqGoPo.map((item) => (
-                      <tr key={`gopo-${item.prId}`} className="group">
-                        <td className="whitespace-nowrap rounded-l-2xl border border-r-0 border-transparent bg-white px-3 py-4 text-sm font-bold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] group-hover:border-[#90CAF9] sm:rounded-l-[18px] sm:py-5">
-                          {item.prNumber}
+                    {rfqGoPo.map((item, rowIndex) => (
+                      <tr key={`gopo-${item.prId}`} className="rfx-row tone-teal" style={{ '--r': rowIndex } as CSSProperties}>
+                        <td className="pl-5 pr-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="rfx-ticon">
+                              <i className="ri-file-text-line" aria-hidden />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="rfx-prno truncate">{item.prNumber}</p>
+                              <span className="mt-1 inline-flex rounded-md bg-[#e6f6f8] px-1.5 text-[11px] font-semibold text-[#0f6b7a]">
+                                Ready for Go PO
+                              </span>
+                            </div>
+                          </div>
                         </td>
-                        <td className="max-w-[240px] truncate border border-x-0 border-transparent bg-white px-3 py-4 font-semibold text-[#2C3E50] transition-[border-color] group-hover:border-[#90CAF9] sm:py-5" title={item.title}>
-                          {item.title}
+                        <td className="px-3" title={item.title}>
+                          <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
                         </td>
-                        <td className="max-w-[180px] truncate border border-x-0 border-transparent bg-white px-3 py-4 text-slate-600 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          {item.recommendedVendor || '—'}
-                        </td>
-                        <td className="truncate border border-x-0 border-transparent bg-white px-3 py-4 text-slate-600 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          {item.requester}
-                        </td>
-                        <td className="whitespace-nowrap border border-x-0 border-transparent bg-white px-3 py-4 font-bold tabular-nums text-[#2C3E50] transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
+                        <td className="truncate px-3 text-sm text-slate-600">{item.recommendedVendor || '—'}</td>
+                        <td className="truncate px-3 text-sm text-slate-600">{item.requester}</td>
+                        <td className="px-3 text-right text-sm font-bold tabular-nums text-slate-900">
                           ₹{Number(item.totalAmount || 0).toLocaleString('en-IN')}
                         </td>
-                        <td className="border border-x-0 border-transparent bg-white px-3 py-4 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          <span className="inline-flex rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-semibold text-[#1E88E5]">
-                            Ready for Go PO
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap rounded-r-2xl border border-l-0 border-transparent bg-white px-3 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] group-hover:border-[#90CAF9] sm:rounded-r-[18px] sm:py-5">
-                          <div className="flex flex-wrap items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => navigate(rfqEntryPath(item.prId))}
-                              className="cursor-pointer rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
-                            >
-                              Open RFQ
+                        <td className="pl-3 pr-5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button type="button" onClick={() => navigate(rfqEntryPath(item.prId))} className="rfx-act" title="Open RFQ">
+                              <i className="ri-eye-line" />
                             </button>
                             <button
                               type="button"
                               onClick={() => void handleGoPo(item)}
                               disabled={goPoPrId === item.prId}
-                              className="cursor-pointer rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0] disabled:opacity-50"
+                              className="tfx-btn primary sm"
                             >
                               {goPoPrId === item.prId ? 'Go PO…' : 'Go PO'}
                             </button>
@@ -413,34 +386,39 @@ export default function SCMPurchaseRequestsPage() {
                         </td>
                       </tr>
                     ))}
-                    {rfqPendingOnly.map((item) => (
-                      <tr key={`mgr-${item.prId}`} className="group">
-                        <td className="whitespace-nowrap rounded-l-2xl border border-r-0 border-transparent bg-white px-3 py-4 text-sm font-bold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] group-hover:border-[#90CAF9] sm:rounded-l-[18px] sm:py-5">
-                          {item.prNumber || `PR #${item.prId}`}
+                    {rfqPendingOnly.map((item, rowIndex) => (
+                      <tr
+                        key={`mgr-${item.prId}`}
+                        className="rfx-row tone-orange"
+                        style={{ '--r': rfqGoPo.length + rowIndex } as CSSProperties}
+                      >
+                        <td className="pl-5 pr-3">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="rfx-ticon">
+                              <i className="ri-file-text-line" aria-hidden />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="rfx-prno truncate">{item.prNumber || `PR #${item.prId}`}</p>
+                              <span className="mt-1 inline-flex rounded-md bg-amber-50 px-1.5 text-[11px] font-semibold text-amber-700">
+                                Pending Manager
+                              </span>
+                            </div>
+                          </div>
                         </td>
-                        <td className="max-w-[240px] truncate border border-x-0 border-transparent bg-white px-3 py-4 font-semibold text-[#2C3E50] transition-[border-color] group-hover:border-[#90CAF9] sm:py-5" title={item.title}>
-                          {item.title}
+                        <td className="px-3" title={item.title}>
+                          <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
                         </td>
-                        <td className="max-w-[180px] truncate border border-x-0 border-transparent bg-white px-3 py-4 text-slate-600 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          {item.recommendedVendor || '—'}
-                        </td>
-                        <td className="truncate border border-x-0 border-transparent bg-white px-3 py-4 text-slate-600 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          {item.requester}
-                        </td>
-                        <td className="whitespace-nowrap border border-x-0 border-transparent bg-white px-3 py-4 font-bold tabular-nums text-[#2C3E50] transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
+                        <td className="truncate px-3 text-sm text-slate-600">{item.recommendedVendor || '—'}</td>
+                        <td className="truncate px-3 text-sm text-slate-600">{item.requester}</td>
+                        <td className="px-3 text-right text-sm font-bold tabular-nums text-slate-900">
                           ₹{Number(item.totalAmount || 0).toLocaleString('en-IN')}
                         </td>
-                        <td className="border border-x-0 border-transparent bg-white px-3 py-4 transition-[border-color] group-hover:border-[#90CAF9] sm:py-5">
-                          <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-                            Pending Manager
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap rounded-r-2xl border border-l-0 border-transparent bg-white px-3 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[border-color] group-hover:border-[#90CAF9] sm:rounded-r-[18px] sm:py-5">
+                        <td className="pl-3 pr-5">
                           <div className="flex justify-end">
                             <button
                               type="button"
                               onClick={() => navigate(`/rfq-approval/${item.prId}?from=rfq-approval`)}
-                              className="cursor-pointer rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1565C0]"
+                              className="tfx-btn primary sm"
                             >
                               View
                             </button>
@@ -452,49 +430,63 @@ export default function SCMPurchaseRequestsPage() {
                 </table>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Queue panels */}
-          <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
+          {/* Queue panels — same panel language as the requester "My Tasks" list */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
             {queuePanels.map((panel) => (
-              <div key={panel.title} className={softCard}>
-                <div className="pointer-events-none absolute inset-0" style={softWash} />
-                <div className="relative z-[1] flex items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-5">
-                  <div>
-                    <h2 className="text-sm font-semibold text-[#2C3E50]">{panel.title}</h2>
-                    <p className="text-xs text-slate-500">{panel.subtitle}</p>
+              <section key={panel.title} className="tfx-panel relative overflow-hidden rounded-2xl border border-white/70 bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3.5">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="tfx-panel-ic flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                      <i className={`${panel.icon} text-lg`} aria-hidden />
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="tfx-panel-title truncate text-base font-semibold text-slate-900">{panel.title}</h2>
+                      <p className="mt-1.5 truncate text-xs text-slate-500">{panel.subtitle}</p>
+                    </div>
                   </div>
-                  <Link
-                    to={panel.to}
-                    className="shrink-0 text-xs font-semibold text-[#1E88E5] hover:text-[#1565C0]"
-                  >
-                    Open →
-                  </Link>
+                  <span className="rounded-full bg-[#e6f6f8] px-2.5 py-1 text-xs font-semibold text-[#0f6b7a]">
+                    {panel.tasks.length}
+                  </span>
                 </div>
-                <div className="relative z-[1] max-h-[360px] space-y-2 overflow-y-auto p-3">
+                <div className="max-h-[360px] overflow-y-auto">
                   {panel.tasks.length === 0 ? (
-                    <p className="px-2 py-8 text-center text-sm text-slate-400">{panel.empty}</p>
+                    <div className="px-4 py-10 text-center text-sm text-slate-400">
+                      <i className="ri-checkbox-circle-line mb-2 block text-3xl text-[#c5e6eb]" aria-hidden />
+                      {panel.empty}
+                    </div>
                   ) : (
-                    panel.tasks.map((task) => (
-                      <button
-                        key={task.id}
-                        type="button"
-                        onClick={() => navigate(task.path)}
-                        className="relative flex w-full cursor-pointer items-center justify-between gap-3 overflow-hidden rounded-2xl border border-transparent bg-white px-3.5 py-3 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-[border-color] hover:border-[#90CAF9] sm:rounded-[18px]"
-                      >
-                        <div className="pointer-events-none absolute inset-0" style={softWash} />
-                        <div className="relative z-[1] min-w-0">
-                          <p className="truncate text-sm font-bold text-[#1E88E5]">{task.number}</p>
-                          <p className="truncate text-xs text-slate-500">{task.title}</p>
-                        </div>
-                        <span className="relative z-[1] shrink-0 rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-semibold text-[#1E88E5]">
-                          {panel.badge}
-                        </span>
-                      </button>
-                    ))
+                    <div className="divide-y divide-slate-100">
+                      {panel.tasks.map((task, rowIndex) => (
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => navigate(task.path)}
+                          style={{ '--r': rowIndex } as CSSProperties}
+                          className="tfx-list-row flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gradient-to-r hover:from-[#e6f6f8]/60 hover:to-transparent"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
+                              <i className="ri-file-edit-line" aria-hidden />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-[#0f6b7a]">{task.number}</p>
+                              <p className="truncate text-xs text-slate-500">{task.title}</p>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-[#e6f6f8] px-2 py-0.5 text-[11px] font-semibold text-[#0f6b7a]">
+                            {panel.badge}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
+                <Link to={panel.to} className="flex items-center justify-center gap-1.5 border-t border-slate-100 py-2.5 text-xs font-semibold text-[#0f6b7a] hover:bg-[#f3fafc]">
+                  Open {panel.title} <i className="ri-arrow-right-line" aria-hidden />
+                </Link>
+              </section>
             ))}
           </div>
         </div>

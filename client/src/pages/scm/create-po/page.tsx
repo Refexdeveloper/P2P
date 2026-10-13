@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { useAuth } from '../../../contexts/AuthContext';
+import { getRoleHomePath, useAuth } from '../../../contexts/AuthContext';
+import '../../../styles/dashboard-fx.css';
+import '../../../styles/po-workspace.css';
 import RichTextEditor from '../../../components/base/RichTextEditor';
 import AddableSelect from '../../../components/base/AddableSelect';
 import {
@@ -40,12 +42,15 @@ import ManualPoContextSection, {
 } from './ManualPoContextSection';
 import {
   consumePoCsvImport,
+  downloadPoImportSampleCsv,
   type PoCsvImportPayload,
 } from '../../../utils/poCsvImport';
 import LineItemImportExport from '../../../components/feature/LineItemImportExport';
 import { stripHtml, type LineItemCsvRow } from '../../../utils/lineItemCsv';
 import { parseLineItemSpreadsheet } from '../../../utils/lineItemExcel';
-import PurchaseRequestsPanel from '../purchase-requests/components/PurchaseRequestsPanel';
+import PurchaseRequestsPanel, {
+  type PurchaseRequestsPanelHandle,
+} from '../purchase-requests/components/PurchaseRequestsPanel';
 import SearchCreateField from '../../requester/create-pr/SearchCreateField';
 import DepartmentCombobox from '../../requester/create-pr/DepartmentCombobox';
 import ProjectCombobox from '../../requester/create-pr/ProjectCombobox';
@@ -1215,6 +1220,7 @@ export default function CreatePOPage() {
   poTermsDetailsRef.current = poTermsDetails;
   const createdPoIdRef = useRef<number | null>(null);
   createdPoIdRef.current = createdPoId;
+  const workspacePanelRef = useRef<PurchaseRequestsPanelHandle>(null);
   const userEditedDraftRef = useRef(false);
   const prLineItemsHydratedRef = useRef(false);
   const keepLocalDraftAfterSaveRef = useRef(false);
@@ -3671,25 +3677,70 @@ export default function CreatePOPage() {
   if (!numericPrId && !isEditMode && !isManualMode) {
     return (
       <DashboardLayout>
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">PO/WO Workspace</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Create a purchase order or work order from a ready PR, or start a manual PO
-            </p>
+        <div className="tasks-fx po-fx min-h-full font-sans text-[#0F172A]">
+          <section className="tfx-hero">
+            <div className="tfx-bubbles" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i /><i />
+            </div>
+            <div className="tfx-hero-content">
+              <nav className="po-crumbs" aria-label="Breadcrumb">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(user ? getRoleHomePath(user.role, user.navigation, user.email) : '/')
+                  }
+                >
+                  Dashboard
+                </button>
+                <i className="ri-arrow-right-s-line" aria-hidden />
+                <span>PO/WO Workspace</span>
+              </nav>
+              <div className="tfx-hi mt-3">
+                {new Date().getHours() < 12
+                  ? 'Good morning'
+                  : new Date().getHours() < 17
+                    ? 'Good afternoon'
+                    : 'Good evening'}
+                , {user?.name || 'there'} <span className="tfx-wave">👋</span>
+              </div>
+              <h1>
+                <span className="tfx-shimmer">PO/WO Workspace</span>
+              </h1>
+              <p>
+                {user?.role === 'Requester'
+                  ? 'Create the purchase order when your PR is ready for you'
+                  : 'Create a purchase order or work order from a ready PR, or start a manual PO'}
+              </p>
+            </div>
+            {user?.role !== 'Requester' && (
+              <div className="fi-actions">
+                <button
+                  type="button"
+                  onClick={() => navigate('/scm/create-po?manual=1')}
+                  className="tfx-btn secondary"
+                >
+                  <i className="ri-file-add-line"></i>
+                  Manual PO (No PR)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => workspacePanelRef.current?.openImport()}
+                  className="tfx-btn secondary"
+                >
+                  <i className="ri-upload-2-line"></i>
+                  Import
+                </button>
+                <button type="button" onClick={downloadPoImportSampleCsv} className="tfx-btn primary">
+                  <i className="ri-download-2-line"></i>
+                  Sample CSV
+                </button>
+              </div>
+            )}
+          </section>
+          <div className="po-body">
+            <PurchaseRequestsPanel ref={workspacePanelRef} />
           </div>
-          
-            <button
-              type="button"
-              onClick={() => navigate('/scm/create-po?manual=1')}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0]"
-            >
-              <i className="ri-add-line" aria-hidden />
-              Manual Create PO
-            </button>
-        
         </div>
-        <PurchaseRequestsPanel />
       </DashboardLayout>
     );
   }
