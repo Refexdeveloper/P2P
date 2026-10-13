@@ -663,9 +663,6 @@ button.xfx-hbtn:hover { transform: translateY(-2px); color: #0f6b7a; box-shadow:
 .po-hero-v2 .po-hero-actions { position: relative; z-index: 3; padding-top: 0; margin-bottom: 60px; }
 .po-hero-v2 .tfx-btn.secondary { background: rgba(255,255,255,.92); }
 
-/* cards: coloured number + % chip like the mock */
-.po-fx .tfx-kpi-num { color: var(--c2); }
-@media (min-width: 1280px) { .po-fx .tfx-kpis-6 .tfx-kpi-chip { display: inline-flex; } .po-fx .tfx-kpis-6 .tfx-kpi-title { padding-right: 34px; } }
 
 /* tabs tinted per status */
 .po-tab3 {
@@ -859,8 +856,6 @@ button.xfx-hbtn:hover { transform: translateY(-2px); color: #0f6b7a; box-shadow:
 .po-dot.tone-green { --c: #0c9f68; --soft: #e2f7ee; } .po-dot.tone-orange { --c: #f08a1c; --soft: #fff3e3; }
 .po-dot.tone-teal { --c: #0e9bb0; --soft: #e2f6f9; } .po-dot.tone-red { --c: #e5304a; --soft: #ffecef; }
 
-/* sparkline cards: number + chart side by side like the mock */
-.po-fx .tfx-kpi-body { align-items: center; }
 
 /* ================= expanded row v10 — no artwork, clean light theme header ================= */
 .xfx-top {
@@ -887,3 +882,9 @@ button.xfx-hbtn:hover { transform: translateY(-2px); color: #0f6b7a; box-shadow:
   .po-fdate input { width: 100%; }
   .po-filters-row > .ml-auto { flex-shrink: 0; }
 }
+
+/* requester-style hero for the workspace: keep cards clear of the greeting text */
+.po-fx .tfx-hero { min-height: 0; padding-bottom: 150px; }
+.po-fx .tfx-hero-content { padding-top: 30px; }
+.po-fx .po-body { margin-top: -118px; }
+@media (max-width: 991px) { .po-fx .tfx-hero { padding-bottom: 70px; } .po-fx .po-body { margin-top: -46px; } }

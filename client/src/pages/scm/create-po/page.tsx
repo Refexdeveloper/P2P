@@ -4144,83 +4144,60 @@ export default function CreatePOPage() {
     return (
       <DashboardLayout>
         <div className="tasks-fx po-fx min-h-full font-sans text-[#0F172A]">
-          <section
-            className="po-hero po-hero-v2"
-            onMouseMove={(e) => {
-              // subtle parallax: art/halo drift a few px toward the cursor
-              const r = e.currentTarget.getBoundingClientRect();
-              e.currentTarget.style.setProperty('--px', String((e.clientX - r.left) / r.width - 0.5));
-              e.currentTarget.style.setProperty('--py', String((e.clientY - r.top) / r.height - 0.5));
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.setProperty('--px', '0');
-              e.currentTarget.style.setProperty('--py', '0');
-            }}
-          >
-            <div className="po-stage" aria-hidden="true">
-              <span className="po-halo" />
-              <span className="po-orbit">
-                <i /><i /><i />
-              </span>
-              <span className="po-art" />
-              <span className="po-spark s1">✦</span>
-              <span className="po-spark s2">✦</span>
-              <span className="po-spark s3">✦</span>
-            </div>
-            <span className="po-sweep" aria-hidden="true" />
+          <section className="tfx-hero">
             <div className="tfx-bubbles" aria-hidden="true">
               <i /><i /><i /><i /><i /><i /><i />
             </div>
-            <div className="po-hero-inner">
-              <div className="po-hero-text">
-                <nav className="po-crumbs" aria-label="Breadcrumb">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        user ? getRoleHomePath(user.role, user.navigation, user.email) : '/'
-                      )
-                    }
-                  >
-                    Dashboard
-                  </button>
-                  <i className="ri-arrow-right-s-line" aria-hidden />
-                  <span>PO/WO Workspace</span>
-                </nav>
-                <h1>
-                  PO/WO <span className="po-grad">Workspace</span>
-                </h1>
-                <p>
-                  {user?.role === 'Requester'
-                    ? 'Create the purchase order when your PR is ready for you'
-                    : 'Create a purchase order or work order from a ready PR, or start a manual PO'}
-                </p>
+            <div className="tfx-hero-content">
+              <nav className="po-crumbs" aria-label="Breadcrumb">
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(user ? getRoleHomePath(user.role, user.navigation, user.email) : '/')
+                  }
+                >
+                  Dashboard
+                </button>
+                <i className="ri-arrow-right-s-line" aria-hidden />
+                <span>PO/WO Workspace</span>
+              </nav>
+              <div className="tfx-hi mt-3">
+                {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'},{' '}
+                {user?.name || 'there'} <span className="tfx-wave">👋</span>
               </div>
-              {user?.role !== 'Requester' && (
-                <div className="po-hero-actions">
-                  <button
-                    type="button"
-                    onClick={() => navigate('/scm/create-po?manual=1')}
-                    className="tfx-btn secondary"
-                  >
-                    <i className="ri-file-add-line"></i>
-                    Manual PO (No PR)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => workspacePanelRef.current?.openImport()}
-                    className="tfx-btn secondary"
-                  >
-                    <i className="ri-upload-2-line"></i>
-                    Import
-                  </button>
-                  <button type="button" onClick={downloadPoImportSampleCsv} className="tfx-btn primary">
-                    <i className="ri-download-2-line"></i>
-                    Sample CSV
-                  </button>
-                </div>
-              )}
+              <h1>
+                <span className="tfx-shimmer">PO/WO Workspace</span>
+              </h1>
+              <p>
+                {user?.role === 'Requester'
+                  ? 'Create the purchase order when your PR is ready for you'
+                  : 'Create a purchase order or work order from a ready PR, or start a manual PO'}
+              </p>
             </div>
+            {user?.role !== 'Requester' && (
+              <div className="fi-actions">
+                <button
+                  type="button"
+                  onClick={() => navigate('/scm/create-po?manual=1')}
+                  className="tfx-btn secondary"
+                >
+                  <i className="ri-file-add-line"></i>
+                  Manual PO (No PR)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => workspacePanelRef.current?.openImport()}
+                  className="tfx-btn secondary"
+                >
+                  <i className="ri-upload-2-line"></i>
+                  Import
+                </button>
+                <button type="button" onClick={downloadPoImportSampleCsv} className="tfx-btn primary">
+                  <i className="ri-download-2-line"></i>
+                  Sample CSV
+                </button>
+              </div>
+            )}
           </section>
           <div className="po-body">
             <PurchaseRequestsPanel ref={workspacePanelRef} />

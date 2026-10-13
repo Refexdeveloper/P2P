@@ -6,7 +6,8 @@ import TrackPoExpandedRow from './components/TrackPoExpandedRow';
 import POApprovalModal from '../po-approval/components/POApprovalModal';
 import { masterApi, poApi, prApi, CategoryRecord, DepartmentRecord, EntityRecord } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
-import { PM_PAGE_BG } from '../../../constants/pmTheme';
+import AnimatedKpiCard from '../../../components/feature/AnimatedKpiCard';
+import '../../../styles/dashboard-fx.css';
 import {
   parseAllPoImportCsv,
   storePoCsvImport,
@@ -114,7 +115,7 @@ function EntitySearchSelect({
           setOpen(true);
         }}
         placeholder="Search PO entity (code or name)..."
-        className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-8 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+        className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-8 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#a9dbe2] focus:ring-2 focus:ring-[#0f6b7a]/15"
       />
       <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
       {open && (
@@ -126,7 +127,7 @@ function EntitySearchSelect({
               setQuery('');
               setOpen(false);
             }}
-            className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#E3F2FD] ${!value ? 'bg-[#E3F2FD] font-semibold text-[#1E88E5]' : 'text-slate-700'}`}
+            className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#e6f6f8] ${!value ? 'bg-[#e6f6f8] font-semibold text-[#0f6b7a]' : 'text-slate-700'}`}
           >
             All Entities
           </button>
@@ -142,8 +143,8 @@ function EntitySearchSelect({
                   setQuery('');
                   setOpen(false);
                 }}
-                className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#E3F2FD] ${
-                  value === ent.id ? 'bg-[#E3F2FD] font-semibold text-[#1E88E5]' : 'text-[#2C3E50]'
+                className={`w-full px-3.5 py-2.5 text-left text-sm hover:bg-[#e6f6f8] ${
+                  value === ent.id ? 'bg-[#e6f6f8] font-semibold text-[#0f6b7a]' : 'text-[#2C3E50]'
                 }`}
                 title={entityLabel(ent)}
               >
@@ -160,13 +161,13 @@ function EntitySearchSelect({
 function statusColor(status: string) {
   switch (status) {
     case 'ready':
-      return 'bg-[#E3F2FD] text-[#1E88E5]';
+      return 'bg-[#e6f6f8] text-[#0f6b7a]';
     case 'pending':
       return 'bg-amber-50 text-amber-700';
     case 'approved':
-      return 'bg-[#E3F2FD] text-[#1565C0]';
+      return 'bg-[#e6f6f8] text-[#0b5361]';
     case 'sent':
-      return 'bg-[#E3F2FD] text-[#1E88E5]';
+      return 'bg-[#e6f6f8] text-[#0f6b7a]';
     case 'rejected':
       return 'bg-rose-50 text-rose-600';
     case 'imported':
@@ -259,6 +260,7 @@ export default function TrackPoPage() {
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [retrievingKey, setRetrievingKey] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+  const [trackStats, setTrackStats] = useState({ total: 0, ready: 0, pending: 0, approved: 0, rejected: 0 });
   const [sendBackModal, setSendBackModal] = useState<{
     poId: number;
     poNumber: string;
@@ -289,8 +291,18 @@ export default function TrackPoPage() {
         category: category || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        includeStats: true,
       });
       setRows(res.data as TrackRow[]);
+      if (res.stats) {
+        setTrackStats({
+          total: Number(res.stats.total) || 0,
+          ready: Number(res.stats.ready) || 0,
+          pending: Number(res.stats.pending) || 0,
+          approved: Number(res.stats.approved) || 0,
+          rejected: Number(res.stats.rejected) || 0,
+        });
+      }
       if (res.pagination) {
         setPagination(res.pagination);
         if (res.pagination.page !== page) setPage(res.pagination.page);
@@ -597,31 +609,62 @@ export default function TrackPoPage() {
   return (
     <DashboardLayout>
       {toast ? (
-        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#1E88E5] px-4 py-2 text-sm text-white shadow-lg">
+        <div className="fixed right-4 top-4 z-50 rounded-xl bg-[#0f6b7a] px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       ) : null}
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="p-2 pb-6 sm:p-4 lg:p-6">
-          <header className="mb-4 flex flex-wrap items-start justify-between gap-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
-                PO/WO Tracker
-              </h1>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
-                All purchase orders and work orders. Filter by entity, department, category, type, and date.
-              </p>
+      <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
+        <section className="tfx-hero">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
+            <div className="tfx-hi">
+              {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'},{' '}
+              {user?.name || 'there'} <span className="tfx-wave">👋</span>
             </div>
-            <button
-              type="button"
-              onClick={() => handleExportAll()}
-              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-transparent bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] transition-colors hover:border-[#90CAF9]"
-            >
+            <h1>
+              <span className="tfx-shimmer">PO/WO Tracker</span>
+            </h1>
+            <p className="max-w-[620px]">
+              All purchase orders and work orders. Filter by entity, department, category, type, and date.
+            </p>
+          </div>
+          <div className="fi-actions">
+            <button type="button" onClick={() => handleExportAll()} className="tfx-btn primary">
               <i className="ri-download-2-line"></i>
               Export
             </button>
-          </header>
+          </div>
+        </section>
 
+        <section className="tfx-kpis mb-4">
+          <div className="tfx-kpis-6 grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+            {(
+              [
+                { label: 'Total', value: trackStats.total, variant: 'all', sub: 'All POs & WOs' },
+                { label: 'Ready for PO', value: trackStats.ready, variant: 'ready', sub: 'PRs ready to convert' },
+                { label: 'Pending Sign', value: trackStats.pending, variant: 'pending_approval', sub: 'With SCM Manager' },
+                { label: 'Approved', value: trackStats.approved, variant: 'approved', sub: 'Approved / released' },
+                { label: 'Rejected', value: trackStats.rejected, variant: 'rejected', sub: 'Rejected POs' },
+              ] as const
+            ).map((card, i) => (
+              <AnimatedKpiCard
+                key={card.label}
+                title={card.label}
+                value={card.value}
+                variant={card.variant}
+                index={i}
+                total={trackStats.total}
+                subtitle={card.sub}
+                live={card.variant === 'pending_approval' && card.value > 0}
+                interactive={false}
+              />
+            ))}
+          </div>
+        </section>
+
+        <div className="p-2 pb-6 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
           {error && (
             <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-3.5 py-3 text-sm text-rose-700">
               <span>{error}</span>
@@ -631,7 +674,7 @@ export default function TrackPoPage() {
             </div>
           )}
 
-          <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:px-5">
+          <div className="tfx-panel relative mb-5 overflow-hidden rounded-2xl border border-white/70 bg-white px-4 py-4 sm:px-5">
             <div
               className="pointer-events-none absolute inset-0"
               style={{
@@ -648,7 +691,7 @@ export default function TrackPoPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search PR, PO/WO, vendor, title, entity..."
-                    className="box-border h-11 w-full rounded-2xl border border-transparent bg-white pl-10 pr-4 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                    className="tfx-input box-border h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm outline-none"
                   />
                 </div>
                 <EntitySearchSelect
@@ -667,7 +710,7 @@ export default function TrackPoPage() {
                     setPage(1);
                     setExpandedKey(null);
                   }}
-                  className="h-11 min-w-[150px] cursor-pointer rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  className="h-11 min-w-[150px] cursor-pointer tfx-input rounded-xl border bg-white px-3.5 text-sm text-slate-700 outline-none"
                 >
                   <option value="">All Departments</option>
                   {departments.map((d) => (
@@ -683,7 +726,7 @@ export default function TrackPoPage() {
                     setPage(1);
                     setExpandedKey(null);
                   }}
-                  className="h-11 min-w-[150px] cursor-pointer rounded-2xl border border-transparent bg-white px-3.5 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                  className="h-11 min-w-[150px] cursor-pointer tfx-input rounded-xl border bg-white px-3.5 text-sm text-slate-700 outline-none"
                 >
                   <option value="">All Categories</option>
                   {categories.map((c) => (
@@ -702,7 +745,7 @@ export default function TrackPoPage() {
                       setPage(1);
                       setExpandedKey(null);
                     }}
-                    className="h-11 cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                    className="h-11 cursor-pointer tfx-input rounded-xl border bg-white px-3 text-sm text-slate-700 outline-none"
                   />
                 </label>
                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -715,13 +758,13 @@ export default function TrackPoPage() {
                       setPage(1);
                       setExpandedKey(null);
                     }}
-                    className="h-11 cursor-pointer rounded-2xl border border-transparent bg-white px-3 text-sm text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/15"
+                    className="h-11 cursor-pointer tfx-input rounded-xl border bg-white px-3 text-sm text-slate-700 outline-none"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]"
+                  className="h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#0f6b7a]/40 hover:bg-[#e6f6f8]"
                 >
                   Clear filters
                 </button>
@@ -742,10 +785,10 @@ export default function TrackPoPage() {
                       setPage(1);
                       setExpandedKey(null);
                     }}
-                    className={`h-11 cursor-pointer whitespace-nowrap rounded-2xl px-3.5 text-xs font-semibold transition-all duration-200 ${
+                    className={`tfx-tab h-10 cursor-pointer whitespace-nowrap rounded-xl px-3.5 text-xs font-semibold ${
                       purchaseTypeFilter === key
-                        ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:border-[#1E88E5]/40 hover:bg-[#E3F2FD]'
+                        ? 'is-active border border-transparent text-white'
+                        : 'border border-[#e3eaef] bg-white text-slate-700'
                     }`}
                   >
                     {label}
@@ -757,7 +800,7 @@ export default function TrackPoPage() {
 
           <div
             id="po-tracker-table"
-            className="relative scroll-mt-24 overflow-x-clip overflow-y-visible rounded-2xl border border-transparent bg-[#F8FAFC]/90 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
+            className="tfx-panel relative scroll-mt-24 overflow-x-clip overflow-y-visible rounded-2xl border border-white/70"
           >
             <div
               className="pointer-events-none absolute inset-0"
@@ -773,34 +816,45 @@ export default function TrackPoPage() {
               {loading ? (
                 <p className="p-8 text-sm text-slate-500">Loading purchase orders...</p>
               ) : (
-                <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                <table className="trk-table w-full min-w-[1100px] table-fixed border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+                  <colgroup>
+                    <col className="w-[15%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[16%]" />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th className="sticky left-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.18)]">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-4 pr-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ">
                         PR / PO Number
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         PO Date
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Type
                       </th>
-                      <th className="w-[240px] max-w-[240px] bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Title / Vendor
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Entity
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Department
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Amount
                       </th>
-                      <th className="whitespace-nowrap bg-[#F8FAFC] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      <th className="whitespace-nowrap bg-[#f7fafb] px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Status
                       </th>
-                      <th className="sticky right-0 z-30 whitespace-nowrap bg-[#F8FAFC] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.18)]">
+                      <th className="whitespace-nowrap bg-[#f7fafb] py-1 pl-3 pr-4 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ">
                         Actions
                       </th>
                     </tr>
@@ -819,8 +873,8 @@ export default function TrackPoPage() {
                       rows.map((row) => {
                         const open = expandedKey === row.key;
                         const rowBorder = open
-                          ? 'border-[#90CAF9]'
-                          : 'border-transparent group-hover:border-[#90CAF9]';
+                          ? 'border-[#a9dbe2]'
+                          : 'border-transparent group-hover:border-[#a9dbe2]';
                         const rowShadow = open
                           ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
                           : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
@@ -830,16 +884,16 @@ export default function TrackPoPage() {
                               className="group cursor-pointer"
                               onClick={() => setExpandedKey(open ? null : row.key)}
                             >
-                              <td className="relative sticky left-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]">
+                              <td className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]">
                                 <div
-                                  className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 shadow-[8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                                  className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
                                 >
                                   <button
                                     type="button"
                                     className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
                                       open
-                                        ? 'bg-[#1E88E5] text-white'
-                                        : 'bg-[#E3F2FD] text-[#1E88E5] hover:bg-[#BBDEFB]'
+                                        ? 'bg-[#0f6b7a] text-white'
+                                        : 'bg-[#e6f6f8] text-[#0f6b7a] hover:bg-[#c5e6eb]'
                                     }`}
                                     aria-expanded={open}
                                     aria-label={open ? 'Collapse details' : 'Expand details'}
@@ -850,7 +904,7 @@ export default function TrackPoPage() {
                                     className="min-w-0"
                                     title={[row.prNumber, row.poNumber].filter(Boolean).join(' · ') || undefined}
                                   >
-                                    <p className="whitespace-nowrap text-sm font-bold text-[#1E88E5]">
+                                    <p className="whitespace-nowrap text-sm font-bold text-[#0f6b7a]">
                                       {row.prNumber || '—'}
                                     </p>
                                     <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-[#2C3E50]">
@@ -871,7 +925,7 @@ export default function TrackPoPage() {
                                   className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                                     row.purchaseType === 'work_order'
                                       ? 'bg-[#EDE9FE] text-[#7C3AED]'
-                                      : 'bg-[#E3F2FD] text-[#1E88E5]'
+                                      : 'bg-[#e6f6f8] text-[#0f6b7a]'
                                   }`}
                                 >
                                   {row.purchaseTypeLabel ||
@@ -879,7 +933,7 @@ export default function TrackPoPage() {
                                 </span>
                               </td>
                               <td
-                                className={`w-[240px] max-w-[240px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
+                                className={`border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}
                                 title={`${row.title}${row.vendorName ? ` · ${row.vendorName}` : ''}`}
                               >
                                 <p className="truncate text-sm font-semibold text-[#2C3E50]">{row.title}</p>
@@ -910,25 +964,25 @@ export default function TrackPoPage() {
                                 <StatusBadge label={row.statusLabel} status={row.status} />
                               </td>
                               <td
-                                className="relative sticky right-0 z-20 h-px bg-[#F8FAFC] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#F8FAFC]"
+                                className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div
-                                  className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.16)] transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                                  className={`relative z-[1] flex h-full flex-wrap items-center justify-end gap-1.5 rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
                                 >
                                   {row.kind === 'ready' && (
                                     <>
                                       <button
                                         type="button"
                                         onClick={() => openCreatePo(row.prId)}
-                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
                                       >
                                         Create {row.purchaseType === 'work_order' ? 'WO' : 'PO'}
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => openImportModal(row.prId)}
-                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#1E88E5] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0f6b7a] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                       >
                                         Import
                                       </button>
@@ -938,7 +992,7 @@ export default function TrackPoPage() {
                                     <button
                                       type="button"
                                       onClick={() => openEditDraft(row.poId!)}
-                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0]"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
                                     >
                                       Edit Draft
                                     </button>
@@ -973,7 +1027,7 @@ export default function TrackPoPage() {
                                       <button
                                         type="button"
                                         onClick={() => openAdminEditPo(row.poId!)}
-                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                        className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                         title="Edit this purchase order"
                                       >
                                         Edit
@@ -992,7 +1046,7 @@ export default function TrackPoPage() {
                                       type="button"
                                       disabled={retrievingKey === row.key}
                                       onClick={() => void handleRetrieveCancelled(row)}
-                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#1E88E5] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
                                       title="Retrieve cancelled PO as draft"
                                     >
                                       {retrievingKey === row.key ? 'Retrieving…' : 'Retrieve'}
@@ -1002,7 +1056,7 @@ export default function TrackPoPage() {
                                     <button
                                       type="button"
                                       onClick={() => navigate(`/scm/po-pdf-view?poId=${row.poId}&from=track-po`)}
-                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#a9dbe2]"
                                     >
                                       View PDF
                                     </button>
@@ -1049,7 +1103,7 @@ export default function TrackPoPage() {
                       setPage(1);
                       setExpandedKey(null);
                     }}
-                    className="cursor-pointer rounded-xl border border-transparent bg-white px-2 py-1.5 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/20"
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-2 py-1.5 text-sm shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] outline-none focus:border-[#0f6b7a] focus:ring-2 focus:ring-[#0f6b7a]/20"
                   >
                     {PAGE_SIZE_OPTIONS.map((size) => (
                       <option key={size} value={size}>
@@ -1066,7 +1120,7 @@ export default function TrackPoPage() {
                       setPage((p) => Math.max(1, p - 1));
                       setExpandedKey(null);
                     }}
-                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#a9dbe2] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Previous
                   </button>
@@ -1080,7 +1134,7 @@ export default function TrackPoPage() {
                       setPage((p) => p + 1);
                       setExpandedKey(null);
                     }}
-                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#90CAF9] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="cursor-pointer rounded-xl border border-transparent bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.08)] hover:border-[#a9dbe2] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Next
                   </button>
@@ -1131,7 +1185,7 @@ export default function TrackPoPage() {
             <select
               value={importPrId ?? ''}
               onChange={(e) => setImportPrId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none rounded-xl border border-slate-200 bg-white focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/20"
+              className="w-full mb-4 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none rounded-xl border border-slate-200 bg-white focus:border-[#0f6b7a] focus:ring-2 focus:ring-[#0f6b7a]/20"
             >
               <option value="">— Use prNumber from CSV —</option>
               {readyOptions.map((r) => (
@@ -1159,7 +1213,7 @@ export default function TrackPoPage() {
                 type="button"
                 disabled={importChecking}
                 onClick={() => csvFileRef.current?.click()}
-                className="flex cursor-pointer items-center gap-2 rounded-xl bg-[#1E88E5] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50"
+                className="flex cursor-pointer items-center gap-2 rounded-xl bg-[#0f6b7a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
               >
                 {importChecking ? <i className="ri-loader-4-line animate-spin"></i> : <i className="ri-upload-2-line"></i>}
                 Upload CSV & Create PO

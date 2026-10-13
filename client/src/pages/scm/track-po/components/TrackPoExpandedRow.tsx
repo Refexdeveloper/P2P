@@ -785,17 +785,17 @@ export default function TrackPoExpandedRow({
                 'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
             }}
           />
-          <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-3.5 sm:px-5">
+          <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/40 px-4 py-3.5 sm:px-5">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-[#2C3E50]">
-                <span className="text-[#1E88E5]">
+                <span className="text-[#0f6b7a]">
                   {row.prNumber || (row.prId ? `PR #${row.prId}` : 'Manual PO')}
                 </span>
                 {(po?.poNumber || row.poNumber) ? ` · ${po?.poNumber || row.poNumber}` : ''}
               </p>
               <p className="truncate text-xs text-slate-500">{row.title}</p>
             </div>
-            <span className="whitespace-nowrap rounded-lg bg-[#E3F2FD] px-2.5 py-1 text-xs font-semibold text-[#1E88E5]">
+            <span className="whitespace-nowrap rounded-lg bg-[#e6f6f8] px-2.5 py-1 text-xs font-semibold text-[#0f6b7a]">
               {row.statusLabel}
             </span>
           </div>
@@ -808,7 +808,7 @@ export default function TrackPoExpandedRow({
                 onClick={() => setTab(t.key)}
                 className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors sm:px-4 ${
                   tab === t.key
-                    ? 'border-[#1E88E5] text-[#1E88E5]'
+                    ? 'border-[#0f6b7a] text-[#0f6b7a]'
                     : 'border-transparent text-slate-500 hover:text-[#2C3E50]'
                 }`}
               >
@@ -825,7 +825,7 @@ export default function TrackPoExpandedRow({
           >
             {loading && (
               <div className="py-8 text-center text-sm text-slate-500">
-                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#1E88E5]"></i>
+                <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#0f6b7a]"></i>
                 Loading details...
               </div>
             )}
@@ -902,7 +902,7 @@ export default function TrackPoExpandedRow({
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {lineItems.map((item, idx) => (
-                            <tr key={item.id ?? idx} className="hover:bg-[#E3F2FD]/35">
+                            <tr key={item.id ?? idx} className="hover:bg-[#e6f6f8]/35">
                               <td className="px-3 py-2.5 text-slate-500">{idx + 1}</td>
                               <td className="px-3 py-2.5 font-medium text-[#2C3E50] break-words">
                                 {item.itemName || item.description || '—'}
@@ -958,7 +958,7 @@ export default function TrackPoExpandedRow({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {documents.map((doc) => (
-                          <tr key={doc.key} className="hover:bg-[#E3F2FD]/35">
+                          <tr key={doc.key} className="hover:bg-[#e6f6f8]/35">
                             <td className="px-3 py-2.5">
                               <span className="inline-flex px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">
                                 {doc.kind}
@@ -970,7 +970,7 @@ export default function TrackPoExpandedRow({
                             </td>
                             <td className="px-3 py-2.5">
                               {doc.url ? (
-                                <p className="text-xs text-[#1E88E5] break-all" title={doc.url}>
+                                <p className="text-xs text-[#0f6b7a] break-all" title={doc.url}>
                                   {doc.url}
                                 </p>
                               ) : (
@@ -983,7 +983,7 @@ export default function TrackPoExpandedRow({
                                   type="button"
                                   disabled={!doc.url || Boolean(openingKey)}
                                   onClick={() => handleOpenFile(doc)}
-                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-[#E3F2FD]/35 disabled:opacity-40"
+                                  className="px-2.5 py-1.5 border border-gray-300 rounded-md text-xs font-medium hover:bg-[#e6f6f8]/35 disabled:opacity-40"
                                 >
                                   {openingKey === doc.key ? 'Opening…' : 'Open'}
                                 </button>
@@ -991,7 +991,7 @@ export default function TrackPoExpandedRow({
                                   type="button"
                                   disabled={!doc.url || Boolean(openingKey)}
                                   onClick={() => handleDownloadFile(doc)}
-                                  className="px-2.5 py-1.5 bg-[#1E88E5] text-white rounded-md text-xs font-semibold hover:bg-[#1565C0] disabled:opacity-40"
+                                  className="px-2.5 py-1.5 bg-[#0f6b7a] text-white rounded-md text-xs font-semibold hover:bg-[#0b5361] disabled:opacity-40"
                                 >
                                   {openingKey === `dl-${doc.key}` ? 'Saving…' : 'Download'}
                                 </button>
@@ -1054,7 +1054,7 @@ export default function TrackPoExpandedRow({
                   {row.poId && String(po?.vendorAcceptanceFileName || '').trim() ? (
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="inline-flex items-center gap-1.5 text-sm font-medium text-[#2C3E50] min-w-0">
-                        <i className="ri-file-pdf-2-line text-[#1E88E5] shrink-0"></i>
+                        <i className="ri-file-pdf-2-line text-[#0f6b7a] shrink-0"></i>
                         <span className="truncate">{String(po?.vendorAcceptanceFileName)}</span>
                       </span>
                       <button
@@ -1069,7 +1069,7 @@ export default function TrackPoExpandedRow({
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="cursor-pointer rounded-xl border border-[#BBDEFB] bg-white px-3 py-1.5 text-xs font-semibold text-[#1E88E5] hover:bg-[#E3F2FD] disabled:opacity-40"
+                        className="cursor-pointer rounded-xl border border-[#c5e6eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#0f6b7a] hover:bg-[#e6f6f8] disabled:opacity-40"
                       >
                         {openingKey === `accept-${row.poId}` ? 'Opening…' : 'Open'}
                       </button>
@@ -1085,7 +1085,7 @@ export default function TrackPoExpandedRow({
                             url: poApi.getVendorAcceptanceFileUrl(row.poId!),
                           })
                         }
-                        className="cursor-pointer rounded-xl bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-40"
+                        className="cursor-pointer rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-40"
                       >
                         {openingKey === `dl-accept-${row.poId}` ? 'Saving…' : 'Download'}
                       </button>
@@ -1164,7 +1164,7 @@ export default function TrackPoExpandedRow({
                                             url: accountsApi.grnLineAttachmentUrl(file.id),
                                           })
                                         }
-                                        className="text-left text-xs font-semibold text-[#1E88E5] hover:underline disabled:opacity-50 cursor-pointer"
+                                        className="text-left text-xs font-semibold text-[#0f6b7a] hover:underline disabled:opacity-50 cursor-pointer"
                                       >
                                         {openingKey === `grn-att-${file.id}`
                                           ? 'Opening…'
@@ -1218,7 +1218,7 @@ export default function TrackPoExpandedRow({
                           url: accountsApi.invoiceFileUrl(invoice.id),
                         })
                       }
-                      className="px-3 py-1.5 text-xs font-semibold text-[#1E88E5] bg-[#E3F2FD] border border-[#BBDEFB] rounded-lg"
+                      className="px-3 py-1.5 text-xs font-semibold text-[#0f6b7a] bg-[#e6f6f8] border border-[#c5e6eb] rounded-lg"
                     >
                       <i className="ri-file-invoice-line mr-1"></i>
                       View invoice file
@@ -1264,7 +1264,7 @@ export default function TrackPoExpandedRow({
                 href={filePreview.url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-[#E3F2FD]/35"
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-[#e6f6f8]/35"
               >
                 Open in new tab
               </a>
@@ -1274,7 +1274,7 @@ export default function TrackPoExpandedRow({
                   URL.revokeObjectURL(filePreview.url);
                   setFilePreview(null);
                 }}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#E3F2FD] text-slate-500 text-xl cursor-pointer"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#e6f6f8] text-slate-500 text-xl cursor-pointer"
               >
                 ×
               </button>

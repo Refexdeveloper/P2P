@@ -492,7 +492,6 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
               live={Boolean(k.live && value)}
               selected={statusFilter === k.filter}
               fallbackIcon={k.icon}
-              chart="spark"
               onClick={() => {
                 setStatusFilter(k.filter);
                 setPage(1);

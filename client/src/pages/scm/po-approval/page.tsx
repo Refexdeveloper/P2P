@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, Fragment, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import ApprovalHistoryPanel, {
@@ -9,7 +9,9 @@ import POApprovalModal from './components/POApprovalModal';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
 import { poApi, rfqApi, VendorComparisonData } from '../../../services/api';
 import type { POData } from '../../../mocks/po-data';
-import { PM_BTN_PRIMARY, PM_BTN_SECONDARY, PM_PAGE_BG } from '../../../constants/pmTheme';
+import { PM_BTN_PRIMARY, PM_BTN_SECONDARY } from '../../../constants/pmTheme';
+import AnimatedKpiCard, { type KpiVariant } from '../../../components/feature/AnimatedKpiCard';
+import '../../../styles/dashboard-fx.css';
 import { useAuth } from '../../../contexts/AuthContext';
 import { isMugeshUser } from '../../../utils/roleDisplay';
 import meetSignature from '../../../assets/signatures/meet_g_default.png';
@@ -45,17 +47,16 @@ const softWash = {
     'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
-const softCard =
-  'relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]';
 
-const KPI_THEMES = [
-  { value: '#06B6D4', iconBg: '#CFFAFE', wash: 'rgba(6, 182, 212, 0.14)' },
-  { value: '#10B981', iconBg: '#D1FAE5', wash: 'rgba(16, 185, 129, 0.14)' },
-  { value: '#F43F5E', iconBg: '#FFE4E6', wash: 'rgba(244, 63, 94, 0.12)' },
-  { value: '#2563EB', iconBg: '#DBEAFE', wash: 'rgba(37, 99, 235, 0.14)' },
-] as const;
 
 /** Manager still needs to act */
+function poaGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
 const isAwaitingManager = (status: string) => {
   const s = String(status || '');
   return (
@@ -251,9 +252,9 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
         <div className="relative min-w-0 max-w-full overflow-x-hidden rounded-2xl border border-transparent bg-[#F5F7FA] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
           <div className="pointer-events-none absolute inset-0" style={softWash} />
           {/* Expanded Header */}
-          <div className="relative z-[1] flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40">
+          <div className="relative z-[1] flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3 px-3 sm:px-6 py-3 sm:py-4 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#e6f6f8]/40">
             <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-              <div className="w-10 h-10 bg-[#E3F2FD] rounded-xl flex items-center justify-center flex-shrink-0 text-[#1E88E5]">
+              <div className="w-10 h-10 bg-[#e6f6f8] rounded-xl flex items-center justify-center flex-shrink-0 text-[#0f6b7a]">
                 <i className="ri-file-text-line text-lg"></i>
               </div>
               <div className="min-w-0">
@@ -319,7 +320,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                 onClick={() => setActiveTab(tab.key as 'details' | 'items' | 'comparison' | 'history')}
                 className={`flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'border-[#1E88E5] text-[#1E88E5]'
+                    ? 'border-[#0f6b7a] text-[#0f6b7a]'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -336,8 +337,8 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                 {/* PO Summary */}
                 <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2">
                   {[
-                    { label: 'PO Number', value: po.poNumber, icon: 'ri-file-text-line', color: 'text-[#1E88E5]' },
-                    { label: 'PR Reference', value: po.prId, icon: 'ri-links-line', color: 'text-[#1E88E5]' },
+                    { label: 'PO Number', value: po.poNumber, icon: 'ri-file-text-line', color: 'text-[#0f6b7a]' },
+                    { label: 'PR Reference', value: po.prId, icon: 'ri-links-line', color: 'text-[#0f6b7a]' },
                     { label: 'PO Date', value: po.createdDate, icon: 'ri-calendar-line', color: 'text-[#2C3E50]' },
                     { label: 'Expected Delivery', value: po.expectedDeliveryDate, icon: 'ri-truck-line', color: 'text-[#2C3E50]' },
                   ].map((item) => (
@@ -355,7 +356,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                   {/* PR Details */}
                   <div className="rounded-xl border border-transparent bg-[#F8FAFC] p-4">
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-file-list-3-line text-[#1E88E5]"></i> Purchase Request Details
+                      <i className="ri-file-list-3-line text-[#0f6b7a]"></i> Purchase Request Details
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                       <div>
@@ -375,9 +376,9 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                   </div>
 
                   {/* Vendor Info */}
-                  <div className="rounded-xl border border-[#BBDEFB]/80 bg-[#E3F2FD]/40 p-4">
+                  <div className="rounded-xl border border-[#c5e6eb]/80 bg-[#e6f6f8]/40 p-4">
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-store-2-line text-[#1E88E5]"></i> Vendor Information
+                      <i className="ri-store-2-line text-[#0f6b7a]"></i> Vendor Information
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -394,7 +395,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                   {/* Delivery */}
                   <div className="rounded-xl border border-transparent bg-[#F8FAFC] p-4">
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                      <i className="ri-map-pin-line text-[#1E88E5]"></i> Delivery Details
+                      <i className="ri-map-pin-line text-[#0f6b7a]"></i> Delivery Details
                     </h4>
                     <p className="text-xs text-slate-500 mb-1">Delivery Address</p>
                     <p className="text-sm text-[#2C3E50] leading-relaxed">{po.deliveryAddress}</p>
@@ -414,7 +415,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                 <div className="lg:col-span-1">
                   <div className="bg-gray-50 rounded-lg p-4 lg:sticky lg:top-4">
                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-1.5">
-                      <i className="ri-receipt-line text-[#1E88E5]"></i> Billing Summary
+                      <i className="ri-receipt-line text-[#0f6b7a]"></i> Billing Summary
                     </h4>
                     <div className="space-y-3">
                       <div className="flex justify-between items-center">
@@ -428,7 +429,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                       <div className="pt-3 border-t-2 border-gray-200">
                         <div className="flex justify-between items-center">
                           <span className="text-sm font-bold text-gray-900">Grand Total</span>
-                          <span className="text-xl font-bold text-[#1E88E5]">{formatCurrency(po.grandTotal)}</span>
+                          <span className="text-xl font-bold text-[#0f6b7a]">{formatCurrency(po.grandTotal)}</span>
                         </div>
                       </div>
                     </div>
@@ -436,8 +437,8 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <p className="text-xs text-gray-500 mb-1">Created By</p>
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 bg-[#E3F2FD] rounded-full flex items-center justify-center">
-                          <span className="text-[#1565C0] text-xs font-bold">
+                        <div className="w-7 h-7 bg-[#e6f6f8] rounded-full flex items-center justify-center">
+                          <span className="text-[#0b5361] text-xs font-bold">
                             {(po.createdBy || 'SB').split(' ').map((n) => n[0]).join('').slice(0, 2)}
                           </span>
                         </div>
@@ -473,7 +474,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-[#E3F2FD]/50 border-t-2 border-[#90CAF9]">
+                    <tfoot className="bg-[#e6f6f8]/50 border-t-2 border-[#a9dbe2]">
                       <tr>
                         <td colSpan={4} className="px-4 py-3 text-sm font-bold text-gray-700 text-right">Subtotal</td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right">{formatCurrency(po.subtotal)}</td>
@@ -484,7 +485,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                       </tr>
                       <tr>
                         <td colSpan={4} className="px-4 py-3 text-base font-bold text-gray-900 text-right">Grand Total</td>
-                        <td className="px-4 py-3 text-base font-bold text-[#1E88E5] text-right">{formatCurrency(po.grandTotal)}</td>
+                        <td className="px-4 py-3 text-base font-bold text-[#0f6b7a] text-right">{formatCurrency(po.grandTotal)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -505,9 +506,9 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                   </div>
                 ) : comparisonData ? (
                   <div className="space-y-4 min-w-0 max-w-full">
-                    <div className="flex flex-wrap items-center gap-3 p-3 bg-[#E3F2FD]/50 border border-[#BBDEFB] rounded-lg text-sm">
-                      <span className="font-semibold text-[#1565C0]">{comparisonData.pr.prNumber}</span>
-                      <span className="text-[#1565C0]">{comparisonData.vendorCount} vendors quoted</span>
+                    <div className="flex flex-wrap items-center gap-3 p-3 bg-[#e6f6f8]/50 border border-[#c5e6eb] rounded-lg text-sm">
+                      <span className="font-semibold text-[#0b5361]">{comparisonData.pr.prNumber}</span>
+                      <span className="text-[#0b5361]">{comparisonData.vendorCount} vendors quoted</span>
                       {(comparisonData as { source?: string }).source === 'manual' && (
                         <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">
                           Manual Create comparison
@@ -786,193 +787,170 @@ export default function POApprovalPage() {
     setExpandedRow(prev => prev === poNumber ? null : poNumber);
   };
 
+  const goTable = () =>
+    window.requestAnimationFrame(() =>
+      document.getElementById('po-approval-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    );
+
+  const tabCounts: Record<string, number> = {
+    all: processedPOs.length,
+    pending: stats.pending,
+    approved: stats.approved,
+    rejected: stats.rejected,
+  };
+
   return (
     <DashboardLayout>
-      <div className="min-h-full font-sans text-[#0F172A]" style={{ background: PM_PAGE_BG }}>
-        <div className="p-2 pb-6 sm:p-4 lg:p-6">
-          <header className="mb-4 border-b border-white/50 bg-gradient-to-b from-[#edf1ff]/92 to-[#eef2ff]/88 px-1 pb-3 pt-1 shadow-[0_8px_30px_-18px_rgba(30,41,59,0.12)] backdrop-blur-md sm:mb-5 sm:px-0 sm:pb-4">
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-snug tracking-tight text-slate-800 sm:text-2xl md:text-3xl">
-                {mugeshMode ? 'PO Approval' : 'SCM Manager — PO Sign & Approve'}
-              </h1>
-              <p className="mt-0.5 text-[11px] font-medium text-slate-500 sm:text-sm">
-                {mugeshMode
-                  ? 'Requester-created POs. Your default signature, name Mugesh M, and designation IT Infrastructure Head are printed on the PDF.'
-                  : 'Sign PO with comments — after sign-off, SCM Buyer final-verifies before the vendor email is sent'}
-              </p>
+      <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
+        <section className="tfx-hero">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i />
+          </div>
+          <div className="tfx-hero-content">
+            <div className="tfx-hi">
+              {poaGreeting()}, {user?.name || 'there'} <span className="tfx-wave">👋</span>
             </div>
-          </header>
-
-          {loading && <p className="mb-4 text-sm text-slate-500">Loading purchase orders...</p>}
-
-          <section className="mb-5">
-            <div className="mb-1.5 px-0.5 sm:mb-3">
-              <h2 className="text-xs font-bold tracking-wide text-slate-700 sm:text-base">Work Insights</h2>
-            </div>
-            <div className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4 sm:gap-4">
-              {(
-                [
-                  { key: 'pending', label: 'Pending Approval', value: stats.pending, icon: 'ri-time-line', theme: KPI_THEMES[0] },
-                  { key: 'approved', label: 'Approved', value: stats.approved, icon: 'ri-check-double-line', theme: KPI_THEMES[1] },
-                  { key: 'rejected', label: 'Rejected', value: stats.rejected, icon: 'ri-close-circle-line', theme: KPI_THEMES[2] },
-                  { key: 'all', label: 'Total POs', value: processedPOs.length, icon: 'ri-file-list-3-line', theme: KPI_THEMES[3] },
-                ] as const
-              ).map((card) => (
-                <button
-                  key={card.label}
-                  type="button"
-                  onClick={() => setFilter(card.key)}
-                  className={`group relative box-border flex h-full min-h-[128px] w-full cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white p-4 text-left shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-[box-shadow,border-color] duration-200 hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)] sm:min-h-[140px] sm:rounded-[18px] sm:p-5 ${
-                    filter === card.key ? 'border-[#90CAF9]' : 'border-transparent'
-                  }`}
-                >
-                  <div
-                    className="pointer-events-none absolute inset-0"
-                    style={{
-                      background: `radial-gradient(120% 90% at 100% 0%, ${card.theme.wash} 0%, rgba(255,255,255,0) 55%)`,
-                    }}
-                  />
-                  <div className="relative z-[1] flex flex-1 items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 sm:text-[11px]">
-                        {card.label}
-                      </p>
-                      <p
-                        className="mt-2 text-3xl font-bold tabular-nums leading-none tracking-tight sm:mt-3 sm:text-[2.15rem]"
-                        style={{ color: card.theme.value }}
-                      >
-                        {card.value}
-                      </p>
-                    </div>
-                    <div
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11"
-                      style={{ backgroundColor: card.theme.iconBg, color: card.theme.value }}
-                    >
-                      <i className={`${card.icon} text-lg sm:text-xl`} aria-hidden />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <div className="relative mb-5 overflow-hidden rounded-2xl bg-gradient-to-r from-[#1E88E5] to-[#1565C0] p-4 shadow-[0_14px_32px_-14px_rgba(21,101,192,0.45)] sm:rounded-[18px] sm:p-5">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-40"
-              style={{
-                background:
-                  'radial-gradient(90% 120% at 100% 0%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 55%)',
-              }}
-            />
-            <div className="relative z-[1] flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
-                  <i className="ri-money-rupee-circle-line text-2xl text-white"></i>
-                </div>
-                <div>
-                  <p className="text-sm text-sky-100">Total Pending Approval Value</p>
-                  <p className="text-xl font-bold text-white sm:text-2xl">
-                    {formatCurrency(stats.totalPendingValue)}
-                  </p>
-                </div>
-              </div>
-              <div className="text-left sm:text-right">
-                <p className="text-xs text-sky-100">
-                  {stats.pending} PO{stats.pending !== 1 ? 's' : ''} awaiting your decision
+            <h1>
+              <span className="tfx-shimmer">{mugeshMode ? 'PO Approval' : 'PO Sign & Approve'}</span>
+            </h1>
+            <p className="max-w-[640px]">
+              {mugeshMode
+                ? 'Requester-created POs. Your default signature, name Mugesh M, and designation IT Infrastructure Head are printed on the PDF.'
+                : 'Sign POs with comments — after sign-off, SCM Buyer final-verifies before the vendor email is sent'}
+            </p>
+          </div>
+          <div className="tfx-period hidden min-[992px]:block">
+            <p className="tfx-period-lbl">Pending approval value</p>
+            <div className="flex items-center gap-3 px-1 pb-1">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
+                <i className="ri-money-rupee-circle-line text-xl" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-lg font-extrabold tabular-nums text-slate-900">
+                  {formatCurrency(stats.totalPendingValue)}
                 </p>
-                <p className="mt-0.5 text-sm font-medium text-white">Click any row to expand details</p>
+                <p className="text-xs text-slate-500">
+                  {stats.pending} PO{stats.pending !== 1 ? 's' : ''} awaiting you
+                </p>
               </div>
             </div>
           </div>
+        </section>
 
-          <div className={`${softCard}`}>
-            <div className="pointer-events-none absolute inset-0" style={softWash} />
-            <div className="relative z-[1] border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-3 py-4 sm:px-5 sm:py-5">
-              <div className="flex flex-col items-stretch justify-between gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                    <i className="ri-checkbox-circle-line text-lg"></i>
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-semibold text-[#2C3E50] sm:text-base">
-                      Purchase Order Approvals
-                    </h2>
-                    <p className="text-xs text-slate-500">
-                      Showing <strong className="text-slate-700">{filteredPOs.length}</strong> purchase
-                      order{filteredPOs.length !== 1 ? 's' : ''} · Click any row to expand
-                    </p>
-                  </div>
+        <section className="tfx-kpis mb-4">
+          {loading ? (
+            <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="min-h-[170px] animate-pulse rounded-[18px] bg-white/90 shadow-[0_10px_30px_rgba(20,90,120,0.08)]" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+              {(
+                [
+                  { key: 'pending', label: 'Pending Approval', value: stats.pending, variant: 'pending_approval', sub: stats.pending ? 'Awaiting your sign-off' : 'Nothing waiting', live: stats.pending > 0 },
+                  { key: 'approved', label: 'Approved', value: stats.approved, variant: 'approved', sub: 'Signed by you', live: false },
+                  { key: 'rejected', label: 'Rejected', value: stats.rejected, variant: 'rejected', sub: stats.rejected ? 'Declined POs' : 'No rejected POs', live: false },
+                  { key: 'all', label: 'Total POs', value: processedPOs.length, variant: 'all', sub: 'All purchase orders', live: false },
+                ] as const
+              ).map((card, i) => (
+                <AnimatedKpiCard
+                  key={card.key}
+                  title={card.label}
+                  value={card.value}
+                  variant={card.variant as KpiVariant}
+                  index={i}
+                  total={processedPOs.length}
+                  subtitle={card.sub}
+                  live={card.live}
+                  selected={filter === card.key}
+                  toastText={`Showing ${card.label.toLowerCase()} POs`}
+                  onClick={() => {
+                    setFilter(card.key);
+                    goTable();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <div className="p-2 pb-4 pt-0 sm:p-3 sm:pt-0 lg:p-6 lg:pt-0">
+          <section
+            id="po-approval-table"
+            className="tfx-panel relative scroll-mt-24 overflow-hidden rounded-2xl border border-white/70 bg-white"
+          >
+            <div className="flex flex-col gap-3 px-4 py-4">
+              <div className="flex items-center gap-3.5 pb-1">
+                <div className="tfx-panel-ic flex h-12 w-12 items-center justify-center rounded-xl">
+                  <i className="ri-checkbox-circle-line text-lg sm:text-xl" aria-hidden />
                 </div>
-                <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-                  <div className="relative min-w-0 flex-1 sm:flex-none">
-                    <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400"></i>
-                    <input
-                      type="text"
-                      placeholder="Search PO, vendor, requester..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full rounded-xl border border-transparent bg-white py-2 pl-9 pr-4 text-sm text-[#0F172A] shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] outline-none placeholder:text-slate-400 focus:border-[#90CAF9] focus:ring-2 focus:ring-[#1E88E5]/20 sm:w-64"
-                    />
-                  </div>
-                  <div className="flex gap-1 overflow-x-auto rounded-xl bg-[#F1F5F9] p-1">
-                    {[
-                      { key: 'all', label: 'All' },
-                      { key: 'pending', label: 'Pending' },
-                      { key: 'approved', label: 'Approved' },
-                      { key: 'rejected', label: 'Rejected' },
-                    ].map((tab) => (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        onClick={() => setFilter(tab.key)}
-                        className={`cursor-pointer whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                          filter === tab.key
-                            ? 'bg-white text-[#1E88E5] shadow-sm'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
+                <div>
+                  <h2 className="tfx-panel-title text-lg font-semibold text-slate-900">Purchase Order Approvals</h2>
+                  <p className="mt-1.5 text-sm text-slate-500">
+                    Showing <strong className="text-slate-800">{filteredPOs.length}</strong> purchase order
+                    {filteredPOs.length !== 1 ? 's' : ''} · click any row to expand
+                  </p>
                 </div>
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                <div className="relative shrink-0">
+                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input
+                    type="text"
+                    placeholder="Search PO, vendor, requester..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="tfx-input h-10 w-72 rounded-xl border bg-white pl-10 pr-4 text-sm outline-none"
+                  />
+                </div>
+                {[
+                  { key: 'all', label: 'All' },
+                  { key: 'pending', label: 'Pending' },
+                  { key: 'approved', label: 'Approved' },
+                  { key: 'rejected', label: 'Rejected' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setFilter(tab.key)}
+                    className={`tfx-tab inline-flex h-10 cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl px-3.5 text-xs font-semibold ${
+                      filter === tab.key ? 'is-active border border-transparent text-white' : 'border border-[#e3eaef] bg-white text-slate-700'
+                    }`}
+                  >
+                    {tab.label}
+                    <span className="tfx-cnt">{tabCounts[tab.key] ?? 0}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="relative z-[1] space-y-2 p-3 md:hidden">
-              {filteredPOs.map((po) => {
+            {/* Mobile cards */}
+            <div className="space-y-2.5 px-3 pb-3 md:hidden">
+              {filteredPOs.map((po, rowIndex) => {
                 const isExpanded = expandedRow === po.poNumber;
                 const isPending = isAwaitingManager(po.status);
                 return (
                   <div
                     key={`m-${po.poNumber}`}
-                    className={`overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:rounded-[18px] ${
-                      isExpanded ? 'border-[#90CAF9]' : 'border-transparent'
+                    style={{ '--r': rowIndex } as CSSProperties}
+                    className={`tfx-card overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] ${
+                      isExpanded ? 'border-[#a9dbe2]' : 'border-[#e9f0f3]'
                     }`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => toggleRow(po.poNumber)}
-                      className="flex w-full items-start gap-3 px-3 py-3 text-left"
-                    >
-                      <div
-                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
-                          isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5]'
-                        }`}
-                      >
+                    <button type="button" onClick={() => toggleRow(po.poNumber)} className="flex w-full items-start gap-3 px-3 py-3 text-left">
+                      <span className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${isExpanded ? 'bg-[#0f6b7a] text-white' : 'bg-[#e6f6f8] text-[#0f6b7a]'}`}>
                         <i className={`text-sm ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
-                      </div>
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="truncate text-sm font-bold text-[#1E88E5]">{po.poNumber}</p>
+                          <p className="truncate text-sm font-bold text-[#0f6b7a]">{po.poNumber}</p>
                           <StatusBadge status={po.status} />
                         </div>
                         <p className="mt-0.5 truncate text-xs text-slate-500">{po.prTitle || po.prId}</p>
                         <p className="mt-1 truncate text-xs text-slate-600">{po.vendor}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-bold text-[#2C3E50]">
-                            {formatCurrency(po.grandTotal)}
-                          </span>
+                          <span className="text-sm font-bold text-slate-900">{formatCurrency(po.grandTotal)}</span>
                           <PriorityBadge priority={po.priority} />
                         </div>
                       </div>
@@ -1007,27 +985,26 @@ export default function POApprovalPage() {
               })}
             </div>
 
-            <div data-po-approval-scroll className="relative z-[1] hidden overflow-x-auto px-2 pb-3 pt-1 md:block sm:px-3 sm:pb-4">
-              <table className="w-max min-w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
+            {/* Desktop — row-card table, no sticky columns */}
+            <div data-po-approval-scroll className="hidden overflow-x-auto px-4 pb-4 pt-1 md:block">
+              <table className="rfx-table w-full min-w-[980px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2.5 text-sm">
+                <colgroup>
+                  <col className="w-[19%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[14%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[10%]" />
+                </colgroup>
                 <thead>
                   <tr>
-                    {[
-                      '',
-                      'PO Number',
-                      'PR Reference',
-                      'Vendor',
-                      'Department / Requester',
-                      'Grand Total',
-                      'Priority',
-                      'Status',
-                      'Actions',
-                    ].map((h) => (
+                    {['PO Number', 'PR Reference', 'Vendor', 'Department / Requester', 'Grand Total', 'Priority', 'Status', 'Actions'].map((h) => (
                       <th
-                        key={h || 'expand'}
-                        className={`whitespace-nowrap bg-[#F8FAFC] px-3 pb-1 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
-                          h === 'Actions'
-                            ? 'sticky right-0 z-30 bg-[#F8FAFC] pr-4 text-right shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.35)]'
-                            : ''
+                        key={h}
+                        className={`tfx-th px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 first:pl-5 last:pr-5 ${
+                          h === 'Grand Total' || h === 'Actions' ? 'text-right' : 'text-left'
                         }`}
                       >
                         {h}
@@ -1036,133 +1013,119 @@ export default function POApprovalPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPOs.map((po) => {
+                  {filteredPOs.map((po, rowIndex) => {
                     const isExpanded = expandedRow === po.poNumber;
                     const isPending = isAwaitingManager(po.status);
-                    const rowBorder = isExpanded
-                      ? 'border-[#90CAF9]'
-                      : 'border-transparent group-hover:border-[#90CAF9]';
-                    const rowShadow = isExpanded
-                      ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
-                      : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]';
-
+                    const tone = isPending ? 'teal' : isRejected(po.status) ? 'red' : isManagerApproved(po.status) ? 'green' : 'teal';
                     return (
                       <Fragment key={po.poNumber}>
                         <tr
                           onClick={() => toggleRow(po.poNumber)}
-                          className="group cursor-pointer"
+                          className={`rfx-row tone-${tone} cursor-pointer${isExpanded ? ' is-open' : ''}`}
+                          style={{ '--r': rowIndex } as CSSProperties}
                         >
-                          <td className={`rounded-l-2xl border border-r-0 bg-white px-3 py-4 transition-[border-color] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
-                            <div
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors ${
-                                isExpanded ? 'bg-[#1E88E5] text-white' : 'bg-[#E3F2FD] text-[#1E88E5]'
-                              }`}
-                            >
-                              <i className={`text-sm ${isExpanded ? 'ri-arrow-up-s-line' : 'ri-arrow-down-s-line'}`}></i>
-                            </div>
-                          </td>
-                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <p className="text-sm font-bold text-[#1E88E5]">{po.poNumber}</p>
-                            <p className="mt-0.5 text-xs text-slate-400">{po.createdDate}</p>
-                          </td>
-                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <span className="text-sm font-medium text-[#1E88E5]">{po.prId}</span>
-                          </td>
-                          <td className={`border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <div className="flex items-center gap-2">
-                              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[#E3F2FD] text-[#1E88E5]">
-                                <i className="ri-store-2-line text-xs"></i>
+                          <td className="pl-5 pr-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className="rfx-ticon">
+                                <i className={isExpanded ? 'ri-arrow-up-s-line' : 'ri-file-text-line'} aria-hidden />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="rfx-prno truncate">{po.poNumber}</p>
+                                <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                                  <i className="ri-calendar-line" aria-hidden />
+                                  {po.createdDate}
+                                </p>
                               </div>
-                              <p className="max-w-[160px] truncate text-sm font-medium text-[#2C3E50]">
-                                {po.vendor}
-                              </p>
                             </div>
                           </td>
-                          <td className={`border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <p className="text-sm font-medium text-[#2C3E50]">{po.department}</p>
-                            <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-                              <i className="ri-user-line text-xs"></i>
+                          <td className="truncate px-3 text-sm font-medium text-[#0f6b7a]" title={po.prId}>
+                            {po.prId}
+                          </td>
+                          <td className="px-3" title={po.vendor}>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#e6f6f8] text-[#0f6b7a]">
+                                <i className="ri-store-2-line text-xs" aria-hidden />
+                              </span>
+                              <p className="truncate text-sm font-medium text-slate-800">{po.vendor}</p>
+                            </div>
+                          </td>
+                          <td className="px-3">
+                            <span className="rfx-dept" title={po.department}>
+                              <i />
+                              <span className="truncate">{po.department}</span>
+                            </span>
+                            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500">
+                              <i className="ri-user-line text-xs" aria-hidden />
                               {po.requester}
                             </p>
                           </td>
-                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <p className="text-sm font-bold tabular-nums text-[#2C3E50]">
-                              {formatCurrency(po.grandTotal)}
-                            </p>
+                          <td className="px-3 text-right">
+                            <p className="text-sm font-bold tabular-nums text-slate-900">{formatCurrency(po.grandTotal)}</p>
                             <p className="mt-0.5 text-xs text-slate-400">
                               {po.lineItems.length} item{po.lineItems.length !== 1 ? 's' : ''}
                             </p>
                           </td>
-                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
+                          <td className="px-3">
                             <PriorityBadge priority={po.priority} />
                           </td>
-                          <td className={`whitespace-nowrap border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${rowBorder}`}>
-                            <StatusBadge status={po.status} />
+                          <td className="px-3">
+                            <span className="rfx-status inline-block max-w-full">
+                              <StatusBadge status={po.status} />
+                            </span>
                           </td>
-                          <td
-                            className={`sticky right-0 z-20 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white px-3 py-4 shadow-[-8px_0_12px_-10px_rgba(15,23,42,0.35)] transition-[border-color] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => toggleRow(po.poNumber)}
-                                className="cursor-pointer rounded-xl p-1.5 text-slate-500 transition-colors hover:bg-[#E3F2FD] hover:text-[#1E88E5]"
-                                title="Expand Details"
-                              >
-                                <i className={`text-sm ${isExpanded ? 'ri-eye-off-line' : 'ri-eye-line'}`}></i>
-                              </button>
+                          <td className="pl-3 pr-5" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => {
                                   const id = poIdMap[po.poNumber];
                                   if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
                                 }}
-                                className="cursor-pointer rounded-xl p-1.5 text-[#1E88E5] transition-colors hover:bg-[#E3F2FD]"
+                                className="rfx-act"
                                 title="View PDF"
                               >
-                                <i className="ri-file-pdf-line text-sm"></i>
+                                <i className="ri-file-pdf-2-line" />
                               </button>
                               {isPending && (
                                 <>
                                   {!mugeshMode && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const id = poIdMap[po.poNumber];
-                                      if (id) navigate(`/scm/create-po?poId=${id}&from=po-approval`);
-                                    }}
-                                    className="cursor-pointer rounded-xl p-1.5 text-amber-600 transition-colors hover:bg-amber-50"
-                                    title="Edit PO"
-                                  >
-                                    <i className="ri-edit-line text-sm"></i>
-                                  </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const id = poIdMap[po.poNumber];
+                                        if (id) navigate(`/scm/create-po?poId=${id}&from=po-approval`);
+                                      }}
+                                      className="rfx-act"
+                                      title="Edit PO"
+                                    >
+                                      <i className="ri-edit-line" />
+                                    </button>
                                   )}
                                   <button
                                     type="button"
                                     onClick={() => startSign(po.poNumber)}
-                                    className="cursor-pointer rounded-xl p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50"
+                                    className="rfx-act solid"
                                     title={mugeshMode ? 'Approve' : 'Sign & Approve (digital signature)'}
                                   >
-                                    <i className="ri-quill-pen-line text-sm"></i>
+                                    <i className="ri-quill-pen-line" />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => openModal(po.poNumber, 'sendback')}
-                                    className="cursor-pointer rounded-xl p-1.5 text-orange-600 transition-colors hover:bg-orange-50"
+                                    className="rfx-act warn"
                                     title={mugeshMode ? 'Send Back to Requester' : 'Send Back to Buyer'}
                                   >
-                                    <i className="ri-arrow-go-back-line text-sm"></i>
+                                    <i className="ri-arrow-go-back-line" />
                                   </button>
                                   {!mugeshMode && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openModal(po.poNumber, 'reject')}
-                                    className="cursor-pointer rounded-xl p-1.5 text-rose-500 transition-colors hover:bg-rose-50"
-                                    title="Reject"
-                                  >
-                                    <i className="ri-close-line text-sm"></i>
-                                  </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openModal(po.poNumber, 'reject')}
+                                      className="rfx-act danger"
+                                      title="Reject"
+                                    >
+                                      <i className="ri-close-line" />
+                                    </button>
                                   )}
                                 </>
                               )}
@@ -1197,8 +1160,8 @@ export default function POApprovalPage() {
             </div>
 
             {filteredPOs.length === 0 && (
-              <div className="relative z-[1] py-16 text-center">
-                <i className="ri-file-list-3-line mb-4 block text-5xl text-slate-200"></i>
+              <div className="py-14 text-center">
+                <i className="ri-file-list-3-line mb-3 block text-5xl text-[#c5e6eb]"></i>
                 <p className="text-sm font-medium text-slate-500">No purchase orders found</p>
                 {(searchTerm || filter !== 'all') && (
                   <button
@@ -1207,14 +1170,14 @@ export default function POApprovalPage() {
                       setSearchTerm('');
                       setFilter('all');
                     }}
-                    className="mt-3 cursor-pointer whitespace-nowrap rounded-xl bg-[#E3F2FD] px-4 py-2 text-sm font-medium text-[#1E88E5] transition-colors hover:bg-[#BBDEFB]"
+                    className="tfx-btn secondary sm mt-3"
                   >
                     Clear filters
                   </button>
                 )}
               </div>
             )}
-          </div>
+          </section>
         </div>
       </div>
 
