@@ -5050,7 +5050,9 @@ export async function listTasks(user) {
 
   // Always include PRs where this user is the assigned approver / User Approval performer.
   // Match by user id or email (SSO / re-synced user rows).
+  // SCM Manager: never pick up another manager's personally assigned task via open role-queue.
   const userEmail = String(user.email || '').toLowerCase().trim();
+  const isScmManagerViewer = user.role === 'SCM Manager';
   const [assignedRows] = await pool.query(
     `SELECT DISTINCT pr.id, wt.task_type, wt.assigned_role, pr.status AS pr_status,
             pr.purchase_type, wt.assigned_user_id, au.email AS assigned_email
@@ -5070,6 +5072,8 @@ export async function listTasks(user) {
              wt.assigned_role = 'CFO'
              AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
            )
+           -- SCM Managers must not share each other's open role-queue (Meet vs Rajeev)
+           AND NOT (? = 1 AND wt.assigned_role = 'SCM Manager')
          )
        )
        AND (
@@ -5095,6 +5099,7 @@ export async function listTasks(user) {
       userEmail,
       userEmail,
       user.role,
+      isScmManagerViewer ? 1 : 0,
       PR_STATUS.PENDING_HOD_APPROVAL,
       PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
       PR_STATUS.PENDING_RFQ_L2_APPROVAL,
@@ -5331,6 +5336,8 @@ export async function listTasks(user) {
   }
 
   if (user.role === 'SCM Manager') {
+    // Same Meet (RGML) vs Rajeev split as listPurchaseOrders — never show the other manager's sign queue in My Tasks.
+    const managerEmail = String(user.email || '').trim().toLowerCase();
     const [poSignRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.updated_at,
               COALESCE(NULLIF(TRIM(pr.title), ''), CONCAT('Manual ', IF(po.purchase_type = 'work_order', 'WO', 'PO'))) AS title,
@@ -5346,10 +5353,56 @@ export async function listTasks(user) {
        LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
+         AND (wt.assigned_user_id IS NULL OR wt.assigned_user_id = ?)
        WHERE po.status = 'pending_approval'
          AND COALESCE(pr.po_creation_by, 'scm') <> 'requester'
          AND COALESCE(po.po_sign_step, '') NOT IN ('l1', 'mugesh', 'requester', 'signed')
-       ORDER BY po.updated_at DESC`
+         AND (
+           po.approval_manager_id = ?
+           OR (
+             po.approval_manager_id IS NULL
+             AND (
+               (
+                 ? = 'rajeev.v@refex.co.in'
+                 AND NOT (
+                   LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+                   OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+                   OR UPPER(IFNULL(e.code, '')) = 'RGML'
+                   OR LOWER(IFNULL(e.name, '')) LIKE '%green mobility%'
+                 )
+               )
+               OR (
+                 ? = 'meet.g@refex.co.in'
+                 AND (
+                   LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+                   OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+                   OR UPPER(IFNULL(e.code, '')) = 'RGML'
+                   OR LOWER(IFNULL(e.name, '')) LIKE '%green mobility%'
+                 )
+               )
+               OR (
+                 ? NOT IN ('rajeev.v@refex.co.in', 'meet.g@refex.co.in')
+                 AND EXISTS (
+                   SELECT 1 FROM workflow_tasks wt_own
+                   WHERE wt_own.pr_id = po.pr_id
+                     AND wt_own.task_type = 'PO_APPROVAL'
+                     AND wt_own.status = 'pending'
+                     AND wt_own.assigned_user_id = ?
+                 )
+               )
+             )
+           )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM workflow_tasks wt_other
+           WHERE wt_other.pr_id = po.pr_id
+             AND wt_other.task_type = 'PO_APPROVAL'
+             AND wt_other.status = 'pending'
+             AND wt_other.assigned_user_id IS NOT NULL
+             AND wt_other.assigned_user_id <> ?
+         )
+       ORDER BY po.updated_at DESC`,
+      [user.id, user.id, managerEmail, managerEmail, managerEmail, user.id, user.id]
     );
     for (const row of poSignRows) {
       const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);

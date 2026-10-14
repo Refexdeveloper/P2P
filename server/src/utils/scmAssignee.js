@@ -257,17 +257,53 @@ export async function ensurePreferredScmManagerUser(conn = null) {
   return result.insertId;
 }
 
-/** Fill only unassigned pending SCM Manager tasks with Rajeev. Assigned tasks stay. */
+/**
+ * Fill unassigned pending SCM Manager tasks with the right manager.
+ * RGML / Green Mobility → Meet; everything else → preferred manager (Rajeev).
+ * Already-assigned tasks stay untouched.
+ */
 export async function reassignPendingScmManagerTasks(conn = null) {
   const manager = await resolveScmManagerUser(conn);
   if (!manager?.id) return { manager: null, updated: 0 };
   const db = conn || pool;
+  const meetId = await ensureScmManagerApprover(RGML_SCM_MANAGER_EMAIL, RGML_SCM_MANAGER_NAME, db);
+
+  const rgmlSql = `(
+    LOWER(IFNULL(po.entity, '')) LIKE '%rgml%'
+    OR LOWER(IFNULL(po.entity, '')) LIKE '%green mobility%'
+    OR UPPER(IFNULL(em.code, '')) = 'RGML'
+    OR LOWER(IFNULL(em.name, '')) LIKE '%green mobility%'
+    OR UPPER(IFNULL(em_pr.code, '')) = 'RGML'
+    OR LOWER(IFNULL(em_pr.name, '')) LIKE '%green mobility%'
+  )`;
+
+  // Meet: unassigned RGML PO / PR tasks
+  await db.query(
+    `UPDATE workflow_tasks wt
+     LEFT JOIN purchase_orders po ON po.pr_id = wt.pr_id
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
+     LEFT JOIN purchase_requests pr ON pr.id = wt.pr_id
+     LEFT JOIN entity_masters em_pr ON em_pr.id = pr.entity_id
+     SET wt.assigned_user_id = ?
+     WHERE wt.assigned_role = 'SCM Manager'
+       AND wt.status = 'pending'
+       AND wt.assigned_user_id IS NULL
+       AND ${rgmlSql}`,
+    [meetId]
+  );
+
+  // Rajeev (preferred): remaining unassigned non-RGML tasks
   const [result] = await db.query(
-    `UPDATE workflow_tasks
-     SET assigned_user_id = ?
-     WHERE assigned_role = 'SCM Manager'
-       AND status = 'pending'
-       AND assigned_user_id IS NULL`,
+    `UPDATE workflow_tasks wt
+     LEFT JOIN purchase_orders po ON po.pr_id = wt.pr_id
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
+     LEFT JOIN purchase_requests pr ON pr.id = wt.pr_id
+     LEFT JOIN entity_masters em_pr ON em_pr.id = pr.entity_id
+     SET wt.assigned_user_id = ?
+     WHERE wt.assigned_role = 'SCM Manager'
+       AND wt.status = 'pending'
+       AND wt.assigned_user_id IS NULL
+       AND NOT ${rgmlSql}`,
     [manager.id]
   );
   return { manager, updated: result?.affectedRows || 0 };
