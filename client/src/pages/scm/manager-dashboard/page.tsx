@@ -111,7 +111,7 @@ export default function ScmManagerDashboardPage() {
       value: pendingPos.length,
       sub: pendingValue ? formatCurrency(pendingValue) : 'Awaiting your sign-off',
       icon: 'ri-checkbox-circle-line',
-      to: '/scm/po-approval',
+      to: '/scm/po-approval?filter=pending',
       variant: 'pending_approval' as KpiVariant,
       highlight: pendingPos.length > 0,
     },
@@ -142,7 +142,7 @@ export default function ScmManagerDashboardPage() {
       value: approvedPos,
       sub: 'Signed / sent / buyer verify',
       icon: 'ri-check-double-line',
-      to: '/scm/po-approval',
+      to: '/scm/po-approval?filter=approved',
       variant: 'approved' as KpiVariant,
       highlight: false,
     },
@@ -234,7 +234,7 @@ export default function ScmManagerDashboardPage() {
                 <i className="tfx-live-dot" aria-hidden /> Action needed
               </span>
               {pendingPos.length > 0 && (
-                <button type="button" onClick={() => navigate('/scm/po-approval')} className="mgr-alert-link">
+                <button type="button" onClick={() => navigate('/scm/po-approval?filter=pending')} className="mgr-alert-link">
                   PO pending <b>{pendingPos.length}</b>
                 </button>
               )}
@@ -280,7 +280,7 @@ export default function ScmManagerDashboardPage() {
                       <button
                         key={po.id || po.poNumber}
                         type="button"
-                        onClick={() => navigate('/scm/po-approval')}
+                        onClick={() => navigate('/scm/po-approval?filter=pending')}
                         style={{ '--r': rowIndex } as CSSProperties}
                         className="tfx-list-row flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gradient-to-r hover:from-[#e6f6f8]/60 hover:to-transparent"
                       >
@@ -309,7 +309,7 @@ export default function ScmManagerDashboardPage() {
                   {rejectedPos} rejected PO{rejectedPos !== 1 ? 's' : ''} in history
                 </div>
               )}
-              <Link to="/scm/po-approval" className="mgr-foot-link">
+              <Link to="/scm/po-approval?filter=pending" className="mgr-foot-link">
                 Open PO Approval queue <i className="ri-arrow-right-line" aria-hidden />
               </Link>
             </section>
@@ -404,7 +404,7 @@ export default function ScmManagerDashboardPage() {
               <p className="mt-0.5 text-lg font-bold text-white">Jump to your queues</p>
             </div>
             <div className="relative z-[1] flex flex-wrap gap-2">
-              <Link to="/scm/po-approval" className="mgr-quick-btn solid">
+              <Link to="/scm/po-approval?filter=pending" className="mgr-quick-btn solid">
                 <i className="ri-checkbox-circle-line" aria-hidden /> PO Approval
               </Link>
               <Link to="/rfq-approval" className="mgr-quick-btn">

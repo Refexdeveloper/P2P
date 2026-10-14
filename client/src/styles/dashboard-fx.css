@@ -341,7 +341,20 @@
 .tfx-row > td { box-shadow: 0 6px 18px -14px rgba(13,95,110,.35); }
 
 /* ---------------- row-card table (requester dashboard) ---------------- */
+.rfx-table { table-layout: fixed; width: 100%; }
 .rfx-table thead tr { animation: tfx-fadeUp .5s ease .5s both; }
+/* Match body row: first cell has 4px tone border + pl-5 */
+.rfx-table thead th {
+  box-sizing: border-box;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.rfx-table thead th:first-child {
+  padding-left: calc(1.25rem + 4px);
+}
+.rfx-table thead th:last-child {
+  padding-right: 1.25rem;
+}
 .rfx-row {
   --tone: #17a2b4; --tone-soft: #e6f6f8;
   animation: rfx-rowIn .65s cubic-bezier(.2,.8,.2,1) both;
@@ -355,6 +368,7 @@
 @keyframes rfx-rowIn { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
 
 .rfx-row > td {
+  box-sizing: border-box;
   background: #fff; padding-top: 14px; padding-bottom: 14px; vertical-align: middle;
   border-top: 1px solid #e9f0f3; border-bottom: 1px solid #e9f0f3;
   transition: background .3s, border-color .3s;

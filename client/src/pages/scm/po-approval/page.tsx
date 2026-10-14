@@ -113,9 +113,12 @@ const StatusBadge = ({ status }: { status: string }) => {
     'WO Rejected': 'ri-close-circle-line',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${map[status] || 'bg-gray-100 text-gray-600'}`}>
-      <i className={icon[status] || 'ri-question-line'}></i>
-      {status}
+    <span
+      title={status}
+      className={`inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${map[status] || 'bg-gray-100 text-gray-600'}`}
+    >
+      <i className={`${icon[status] || 'ri-question-line'} shrink-0`}></i>
+      <span className="truncate">{status}</span>
     </span>
   );
 };
@@ -597,7 +600,10 @@ export default function POApprovalPage() {
   const [poIdMap, setPoIdMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => {
+    const f = String(searchParams.get('filter') || 'all').toLowerCase();
+    return ['all', 'pending', 'approved', 'rejected'].includes(f) ? f : 'all';
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [modal, setModal] = useState<{
@@ -671,6 +677,18 @@ export default function POApprovalPage() {
   useEffect(() => {
     loadPos();
   }, [loadPos]);
+
+  useEffect(() => {
+    const raw = searchParams.get('filter');
+    const f = String(raw || 'all').toLowerCase();
+    if (!['all', 'pending', 'approved', 'rejected'].includes(f)) return;
+    setFilter(f);
+    if (raw && f !== 'all') {
+      window.requestAnimationFrame(() =>
+        document.getElementById('po-approval-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      );
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const poId = Number(searchParams.get('poId') || 0);
@@ -987,24 +1005,35 @@ export default function POApprovalPage() {
 
             {/* Desktop — row-card table, no sticky columns */}
             <div data-po-approval-scroll className="hidden overflow-x-auto px-4 pb-4 pt-1 md:block">
-              <table className="rfx-table w-full min-w-[980px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2.5 text-sm">
+              <table className="rfx-table w-full min-w-[1180px] border-separate border-spacing-x-0 border-spacing-y-2.5 text-sm">
                 <colgroup>
-                  <col className="w-[19%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[15%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[10%]" />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '13%' }} />
                 </colgroup>
                 <thead>
                   <tr>
-                    {['PO Number', 'PR Reference', 'Vendor', 'Department / Requester', 'Grand Total', 'Priority', 'Status', 'Actions'].map((h) => (
+                    {(
+                      [
+                        { h: 'PO Number', align: 'left', pad: 'pl-[calc(1.25rem+4px)] pr-3' },
+                        { h: 'PR Reference', align: 'left', pad: 'px-3' },
+                        { h: 'Vendor', align: 'left', pad: 'px-3' },
+                        { h: 'Department / Requester', align: 'left', pad: 'px-3' },
+                        { h: 'Grand Total', align: 'right', pad: 'px-3' },
+                        { h: 'Priority', align: 'left', pad: 'px-3' },
+                        { h: 'Status', align: 'left', pad: 'px-3' },
+                        { h: 'Actions', align: 'right', pad: 'pl-3 pr-5' },
+                      ] as const
+                    ).map(({ h, align, pad }) => (
                       <th
                         key={h}
-                        className={`tfx-th px-3 py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 first:pl-5 last:pr-5 ${
-                          h === 'Grand Total' || h === 'Actions' ? 'text-right' : 'text-left'
+                        className={`tfx-th py-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 ${pad} ${
+                          align === 'right' ? 'text-right' : 'text-left'
                         }`}
                       >
                         {h}
@@ -1038,18 +1067,18 @@ export default function POApprovalPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="truncate px-3 text-sm font-medium text-[#0f6b7a]" title={po.prId}>
-                            {po.prId}
+                          <td className="overflow-hidden px-3 text-sm font-medium text-[#0f6b7a]" title={po.prId}>
+                            <span className="block truncate">{po.prId}</span>
                           </td>
-                          <td className="px-3" title={po.vendor}>
+                          <td className="overflow-hidden px-3" title={po.vendor}>
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#e6f6f8] text-[#0f6b7a]">
                                 <i className="ri-store-2-line text-xs" aria-hidden />
                               </span>
-                              <p className="truncate text-sm font-medium text-slate-800">{po.vendor}</p>
+                              <p className="min-w-0 truncate text-sm font-medium text-slate-800">{po.vendor}</p>
                             </div>
                           </td>
-                          <td className="px-3">
+                          <td className="overflow-hidden px-3">
                             <span className="rfx-dept" title={po.department}>
                               <i />
                               <span className="truncate">{po.department}</span>
@@ -1059,22 +1088,22 @@ export default function POApprovalPage() {
                               {po.requester}
                             </p>
                           </td>
-                          <td className="px-3 text-right">
+                          <td className="overflow-hidden px-3 text-right">
                             <p className="text-sm font-bold tabular-nums text-slate-900">{formatCurrency(po.grandTotal)}</p>
                             <p className="mt-0.5 text-xs text-slate-400">
                               {po.lineItems.length} item{po.lineItems.length !== 1 ? 's' : ''}
                             </p>
                           </td>
-                          <td className="px-3">
+                          <td className="overflow-hidden px-3">
                             <PriorityBadge priority={po.priority} />
                           </td>
-                          <td className="px-3">
-                            <span className="rfx-status inline-block max-w-full">
+                          <td className="overflow-hidden px-3" title={po.status}>
+                            <span className="rfx-status inline-flex max-w-full">
                               <StatusBadge status={po.status} />
                             </span>
                           </td>
                           <td className="pl-3 pr-5" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            <div className="flex flex-nowrap items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => {
