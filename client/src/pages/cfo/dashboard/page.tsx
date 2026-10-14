@@ -7,6 +7,15 @@ import ActivityTimeline from './components/ActivityTimeline';
 import HighValueAlerts from './components/HighValueAlerts';
 import ApprovalActionModal from '../../tasks/components/ApprovalModal';
 import { prApi } from '../../../services/api';
+import { useAuth } from '../../../contexts/AuthContext';
+import '../../../styles/dashboard-fx.css';
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 type PriorityFilter = 'All' | 'Critical' | 'High' | 'Medium' | 'Low';
 
@@ -44,6 +53,7 @@ function formatCr(amount: number) {
 }
 
 export default function CFODashboardPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkHandled = useRef(false);
   const [selectedEntity, setSelectedEntity] = useState<string>('all');
@@ -179,22 +189,34 @@ export default function CFODashboardPage() {
 
   return (
     <DashboardLayout>
-      <div className="flex h-full">
+      <div className="tasks-fx flex h-full font-sans text-[#0F172A]">
         <div className="flex-1 min-w-0 overflow-y-auto">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Approvals Dashboard</h1>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Entity-wise business approvals &amp; spend oversight
-                </p>
+          <section className="tfx-hero">
+            <div className="tfx-bubbles" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i /><i />
+            </div>
+            <div className="tfx-hero-content">
+              <div className="tfx-hi">
+                {greetingForNow()}, <span className="tfx-wave">👋</span>
               </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <i className="ri-calendar-line"></i>
-                <span>{monthLabel}</span>
+              <h1>
+                <span className="tfx-shimmer">{user?.name || 'Approver'}</span>
+              </h1>
+              <p>
+                Entity-wise business approvals &amp; spend oversight
+                <span className="tfx-role-inline"> · Approvals</span>
+              </p>
+            </div>
+            <div className="tfx-period hidden min-[992px]:block">
+              <p className="tfx-period-lbl">Period</p>
+              <div className="flex items-center gap-2 px-1 pb-1 text-sm text-slate-600">
+                <i className="ri-calendar-line text-[#0f6b7a]" aria-hidden />
+                <span className="font-semibold text-slate-900">{monthLabel}</span>
               </div>
             </div>
+          </section>
 
+          <div className="relative z-[4] -mt-8 px-4 pb-6 sm:px-6">
             <StatsCards stats={stats} />
             {loadError && (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -213,7 +235,7 @@ export default function CFODashboardPage() {
                   key={entity.id}
                   onClick={() => setSelectedEntity(entity.id === selectedEntity ? 'all' : entity.id)}
                   className={`bg-white rounded-lg p-5 border-2 cursor-pointer hover:shadow-md transition-all ${
-                    selectedEntity === entity.id ? 'border-[#1E88E5] shadow-md' : 'border-gray-200'
+                    selectedEntity === entity.id ? 'border-[#0f6b7a] shadow-md' : 'border-gray-200'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-3">
@@ -277,7 +299,7 @@ export default function CFODashboardPage() {
                       placeholder="Search PR ID, title, requester..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent text-sm"
+                      className="tfx-input w-full rounded-xl border bg-white py-2 pl-9 pr-4 text-sm outline-none"
                     />
                   </div>
                 </div>
@@ -305,7 +327,7 @@ export default function CFODashboardPage() {
                           setSelectedEntity('all');
                           setDropdownOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === 'all' ? 'bg-[#E3F2FD]' : ''}`}
+                        className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === 'all' ? 'bg-[#e6f6f8]' : ''}`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -333,7 +355,7 @@ export default function CFODashboardPage() {
                               setSelectedEntity(entity.id);
                               setDropdownOpen(false);
                             }}
-                            className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === entity.id ? 'bg-[#E3F2FD]' : ''}`}
+                            className={`w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${selectedEntity === entity.id ? 'bg-[#e6f6f8]' : ''}`}
                           >
                             <div className="flex items-center gap-3">
                               <div
@@ -367,10 +389,10 @@ export default function CFODashboardPage() {
                     <button
                       key={priority}
                       onClick={() => setPriorityFilter(priority)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                      className={`tfx-tab inline-flex cursor-pointer items-center whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
                         priorityFilter === priority
-                          ? 'bg-[#1E88E5] text-white'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          ? 'is-active border border-transparent text-white'
+                          : 'border border-[#e3eaef] bg-white text-slate-700'
                       }`}
                     >
                       {priority}

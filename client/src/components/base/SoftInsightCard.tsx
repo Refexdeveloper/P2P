@@ -3,16 +3,16 @@ import type { ReactNode } from 'react';
 /** Same pastel wash cards as the requester dashboard PR Insights. */
 export const INSIGHT_THEMES = {
   blue: {
-    value: '#2563EB',
-    iconBg: '#DBEAFE',
-    wash: 'rgba(37, 99, 235, 0.14)',
-    selectedBorder: 'border-[#93C5FD]',
+    value: '#0F6B7A',
+    iconBg: '#E6F6F8',
+    wash: 'rgba(15, 107, 122, 0.14)',
+    selectedBorder: 'border-[#A9DBE2]',
   },
   cyan: {
-    value: '#06B6D4',
-    iconBg: '#CFFAFE',
-    wash: 'rgba(6, 182, 212, 0.14)',
-    selectedBorder: 'border-[#67E8F9]',
+    value: '#17A2B4',
+    iconBg: '#E6F6F8',
+    wash: 'rgba(23, 162, 180, 0.14)',
+    selectedBorder: 'border-[#A9DBE2]',
   },
   green: {
     value: '#10B981',
