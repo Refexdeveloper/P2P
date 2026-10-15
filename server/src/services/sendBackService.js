@@ -237,13 +237,46 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   };
 }
 
+/**
+ * Notify the next-step owner after send-back / admin move.
+ * When `normalHandoff` is true (admin Move to step), mail looks like a normal
+ * workflow assignment — no “Sent back” / “Admin” wording for the recipient.
+ */
 export function queueSendBackNotifications(updatedPr, applyResult) {
   const { target, assignee, requester } = applyResult;
+  const normalHandoff = Boolean(applyResult.normalHandoff);
   const requesterCreated = String(updatedPr.poCreationBy || updatedPr.po_creation_by || 'scm') === 'requester';
   const rajeevCc = requesterCreated ? [] : [getPreferredScmManagerEmail()].filter(Boolean);
-  const sendBackRemarks = String(applyResult.remarksLine || '').trim();
+  const cleanRemarks = String(
+    applyResult.userRemarks || applyResult.remarksLine || ''
+  )
+    .replace(/\[(?:Admin[^\]]*|Moved to:[^\]]*|Sent back to:[^\]]*)\]/gi, '')
+    .trim();
+  const sendBackRemarks = normalHandoff ? '' : String(applyResult.remarksLine || '').trim();
+  const stageLabel = normalHandoff ? target.label : `Sent back — ${target.label}`;
 
+  // Requester Edit PR — handoff like a normal next-step mail (not “sent back”) when admin moves
   if (target.key === 'REQUESTER') {
+    if (normalHandoff) {
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'Requester',
+        {
+          name: requester?.name || updatedPr.requester,
+          email: requester?.email,
+        },
+        updatedPr.departmentId ?? updatedPr.department_id ?? null,
+        {
+          stageLabel: target.label,
+          approverEmails: requester?.email ? [requester.email] : undefined,
+          approverName: requester?.name || updatedPr.requester,
+          skipOpsBcc: true,
+          bccOps: false,
+          editPr: true,
+        }
+      );
+      return;
+    }
     queuePostRfqActionNotification(
       updatedPr,
       applyResult.actorRole || 'Approver',
@@ -258,56 +291,89 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
     return;
   }
 
-  // Requester Create PO / Requester RFQ — mail the requester only. Never SCM Buyer or SCM Manager.
+  // Requester Create PO / Requester RFQ — mail the requester only.
   if (
     (target.key === 'REQUESTER_RFQ' || target.key === 'REQUESTER_PO' || target.key === 'PO_REQUESTER_VERIFY') &&
     (assignee?.email || requester?.email)
   ) {
+    const to = {
+      name: assignee?.name || requester?.name || updatedPr.requester,
+      email: assignee?.email || requester?.email,
+    };
+    if (normalHandoff) {
+      const isRfqEntry = target.taskType === 'RFQ_ENTRY';
+      const isCreatePo = target.key === 'REQUESTER_PO';
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'Requester',
+        to,
+        updatedPr.departmentId ?? updatedPr.department_id ?? null,
+        {
+          stageLabel: target.label,
+          rfqEntry: isRfqEntry,
+          createPo: isCreatePo,
+          approverEmails: to.email ? [to.email] : undefined,
+          approverName: to.name,
+          skipOpsBcc: true,
+          bccOps: false,
+        }
+      );
+      return;
+    }
     queuePostRfqActionNotification(
       updatedPr,
       applyResult.actorRole || 'Approver',
       'return',
       applyResult.remarksLine,
-      {
-        name: assignee?.name || requester?.name || updatedPr.requester,
-        email: assignee?.email || requester?.email,
-      },
+      to,
       { editPr: false, ccEmails: [], skipOpsBcc: true }
     );
     return;
   }
 
-  if (assignee?.email && target.assignedRole) {
+  const canNotifyRole =
+    Boolean(target.assignedRole) &&
+    (Boolean(assignee?.email) ||
+      target.assignedRole === 'SCM Buyer' ||
+      target.assignedRole === 'SCM Manager');
+
+  if (canNotifyRole) {
     const isRfqEntry = target.taskType === 'RFQ_ENTRY';
     const isCreatePo =
       target.key === 'SCM_PO' ||
       String(target.label || '').toLowerCase().includes('create po') ||
       (target.taskType === 'RFQ_POST_APPROVAL' && target.assignedRole === 'SCM Buyer');
     const notifyEmails =
-      target.assignedRole === 'SCM Buyer'
+      target.assignedRole === 'SCM Buyer' || target.assignedRole === 'SCM Manager'
         ? undefined
-        : [assignee.email];
+        : assignee?.email
+          ? [assignee.email]
+          : undefined;
     const mailOpts = {
       postRfq: target.taskType === 'RFQ_POST_APPROVAL',
       rfqEntry: isRfqEntry,
       createPo: isCreatePo,
-      stageLabel: `Sent back — ${target.label}`,
-      sendBackRemarks,
+      stageLabel,
+      ...(sendBackRemarks ? { sendBackRemarks } : {}),
+      ...(cleanRemarks && normalHandoff ? { notes: cleanRemarks } : {}),
       approverEmails: notifyEmails,
-      approverName: target.assignedRole === 'SCM Buyer' ? 'SCM Buyer' : assignee.name || undefined,
-      // Create PO send-back only: CC mapped SCM Manager (Rajeev). No CC on other send-backs.
-      ccEmails: isCreatePo ? rajeevCc : [],
+      approverName:
+        target.assignedRole === 'SCM Buyer'
+          ? 'SCM Buyer'
+          : target.assignedRole === 'SCM Manager'
+            ? 'SCM Manager'
+            : assignee?.name || undefined,
+      ccEmails: isCreatePo && !normalHandoff ? rajeevCc : [],
       skipOpsBcc: true,
       bccOps: false,
     };
-    // After quotation rounds, include negotiation + files (Standard Own / SCM vendor / Functional Own)
     if (target.taskType === 'RFQ_POST_APPROVAL' || isCreatePo || (isRfqEntry && updatedPr.vendorSelection === 'own')) {
       void import('./rfqService.js')
         .then(({ queuePostQuotationApprovalMail }) =>
           queuePostQuotationApprovalMail(updatedPr, target.assignedRole, mailOpts)
         )
         .catch((err) => {
-          console.warn('Send-back RFQ pack mail failed, falling back:', err.message);
+          console.warn('Step handoff RFQ pack mail failed, falling back:', err.message);
           queuePrApprovalPendingNotification(
             updatedPr,
             target.assignedRole,
@@ -328,8 +394,26 @@ export function queueSendBackNotifications(updatedPr, applyResult) {
     return;
   }
 
-  // Fallback: notify requester when assignee email is missing — no CC on generic send-back
+  // Fallback: notify requester when assignee email is missing
   if (requester?.email || updatedPr.requester) {
+    if (normalHandoff) {
+      queuePrApprovalPendingNotification(
+        updatedPr,
+        'Requester',
+        {
+          name: requester?.name || updatedPr.requester,
+          email: requester?.email,
+        },
+        updatedPr.departmentId ?? updatedPr.department_id ?? null,
+        {
+          stageLabel: target.label,
+          approverEmails: requester?.email ? [requester.email] : undefined,
+          skipOpsBcc: true,
+          bccOps: false,
+        }
+      );
+      return;
+    }
     queuePostRfqActionNotification(
       updatedPr,
       applyResult.actorRole || 'Approver',

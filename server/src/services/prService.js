@@ -4483,16 +4483,19 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
         pr.current_stage || 'ADMIN_MOVE_STEP',
         user.id,
         'rework',
-        `[Admin move by ${user.name || user.role}] ${applyResult.remarksLine}`,
+        `[Workflow moved to ${applyResult.target?.label || returnTo}] ${remarksText}`,
       ]
     );
 
     await conn.commit();
     const updatedPr = await getPurchaseRequestById(prId);
-    queueSendBackNotifications(updatedPr, { ...applyResult, actorRole: user.role });
-    queueApproverActionConfirmationForUser(prId, user, 'rework', {
-      remarks: remarksText,
-      approverRole: user.role,
+    // Recipient mail looks like a normal step handoff — no “Admin / Sent back” wording
+    queueSendBackNotifications(updatedPr, {
+      ...applyResult,
+      actorRole: user.role,
+      normalHandoff: true,
+      userRemarks: remarksText,
+      remarksLine: remarksText,
     });
     const movedTo = applyResult.movedTo || {
       key: applyResult.target?.key,

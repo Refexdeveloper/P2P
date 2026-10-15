@@ -1889,8 +1889,8 @@ export default function TrackPRPage() {
               {sendBackModal.title}
             </p>
             <p className="text-xs text-gray-500 mt-2">
-              Completes the current pending task and opens the selected step for the assignee
-              (Edit PR, RFQ Entry, approvals, Create PO, sign, or final verify).
+              Completes the current task and assigns the selected step. The step owner gets a normal
+              pending-action email (same as a regular workflow handoff — not labeled as admin).
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">

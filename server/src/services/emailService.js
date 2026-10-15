@@ -169,11 +169,12 @@ function buildWorkflowPortalUrl(pr, assignedRole, options = {}) {
     (postRfq && assignedRole === 'SCM Buyer');
 
   let url = `${base}/tasks?prId=${prId}`;
-  if (isCreatePo) url = `${base}/scm/create-po?prId=${prId}`;
-  else if (assignedRole === 'Requester') {
-    url = options.editPr
-      ? `${base}/requester/edit-pr/${prId}`
-      : `${base}/requester/rfq-entry/${prId}`;
+  if (assignedRole === 'Requester') {
+    if (options.editPr) url = `${base}/requester/edit-pr/${prId}`;
+    else if (isCreatePo) url = `${base}/scm/create-po?prId=${prId}&from=requester`;
+    else url = `${base}/requester/rfq-entry/${prId}`;
+  } else if (isCreatePo) {
+    url = `${base}/scm/create-po?prId=${prId}`;
   } else if (rfqEntry || (assignedRole === 'SCM Buyer' && !postRfq)) {
     url = `${base}/scm/rfq-entry/${prId}`;
   } else if (assignedRole === 'SCM Manager' && postRfq) url = `${base}/rfq-approval/${prId}`;
