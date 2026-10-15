@@ -215,6 +215,8 @@ export default function RfqEntryDetailPage() {
       description: string;
       category?: string;
       quantity: number;
+      unit?: string;
+      uom?: string;
       unitCost: number;
       total: number;
     }>;
@@ -438,6 +440,43 @@ export default function RfqEntryDetailPage() {
   };
 
   const prLineItems = pr?.lineItems || [];
+
+  /** Changes when PR lines are edited — forces comparison refetch so preview isn't stale. */
+  const prLinesFingerprint = useMemo(
+    () =>
+      JSON.stringify(
+        prLineItems.map((li) => ({
+          id: li.id,
+          description: li.description,
+          quantity: li.quantity,
+          unitCost: li.unitCost,
+          total: li.total,
+          uom: li.uom || li.unit || '',
+        }))
+      ),
+    [prLineItems]
+  );
+
+  /** Prefer live PR lines over cached comparison.pr (after Edit PR). */
+  const comparisonForView = useMemo((): VendorComparisonData | null => {
+    if (!comparison) return null;
+    if (!prLineItems.length) return comparison;
+    return {
+      ...comparison,
+      pr: {
+        ...comparison.pr,
+        lineItems: prLineItems.map((li) => ({
+          id: li.id,
+          description: li.description,
+          category: li.category || '',
+          quantity: Number(li.quantity) || 0,
+          uom: li.uom || li.unit || 'Nos',
+          unitCost: Number(li.unitCost) || 0,
+          total: Number(li.total) || 0,
+        })),
+      },
+    };
+  }, [comparison, prLineItems]);
 
   type ManualQuoteLine = {
     lineItemId: string;
@@ -1079,7 +1118,7 @@ export default function RfqEntryDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [mode, prId, hasInvitations, tableRows.length]);
+  }, [mode, prId, hasInvitations, tableRows.length, prLinesFingerprint]);
 
   const saveConfig = async (updates: Partial<RfqConfig>) => {
     if (!prId) return;
@@ -2129,6 +2168,7 @@ export default function RfqEntryDetailPage() {
 
     if (existingForWanted) {
       startEditExistingQuote(row, existingForWanted);
+      setPreferredTab(wanted);
       setQuotePopupId(row.invitationId);
       return;
     }
@@ -2136,6 +2176,13 @@ export default function RfqEntryDetailPage() {
     // After finalize, Super Admin may only edit existing quotes (not start new rounds)
     if (isFinalized && canAdminEditFinalizedQuotes) {
       failQuote('RFQ is finalized — open an existing quote round to update amount or files.');
+      return;
+    }
+
+    // Q2+ tab with no quote yet → start next round / re-quote flow
+    if (wanted > existingRound && (row.status === 'submitted' || row.hasActiveQuote)) {
+      setPreferredTab(wanted);
+      void beginNextQuoteRound(row);
       return;
     }
 
@@ -2158,6 +2205,15 @@ export default function RfqEntryDetailPage() {
     const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
     persistWorkingLines(row.invitationId, withoutRemovedLines(row.invitationId, seedQuoteLines(saved)));
     setQuotePopupId(row.invitationId);
+  };
+
+  const handleNextRoundTab = (nextRound: number) => {
+    if (isFinalized || nextRound < 1) return;
+    setPreferredTab(nextRound);
+    const currentMax = config?.maxRounds != null ? Number(config.maxRounds) : 0;
+    if (nextRound > currentMax) {
+      void saveConfig({ maxRounds: nextRound });
+    }
   };
 
   const askBeforeRequote = (row: TableRow) => {
@@ -2552,10 +2608,9 @@ export default function RfqEntryDetailPage() {
                 <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
                   Loading comparison…
                 </div>
-              ) : comparison ? (
+              ) : comparisonForView ? (
                 <VendorComparisonMatrix
-                  data={comparison}
-                  latestOnly
+                  data={comparisonForView}
                   selectedVendorId={recommendedId}
                   onPreviewFile={(submissionId, _vendorName, fileName) => {
                     void openFilePreview(submissionId, fileName);
@@ -2576,7 +2631,9 @@ export default function RfqEntryDetailPage() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Step 2 &amp; 3</p>
                   <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
                   <p className="text-sm text-gray-500 mt-1">
-                    Tap <strong>Edit</strong> to fill the quote, then <strong>Choose</strong> a vendor.
+                    Tap <strong>Edit</strong> on a round to fill the quote, then <strong>Choose</strong> a
+                    vendor. Use Q1 / Q2… tabs for negotiation rounds, or <strong>Re-quote</strong> to ask
+                    for the next round.
                   </p>
                 </div>
                 <div className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-xs font-semibold text-gray-600">
@@ -2594,13 +2651,15 @@ export default function RfqEntryDetailPage() {
                 removingId={removingId}
                 resendingId={resendingId}
                 preferredTab={preferredTab}
-                singleQuote
+                maxRounds={config?.maxRounds ?? null}
                 onEdit={(row, targetRound) => openQuotePopup(row as TableRow, targetRound)}
                 onChoose={(row) =>
                   row.hasActiveQuote && openRecommendModal(row.invitationId, row.vendorName)
                 }
                 onRemove={(row) => handleRemoveVendor(row as TableRow)}
                 onResend={(row) => handleResendMail(row as TableRow)}
+                onSendBack={(row) => askBeforeRequote(row as TableRow)}
+                onNextRound={handleNextRoundTab}
                 onViewFile={(row) => {
                   const extraId = Number(row.quotationExtraFileId) || 0;
                   const submissionId =
@@ -3521,7 +3580,12 @@ export default function RfqEntryDetailPage() {
           onToast={(msg) => showToast(msg)}
           onSaved={() => {
             billingHydratedRef.current = false;
-            void loadRfq();
+            setComparison(null);
+            void loadRfq().then(() => {
+              if (mode === 'preview' && prId) {
+                void rfqApi.getComparison(Number(prId)).then((res) => setComparison(res.data));
+              }
+            });
           }}
         />
       ) : null}
