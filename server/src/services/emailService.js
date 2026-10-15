@@ -828,7 +828,7 @@ export function queueSlaBreachNotification(pr, assignedRole, requester, departme
 }
 
 /**
- * Morning / evening SLA-breach reminder (User / L1 / L2 only).
+ * Morning / evening SLA-breach reminder (User / L1 / L2 + SCM Manager PO Sign & Approval).
  * Does not send WhatsApp — email reminder only.
  */
 export async function sendSlaBreachDailyReminder({
@@ -839,6 +839,8 @@ export async function sendSlaBreachDailyReminder({
   startDate,
   slaDue,
   waitingDays,
+  pendingHours = null,
+  overdueHours = null,
   assignedRole,
   taskId = null,
   portalUrl = null,
@@ -859,6 +861,8 @@ export async function sendSlaBreachDailyReminder({
     startDate,
     slaDue,
     waitingDays,
+    pendingHours,
+    overdueHours,
     portalUrl,
     appBaseUrl: getAppBaseUrl(),
   });
@@ -874,6 +878,8 @@ export async function sendSlaBreachDailyReminder({
       startDate,
       slaDue,
       waitingDays,
+      pendingHours,
+      overdueHours,
       dailyReminder: true,
       notificationType: slot,
       notificationDate: new Date().toISOString().slice(0, 10),

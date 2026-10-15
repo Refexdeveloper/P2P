@@ -10,12 +10,15 @@ import {
   APPROVAL_SLA_HOURS,
   taskSlaBreachedSql,
   isDailySlaReminderRole,
+  shouldReceiveDailySlaReminder,
   SCM_SLA_ONE_TIME_ROLES,
   DAILY_SLA_REMINDER_ROLES,
   SLA_REMINDER_SLOTS,
   normalizeSlaReminderSlot,
   formatSlaDate,
   getSlaWaitingDays,
+  getSlaPendingHours,
+  getSlaOverdueHours,
   getDailySlaApprovalTypeLabel,
   getTaskSlaDeadlineMs,
 } from '../utils/sla.js';
@@ -125,6 +128,21 @@ async function slaWorkAlreadyFinished(row) {
     if (pos.length) return true;
   }
 
+  // SCM Manager already signed — stop morning/evening PO approval reminders
+  if (taskType === 'PO_APPROVAL' && row.assigned_role === 'SCM Manager') {
+    const [signed] = await pool.query(
+      `SELECT id FROM purchase_orders
+       WHERE pr_id = ?
+         AND (
+           signed_at IS NOT NULL
+           OR LOWER(COALESCE(status, '')) NOT IN ('draft', 'pending_approval', 'cancelled', 'rejected')
+         )
+       LIMIT 1`,
+      [row.pr_id]
+    );
+    if (signed.length) return true;
+  }
+
   return false;
 }
 
@@ -132,7 +150,8 @@ async function slaWorkAlreadyFinished(row) {
  * Pending approval tasks past SLA for the current stage only.
  * SLA clock starts at workflow_tasks.created_at (new task = new SLA on stage change).
  * Notifies the current assignee once per pending task (sla_notified_at).
- * Includes SCM Buyer / SCM Manager (one-time only — never daily repeats).
+ * Includes SCM Buyer / SCM Manager (first breach mail once via sla_notified_at).
+ * SCM Manager PO_APPROVAL also gets morning/evening repeats in processDailySlaBreachReminders.
  */
 export async function processSlaBreaches() {
   if (running) return { skipped: true };
@@ -306,8 +325,11 @@ export async function processSlaBreaches() {
 }
 
 /**
- * Morning / evening SLA-breach reminders for User Approval / L1 / L2 only.
- * Excludes SCM Buyer and SCM Manager (they keep one-time SLA mail only).
+ * Morning / evening SLA-breach reminders while the task stays pending past 24h:
+ * - User / L1 / L2 (HOD Approver, PR Manager)
+ * - SCM Manager PO Sign & Approval (PO_APPROVAL) — until the manager finishes signing
+ *
+ * SCM Buyer keeps one-time SLA mail only (no morning/evening repeats).
  *
  * Dedupes by (task, calendar day, slot):
  * - MORNING → workflow_tasks.sla_daily_notified_on
@@ -343,10 +365,18 @@ export async function processDailySlaBreachReminders({ force = false, slot = SLA
        JOIN purchase_requests pr ON pr.id = wt.pr_id
        LEFT JOIN users asg ON asg.id = wt.assigned_user_id
        WHERE wt.status = 'pending'
-         AND wt.assigned_role IN (?, ?)
-         AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
          AND ${breachSql}
          AND (wt.${notifiedCol} IS NULL OR wt.${notifiedCol} < CURDATE())
+         AND (
+           (
+             wt.assigned_role IN (?, ?)
+             AND wt.task_type IN ('PR_APPROVAL', 'RFQ_POST_APPROVAL')
+           )
+           OR (
+             wt.assigned_role = 'SCM Manager'
+             AND wt.task_type = 'PO_APPROVAL'
+           )
+         )
        ORDER BY wt.id ASC
        LIMIT 200`,
       dailyRoles
@@ -361,13 +391,14 @@ export async function processDailySlaBreachReminders({ force = false, slot = SLA
     let notified = 0;
     let skipped = 0;
     let skippedScm = 0;
+    const appBase = String(process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     for (const row of rows) {
       try {
         const role = String(row.assigned_role || '').trim();
+        const taskType = String(row.task_type || '').trim();
 
-        // Hard exclude SCM — should never appear due to IN clause, but guard anyway
-        if (SCM_SLA_ONE_TIME_ROLES.has(role) || !isDailySlaReminderRole(role)) {
+        if (!shouldReceiveDailySlaReminder(role, taskType)) {
           skippedScm += 1;
           continue;
         }
@@ -443,11 +474,17 @@ export async function processDailySlaBreachReminders({ force = false, slot = SLA
           continue;
         }
 
-        const approvalType = getDailySlaApprovalTypeLabel(role, row.pr_flow);
+        const approvalType = getDailySlaApprovalTypeLabel(role, row.pr_flow, taskType);
         const startDate = formatSlaDate(row.task_created_at);
         const slaDueMs = getTaskSlaDeadlineMs(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS);
         const slaDue = formatSlaDate(slaDueMs);
         const waitingDays = getSlaWaitingDays(row.task_created_at);
+        const pendingHours = getSlaPendingHours(row.task_created_at);
+        const overdueHours = getSlaOverdueHours(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS);
+        const portalUrl =
+          role === 'SCM Manager' && taskType === 'PO_APPROVAL'
+            ? `${appBase}/scm/po-approval`
+            : null;
 
         const pr = {
           id: row.pr_id,
@@ -464,15 +501,18 @@ export async function processDailySlaBreachReminders({ force = false, slot = SLA
           startDate,
           slaDue,
           waitingDays,
+          pendingHours,
+          overdueHours,
           assignedRole: role,
           taskId: row.task_id,
           notificationType,
+          portalUrl,
         });
 
         notified += 1;
         console.log(
           `SLA ${notificationType} reminder sent: ${row.pr_number} task=${row.task_id} type="${approvalType}" ` +
-            `approver=${approverName || approverEmail} waiting=${waitingDays}d → ${approverEmail}`
+            `approver=${approverName || approverEmail} pending=${pendingHours}h overdue=${overdueHours}h → ${approverEmail}`
         );
       } catch (err) {
         console.error(
@@ -531,7 +571,7 @@ export function startSlaBreachScheduler() {
   setInterval(runOnce, SLA_CHECK_INTERVAL_MS);
   console.log(
     `SLA breach scheduler started (every ${Math.round(SLA_CHECK_INTERVAL_MS / 60000)} min, ` +
-      `per-stage SLA=${APPROVAL_SLA_HOURS}h; User/L1/L2 reminders ` +
+      `per-stage SLA=${APPROVAL_SLA_HOURS}h; User/L1/L2 + SCM Manager PO approval reminders ` +
       `morning ${SLA_DAILY_HOUR}:00 + evening ${SLA_EVENING_HOUR}:00 ${SLA_DAILY_TZ})`
   );
 }
@@ -539,11 +579,14 @@ export function startSlaBreachScheduler() {
 /** Test helpers — role gates and label mapping without DB. */
 export const __test = {
   isDailySlaReminderRole,
+  shouldReceiveDailySlaReminder,
   SCM_SLA_ONE_TIME_ROLES,
   DAILY_SLA_REMINDER_ROLES,
   SLA_REMINDER_SLOTS,
   normalizeSlaReminderSlot,
   getDailySlaApprovalTypeLabel,
+  getSlaPendingHours,
+  getSlaOverdueHours,
   shouldRunDailyRemindersNow,
   shouldRunReminderSlotNow,
   slotNotifiedColumn,

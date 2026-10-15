@@ -1,13 +1,16 @@
 /** Default approval SLA per workflow stage (hours from task creation). */
 export const APPROVAL_SLA_HOURS = Number(process.env.APPROVAL_SLA_HOURS) || 24;
 
-/** Roles that receive repeated daily SLA-breach reminders (not SCM). */
+/** Roles that receive repeated morning/evening SLA-breach reminders (User / L1 / L2). */
 export const DAILY_SLA_REMINDER_ROLES = new Set(['HOD Approver', 'PR Manager']);
 
-/** SCM roles — one-time SLA mail only; never daily repeats. */
+/**
+ * SCM Buyer keeps one-time SLA mail only.
+ * SCM Manager PO Sign & Approval (PO_APPROVAL) also gets morning/evening repeats until done.
+ */
 export const SCM_SLA_ONE_TIME_ROLES = new Set(['SCM Buyer', 'SCM Manager']);
 
-/** Twice-daily reminder slots for User / L1 / L2. */
+/** Twice-daily reminder slots (Asia/Kolkata morning + evening by default). */
 export const SLA_REMINDER_SLOTS = Object.freeze({
   MORNING: 'MORNING',
   EVENING: 'EVENING',
@@ -45,10 +48,14 @@ export function getSlaWaitingDays(createdAt, now = new Date()) {
 
 /**
  * Display label for daily SLA emails:
- * User Approval | L1 Manager Approval | L2 Manager Approval
+ * User Approval | L1 Manager Approval | L2 Manager Approval | PO Sign & Approval
  */
-export function getDailySlaApprovalTypeLabel(assignedRole, prFlow = 'standard') {
+export function getDailySlaApprovalTypeLabel(assignedRole, prFlow = 'standard', taskType = '') {
   const role = String(assignedRole || '').trim();
+  const type = String(taskType || '').trim();
+  if (role === 'SCM Manager' && (type === 'PO_APPROVAL' || !type)) {
+    return 'PO Sign & Approval';
+  }
   if (role === 'PR Manager') return 'L2 Manager Approval';
   if (role === 'HOD Approver') {
     return String(prFlow || '').toLowerCase() === 'functional'
@@ -60,6 +67,32 @@ export function getDailySlaApprovalTypeLabel(assignedRole, prFlow = 'standard') 
 
 export function isDailySlaReminderRole(assignedRole) {
   return DAILY_SLA_REMINDER_ROLES.has(String(assignedRole || '').trim());
+}
+
+/**
+ * Who gets morning/evening SLA repeats while the task stays pending past 24h.
+ * - HOD Approver / PR Manager: PR approval stages
+ * - SCM Manager: PO Sign & Approval (PO_APPROVAL) only
+ */
+export function shouldReceiveDailySlaReminder(assignedRole, taskType = '') {
+  const role = String(assignedRole || '').trim();
+  const type = String(taskType || '').trim();
+  if (DAILY_SLA_REMINDER_ROLES.has(role)) return true;
+  if (role === 'SCM Manager' && type === 'PO_APPROVAL') return true;
+  return false;
+}
+
+/** Whole hours since the pending task started (for "pending X hours" in SLA mail). */
+export function getSlaPendingHours(createdAt, now = new Date()) {
+  const start = toDate(createdAt);
+  if (!start) return 0;
+  return Math.max(0, Math.floor((now.getTime() - start.getTime()) / 3600000));
+}
+
+/** Hours past the SLA deadline (0 if not yet breached). */
+export function getSlaOverdueHours(createdAt, dueDate = null, slaHours = APPROVAL_SLA_HOURS, now = new Date()) {
+  const deadline = getTaskSlaDeadlineMs(createdAt, dueDate, slaHours);
+  return Math.max(0, Math.floor((now.getTime() - deadline) / 3600000));
 }
 
 /** SLA deadline for a pending workflow task (stage start = task created_at). */

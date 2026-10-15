@@ -7,8 +7,11 @@ import assert from 'node:assert/strict';
 import {
   formatSlaDate,
   getSlaWaitingDays,
+  getSlaPendingHours,
+  getSlaOverdueHours,
   getDailySlaApprovalTypeLabel,
   isDailySlaReminderRole,
+  shouldReceiveDailySlaReminder,
   isTaskSlaBreached,
   getTaskSlaDeadlineMs,
   DAILY_SLA_REMINDER_ROLES,
@@ -18,7 +21,7 @@ import {
 import { buildSlaBreachDailyEmail } from '../templates/slaBreachDailyEmail.js';
 import { __test } from './slaBreachService.js';
 
-describe('Daily SLA — role gates (User/L1/L2 only)', () => {
+describe('Daily SLA — role gates (User/L1/L2 + SCM Manager PO approval)', () => {
   it('includes HOD Approver and PR Manager', () => {
     assert.equal(isDailySlaReminderRole('HOD Approver'), true);
     assert.equal(isDailySlaReminderRole('PR Manager'), true);
@@ -26,12 +29,19 @@ describe('Daily SLA — role gates (User/L1/L2 only)', () => {
     assert.ok(DAILY_SLA_REMINDER_ROLES.has('PR Manager'));
   });
 
-  it('excludes SCM Buyer and SCM Manager from daily reminders', () => {
+  it('sends morning/evening repeats for SCM Manager PO_APPROVAL only', () => {
+    assert.equal(shouldReceiveDailySlaReminder('SCM Manager', 'PO_APPROVAL'), true);
+    assert.equal(shouldReceiveDailySlaReminder('SCM Manager', 'RFQ_POST_APPROVAL'), false);
+    assert.equal(shouldReceiveDailySlaReminder('SCM Buyer', 'PO_BUYER_VERIFY'), false);
+    assert.equal(shouldReceiveDailySlaReminder('HOD Approver', 'PR_APPROVAL'), true);
+    assert.ok(__test.shouldReceiveDailySlaReminder('SCM Manager', 'PO_APPROVAL'));
+  });
+
+  it('keeps SCM Buyer on one-time SLA (no daily role set)', () => {
     assert.equal(isDailySlaReminderRole('SCM Buyer'), false);
     assert.equal(isDailySlaReminderRole('SCM Manager'), false);
     assert.ok(SCM_SLA_ONE_TIME_ROLES.has('SCM Buyer'));
     assert.ok(SCM_SLA_ONE_TIME_ROLES.has('SCM Manager'));
-    assert.ok(__test.SCM_SLA_ONE_TIME_ROLES.has('SCM Buyer'));
   });
 });
 
@@ -49,9 +59,15 @@ describe('Daily SLA — approval type labels', () => {
     assert.equal(getDailySlaApprovalTypeLabel('PR Manager', 'functional'), 'L2 Manager Approval');
   });
 
-  it('does not map SCM roles to User/L1/L2 labels', () => {
+  it('maps SCM Manager PO_APPROVAL → PO Sign & Approval', () => {
+    assert.equal(
+      getDailySlaApprovalTypeLabel('SCM Manager', 'standard', 'PO_APPROVAL'),
+      'PO Sign & Approval'
+    );
+  });
+
+  it('does not map SCM Buyer to User/L1/L2 labels', () => {
     assert.notEqual(getDailySlaApprovalTypeLabel('SCM Buyer'), 'User Approval');
-    assert.notEqual(getDailySlaApprovalTypeLabel('SCM Manager'), 'L1 Manager Approval');
   });
 });
 
@@ -64,6 +80,13 @@ describe('Daily SLA — dates and waiting days', () => {
   it('computes waiting days like the example (start 09-06 → 4 days on 09-10)', () => {
     const waiting = getSlaWaitingDays('2026-09-06T09:00:00', new Date('2026-09-10T12:00:00'));
     assert.equal(waiting, 4);
+  });
+
+  it('computes pending and overdue hours for breached PO approval', () => {
+    const start = new Date('2026-09-06T09:00:00');
+    const now = new Date('2026-09-07T15:00:00'); // 30h pending, 6h overdue after 24h SLA
+    assert.equal(getSlaPendingHours(start, now), 30);
+    assert.equal(getSlaOverdueHours(start, null, 24, now), 6);
   });
 
   it('detects breach after SLA hours from task start', () => {
@@ -140,5 +163,28 @@ describe('Daily SLA — email template', () => {
       assert.match(text, new RegExp(`Approval Type: ${type}`));
       assert.match(text, /Waiting: 1 day/);
     }
+  });
+
+  it('builds SCM Manager PO approval breach mail with pending hours', () => {
+    const { subject, text, html } = buildSlaBreachDailyEmail({
+      pr: { prNumber: 'PR-2026-099', title: 'Materials' },
+      approverName: 'Rajeev V',
+      approvalType: 'PO Sign & Approval',
+      startDate: '2026-09-06',
+      slaDue: '2026-09-07',
+      waitingDays: 2,
+      pendingHours: 36,
+      overdueHours: 12,
+      appBaseUrl: 'http://localhost:3000',
+    });
+    assert.match(subject, /PO Approval Pending/);
+    assert.match(subject, /36 hours/);
+    assert.match(text, /Pending Hours: 36 hours/);
+    assert.match(text, /Overdue Hours: 12 hours/);
+    assert.match(text, /morning and evening reminders until this task is finished/);
+    assert.match(html, /PO Approval Pending/);
+    assert.match(html, /36 hours/);
+    assert.match(html, /scm(%2F|\/)po-approval/);
+    assert.match(html, /Open PO approval/);
   });
 });

@@ -1,8 +1,14 @@
 import { escapeHtml } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
+function hoursLabel(hours) {
+  const n = Math.max(0, Number(hours) || 0);
+  return n === 1 ? '1 hour' : `${n} hours`;
+}
+
 /**
- * Daily morning SLA-breach reminder for User / L1 / L2 approvals only.
+ * Morning / evening SLA-breach reminder (User / L1 / L2 + SCM Manager PO Sign & Approval).
+ * Includes how long the task has been pending (hours) until the assignee finishes.
  */
 export function buildSlaBreachDailyEmail({
   pr,
@@ -11,19 +17,36 @@ export function buildSlaBreachDailyEmail({
   startDate,
   slaDue,
   waitingDays,
+  pendingHours = null,
+  overdueHours = null,
   portalUrl = null,
   appBaseUrl = null,
 }) {
   const name = String(approverName || 'Approver').trim() || 'Approver';
   const typeLabel = String(approvalType || 'Approval').trim() || 'Approval';
+  const isPoApproval = /po\s*sign|po\s*approval/i.test(typeLabel);
   const waitingLabel =
     Number(waitingDays) === 1 ? '1 day' : `${Math.max(0, Number(waitingDays) || 0)} days`;
+  const pendingHoursNum =
+    pendingHours == null || pendingHours === ''
+      ? null
+      : Math.max(0, Number(pendingHours) || 0);
+  const overdueHoursNum =
+    overdueHours == null || overdueHours === ''
+      ? null
+      : Math.max(0, Number(overdueHours) || 0);
+  const pendingHoursLabel = pendingHoursNum == null ? null : hoursLabel(pendingHoursNum);
+  const overdueHoursLabel = overdueHoursNum == null ? null : hoursLabel(overdueHoursNum);
   const prNumber = String(pr?.prNumber || pr?.pr_number || '').trim();
   const title = String(pr?.title || '').trim();
   const base = (appBaseUrl || process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  const actionUrl = wrapPortalUrlWithSso(portalUrl || `${base}/tasks`);
+  const defaultPath = isPoApproval ? '/scm/po-approval' : '/tasks';
+  const actionUrl = wrapPortalUrlWithSso(portalUrl || `${base}${defaultPath}`);
+  const actionLabel = isPoApproval ? 'Open PO approval →' : 'Open approval queue →';
 
-  const subject = '[SLA Breached] Approval Pending - Action Required';
+  const subject = isPoApproval
+    ? `[SLA Breached] PO Approval Pending${pendingHoursLabel ? ` — ${pendingHoursLabel}` : ''} - Action Required`
+    : '[SLA Breached] Approval Pending - Action Required';
 
   const html = `
 <!DOCTYPE html>
@@ -36,7 +59,9 @@ export function buildSlaBreachDailyEmail({
         <tr>
           <td style="background:linear-gradient(135deg,#9a3412,#c2410c);padding:28px 32px;">
             <div style="font-size:11px;color:#ffedd5;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;">SLA Breached</div>
-            <div style="font-size:22px;color:#fff;font-weight:800;margin-top:8px;">Approval Pending — Action Required</div>
+            <div style="font-size:22px;color:#fff;font-weight:800;margin-top:8px;">${
+              isPoApproval ? 'PO Approval Pending — Action Required' : 'Approval Pending — Action Required'
+            }</div>
             <div style="font-size:14px;color:#ffedd5;margin-top:8px;">Hello ${escapeHtml(name)}, the following approval task has exceeded its SLA.</div>
           </td>
         </tr>
@@ -46,7 +71,11 @@ export function buildSlaBreachDailyEmail({
               Hello ${escapeHtml(name)},
             </p>
             <p style="margin:0 0 20px;font-size:15px;color:#334155;line-height:1.55;">
-              The following approval task has exceeded its SLA and is still awaiting your action.
+              ${
+                isPoApproval
+                  ? 'The following PO sign &amp; approval task has exceeded its 24-hour SLA and is still awaiting your action. You will keep receiving morning and evening reminders until this task is finished.'
+                  : 'The following approval task has exceeded its SLA and is still awaiting your action.'
+              }
             </p>
             ${
               prNumber
@@ -96,9 +125,33 @@ export function buildSlaBreachDailyEmail({
                   </tr></table>
                 </td>
               </tr>
+              ${
+                pendingHoursLabel
+                  ? `<tr>
+                <td style="padding:14px 18px;border-bottom:1px solid #ffedd5;">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                    <td width="50%" style="vertical-align:top;padding-right:8px;">
+                      <div style="font-size:11px;color:#9a3412;text-transform:uppercase;font-weight:700;">Pending Hours</div>
+                      <div style="font-size:15px;color:#0f172a;font-weight:800;margin-top:4px;">${escapeHtml(pendingHoursLabel)}</div>
+                    </td>
+                    <td width="50%" style="vertical-align:top;padding-left:8px;">
+                      <div style="font-size:11px;color:#9a3412;text-transform:uppercase;font-weight:700;">Overdue Hours</div>
+                      <div style="font-size:15px;color:#c2410c;font-weight:800;margin-top:4px;">${escapeHtml(
+                        overdueHoursLabel || '—'
+                      )}</div>
+                    </td>
+                  </tr></table>
+                </td>
+              </tr>`
+                  : ''
+              }
               <tr>
                 <td style="padding:16px 18px;">
-                  <div style="font-size:15px;color:#9a3412;font-weight:700;">SLA exceeded — awaiting action.</div>
+                  <div style="font-size:15px;color:#9a3412;font-weight:700;">${
+                    isPoApproval
+                      ? `SLA breached — PO approval still pending${pendingHoursLabel ? ` for ${escapeHtml(pendingHoursLabel)}` : ''}.`
+                      : 'SLA exceeded — awaiting action.'
+                  }</div>
                 </td>
               </tr>
             </table>
@@ -110,7 +163,7 @@ export function buildSlaBreachDailyEmail({
         <tr>
           <td style="padding:8px 32px 28px 32px;" align="center">
             <a href="${escapeHtml(actionUrl)}" style="display:inline-block;background:#c2410c;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 28px;border-radius:10px;">
-              Open approval queue →
+              ${escapeHtml(actionLabel)}
             </a>
           </td>
         </tr>
@@ -130,7 +183,9 @@ export function buildSlaBreachDailyEmail({
   const text = [
     `Hello ${name},`,
     '',
-    'The following approval task has exceeded its SLA and is still awaiting your action.',
+    isPoApproval
+      ? 'The following PO sign & approval task has exceeded its 24-hour SLA and is still awaiting your action. You will keep receiving morning and evening reminders until this task is finished.'
+      : 'The following approval task has exceeded its SLA and is still awaiting your action.',
     '',
     prNumber ? `PR: ${prNumber}${title ? ` — ${title}` : ''}` : null,
     `Approval Type: ${typeLabel}`,
@@ -138,9 +193,13 @@ export function buildSlaBreachDailyEmail({
     `Start Date: ${startDate || '—'}`,
     `SLA Due: ${slaDue || '—'}`,
     `Waiting: ${waitingLabel}`,
+    pendingHoursLabel ? `Pending Hours: ${pendingHoursLabel}` : null,
+    overdueHoursLabel ? `Overdue Hours: ${overdueHoursLabel}` : null,
     'Status: SLA Breached',
     '',
-    'SLA exceeded — awaiting action.',
+    isPoApproval
+      ? `SLA breached — PO approval still pending${pendingHoursLabel ? ` for ${pendingHoursLabel}` : ''}.`
+      : 'SLA exceeded — awaiting action.',
     '',
     'Please review and take the required action.',
     '',
