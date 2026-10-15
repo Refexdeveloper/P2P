@@ -254,6 +254,16 @@ function addressLinesToHtml(text: string) {
     .join('');
 }
 
+function htmlAddressPlain(html: string) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function matchEntityLocation(
   entity: EntityRecord | null | undefined,
   locationName: string
@@ -1488,7 +1498,8 @@ export default function CreatePOPage() {
     (
       loc: LetterheadLocationRecord | null,
       index = 0,
-      letterheadOverride?: LetterheadMasterRecord | null
+      letterheadOverride?: LetterheadMasterRecord | null,
+      opts?: { forceAddresses?: boolean }
     ) => {
       if (!loc) {
         setLetterheadLocationKey('');
@@ -1520,16 +1531,25 @@ export default function CreatePOPage() {
         invoicingHtmlFromEntityLocation(entityLoc) ||
         buildInvoicingAddressFromLocation(loc, entityLoc);
       const siteFromEntity = String(entityLoc?.siteAddress || '').trim();
-      setPoTermsDetails((prev) => ({
-        ...prev,
-        locationName: loc.location || '',
-        buyerGstNo: loc.gstNo || '',
-        letterheadLocationId: loc.id != null ? String(loc.id) : key,
-        invoicingAddress: invoicing || prev.invoicingAddress,
-        siteAddress: siteFromEntity || prev.siteAddress,
-      }));
+      const forceAddresses = Boolean(opts?.forceAddresses);
+      setPoTermsDetails((prev) => {
+        const keepSite = !forceAddresses && Boolean(String(prev.siteAddress || '').trim());
+        const keepBilling =
+          !forceAddresses && Boolean(htmlAddressPlain(prev.invoicingAddress || ''));
+        return {
+          ...prev,
+          locationName: loc.location || '',
+          buyerGstNo: loc.gstNo || prev.buyerGstNo || '',
+          letterheadLocationId: loc.id != null ? String(loc.id) : key,
+          // Keep PR / SCM-entered addresses; only auto-fill when empty (or forced by location pick)
+          invoicingAddress: keepBilling ? prev.invoicingAddress : invoicing || prev.invoicingAddress,
+          siteAddress: keepSite ? prev.siteAddress : siteFromEntity || prev.siteAddress,
+        };
+      });
       if (siteFromEntity) {
-        setDeliveryAddress(siteFromEntity);
+        setDeliveryAddress((prev) =>
+          forceAddresses || !String(prev || '').trim() ? siteFromEntity : prev
+        );
       }
     },
     [entityOptions, manualEntityId, pr?.entityId, selectedLetterhead]
@@ -2662,6 +2682,7 @@ export default function CreatePOPage() {
         purchaseTypeLabel?: string;
         placeOfDelivery?: string;
         billingAddress?: string;
+        billingGstNo?: string;
         deliveryPoc?: string;
         deliveryPocEmail?: string;
         deliveryPocPhone?: string;
@@ -2710,23 +2731,25 @@ export default function CreatePOPage() {
       setPaymentTerms(vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days');
       prScopeOfWorkRef.current = String(prData.scopeOfWork || '').trim();
       setIncoterms(normalizeIncoterm(vendor.deliveryTerms));
-      if (prData.placeOfDelivery) {
-        setDeliveryAddress(prData.placeOfDelivery);
-      }
+      const place = String(prData.placeOfDelivery || '').trim();
+      const billing = String(prData.billingAddress || '').trim();
+      if (place) setDeliveryAddress(place);
       setPoTermsDetails((prev) => ({
         ...prev,
         subject: prev.subject?.trim() ? prev.subject : String(prData.title || '').trim(),
         paymentTermsText: prev.paymentTermsText || vendor.paymentTerms || prData.paymentTerms || 'Net 30 Days',
-        siteAddress: prev.siteAddress || prData.placeOfDelivery || '',
-        siteContactPerson: prev.siteContactPerson || prData.deliveryPoc || '',
-        siteContactEmail: prev.siteContactEmail || prData.deliveryPocEmail || '',
-        siteContactPhone: prev.siteContactPhone || prData.deliveryPocPhone || '',
-        projectManagerHo: prev.projectManagerHo || prData.projectManagerHo || '',
-        projectManagerEmail: prev.projectManagerEmail || prData.projectManagerEmail || '',
-        projectManagerContact: prev.projectManagerContact || prData.projectManagerContact || '',
-        invoicingAddress:
-          prev.invoicingAddress ||
-          (prData.billingAddress ? addressLinesToHtml(String(prData.billingAddress)) : ''),
+        // Prefer PR-entered site / billing; letterhead must not wipe these afterward
+        siteAddress: place || prev.siteAddress || '',
+        siteContactPerson: prData.deliveryPoc || prev.siteContactPerson || '',
+        siteContactEmail: prData.deliveryPocEmail || prev.siteContactEmail || '',
+        siteContactPhone: prData.deliveryPocPhone || prev.siteContactPhone || '',
+        projectManagerHo: prData.projectManagerHo || prev.projectManagerHo || '',
+        projectManagerEmail: prData.projectManagerEmail || prev.projectManagerEmail || '',
+        projectManagerContact: prData.projectManagerContact || prev.projectManagerContact || '',
+        invoicingAddress: billing
+          ? addressLinesToHtml(billing)
+          : prev.invoicingAddress || '',
+        buyerGstNo: String(prData.billingGstNo || prev.buyerGstNo || '').trim(),
       }));
       setVendorMeta({
         name: vendor.name,
@@ -4699,11 +4722,22 @@ export default function CreatePOPage() {
                               const site = String(entityLoc.siteAddress || '').trim();
                               setPoTermsDetails((prev) => ({
                                 ...prev,
-                                invoicingAddress: billingHtml || prev.invoicingAddress,
-                                siteAddress: site || prev.siteAddress,
-                                buyerGstNo: String(entityLoc.gstNo || prev.buyerGstNo || '').trim(),
+                                // Do not overwrite PR / SCM-entered addresses when picking entity
+                                invoicingAddress: htmlAddressPlain(prev.invoicingAddress)
+                                  ? prev.invoicingAddress
+                                  : billingHtml || prev.invoicingAddress,
+                                siteAddress: String(prev.siteAddress || '').trim()
+                                  ? prev.siteAddress
+                                  : site || prev.siteAddress,
+                                buyerGstNo: String(
+                                  prev.buyerGstNo || entityLoc.gstNo || ''
+                                ).trim(),
                               }));
-                              if (site) setDeliveryAddress(site);
+                              if (site) {
+                                setDeliveryAddress((prev) =>
+                                  String(prev || '').trim() ? prev : site
+                                );
+                              }
                             }
                           }}
                           onClear={() => {
@@ -5777,7 +5811,10 @@ export default function CreatePOPage() {
                           applyLetterheadLocation(null);
                           return;
                         }
-                        applyLetterheadLocation(letterheadLocations[idx], idx);
+                        // Explicit SCM location pick may replace site / billing addresses
+                        applyLetterheadLocation(letterheadLocations[idx], idx, undefined, {
+                          forceAddresses: true,
+                        });
                       }}
                       className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] bg-gray-50/50 cursor-pointer"
                     >
@@ -5790,7 +5827,8 @@ export default function CreatePOPage() {
                       ))}
                     </select>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Selecting a location fills GSTIN, billing (invoicing) address and site address from Entity Master when matched.
+                      PR site / billing addresses are kept by default. Changing location here updates
+                      GSTIN and can replace those addresses from Entity Master.
                     </p>
                   </div>
                 )}
