@@ -306,6 +306,8 @@ export default function TasksPage() {
     submittedDate: string;
     requiredDate: string;
     currentApprover: string;
+    currentStepOwner?: { name?: string; role?: string } | null;
+    statusUI?: string;
     justification: string;
     vendorSelection?: 'own' | 'scm';
     vendorQuoteRounds?: Array<{
@@ -544,6 +546,18 @@ export default function TasksPage() {
         submittedDate: String(pr.submittedDate || task.submittedDate),
         requiredDate: String(pr.requiredDate || ''),
         currentApprover: formatApproverStage(pr, task),
+        currentStepOwner: (() => {
+          const ca = pr.currentApprover as { name?: string; role?: string } | string | null | undefined;
+          if (ca && typeof ca === 'object') {
+            return {
+              name: String(ca.name || '').trim(),
+              role: String(ca.role || '').trim(),
+            };
+          }
+          if (typeof ca === 'string' && ca.trim()) return { name: ca.trim(), role: '' };
+          return { name: '', role: '' };
+        })(),
+        statusUI: String(pr.statusUI || pr.statusFrontend || '').trim(),
         justification: String(pr.justification || 'No justification provided.'),
         vendorSelection,
         purchaseType,

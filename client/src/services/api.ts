@@ -353,9 +353,16 @@ export const prApi = {
     request<{ data: { key: string; label: string }[] }>(
       `/api/purchase-requests/${id}/send-back-targets${opts?.admin ? '?admin=1' : ''}`
     ),
-  /** Track PR admin: send back to any prior workflow step */
+  /** Track PR admin: move PR to any workflow step (completes current task, creates next) */
   adminSendBack: (id: number, body: { returnTo: string; remarks: string }) =>
-    request<{ data: unknown; message: string }>(`/api/purchase-requests/${id}/admin/send-back`, {
+    request<{
+      data: {
+        pr: unknown;
+        movedTo: { key: string; label: string; assignedRole?: string | null };
+        taskCreated: boolean;
+      };
+      message: string;
+    }>(`/api/purchase-requests/${id}/admin/send-back`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

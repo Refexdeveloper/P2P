@@ -94,13 +94,27 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   const db = conn || pool;
   const newStatus = target.status;
   const newStage = target.stage;
+  const moveVerb = admin ? 'Moved to' : 'Sent back to';
 
+  // Complete every pending task for this PR (approval / RFQ / PO steps share pr_id)
   await db.query(
     `UPDATE workflow_tasks
      SET status = 'completed', completed_at = NOW()
      WHERE pr_id = ? AND status = 'pending'`,
     [pr.id]
   );
+  // Also complete pending tasks on linked POs if po_id column exists and is used
+  try {
+    await db.query(
+      `UPDATE workflow_tasks wt
+       INNER JOIN purchase_orders po ON po.id = wt.po_id
+       SET wt.status = 'completed', wt.completed_at = NOW()
+       WHERE po.pr_id = ? AND wt.status = 'pending'`,
+      [pr.id]
+    );
+  } catch {
+    /* po_id column may not exist — PR-scoped update above is enough */
+  }
 
   const remarksText = String(remarks || '').trim();
   if (target.resetRfqSubmit || target.resetRfqFinalize || target.clearRecommendation || remarksText) {
@@ -127,6 +141,11 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
       `UPDATE purchase_requests SET po_creation_by = 'requester', status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
       [newStatus, newStage, pr.id]
     );
+  } else if (target.key === 'SCM_PO') {
+    await db.query(
+      `UPDATE purchase_requests SET po_creation_by = 'scm', status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
+      [newStatus, newStage, pr.id]
+    );
   } else {
     await db.query(
       `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
@@ -135,6 +154,7 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   }
 
   let assignee = { userId: null, email: null, name: null };
+  let taskCreated = false;
   const [reqRows] = await db.query(`SELECT id, email, name FROM users WHERE id = ?`, [pr.requester_id]);
   const requester = reqRows[0] || null;
 
@@ -201,6 +221,7 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
        VALUES (?, ?, ?, ?, 'pending', ?)`,
       [pr.id, target.taskType, target.assignedRole, roleQueued ? null : assignee.userId, dueStr]
     );
+    taskCreated = true;
   }
 
   return {
@@ -209,7 +230,9 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
     newStage,
     assignee,
     requester,
-    remarksLine: `${remarks.trim()}\n[Sent back to: ${target.label}]`,
+    taskCreated,
+    movedTo: { key: target.key, label: target.label, assignedRole: target.assignedRole || null },
+    remarksLine: `${remarks.trim()}\n[${moveVerb}: ${target.label}]`,
     actorRole: actor?.role || '',
   };
 }

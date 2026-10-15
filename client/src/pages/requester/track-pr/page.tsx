@@ -851,7 +851,7 @@ export default function TrackPRPage() {
   const confirmAdminSendBack = async () => {
     if (!sendBackModal) return;
     if (!sendBackReturnTo) {
-      setSendBackError('Select a stage to send back to');
+      setSendBackError('Select a step to move to');
       return;
     }
     if (!sendBackRemarks.trim()) {
@@ -865,12 +865,20 @@ export default function TrackPRPage() {
         returnTo: sendBackReturnTo,
         remarks: sendBackRemarks.trim(),
       });
-      setToast(res.message || 'PR sent back successfully');
+      const moved = res.data?.movedTo;
+      const label = moved?.label || sendBackTargets.find((t) => t.key === sendBackReturnTo)?.label || 'step';
+      const role = moved?.assignedRole;
+      const fallback = res.data?.taskCreated
+        ? role
+          ? `Moved to ${label} — task created for ${role}`
+          : `Moved to ${label} — task created`
+        : `Moved to ${label}`;
+      setToast(res.message || fallback);
       setSendBackModal(null);
       await load();
-      setTimeout(() => setToast(''), 3500);
+      setTimeout(() => setToast(''), 4500);
     } catch (err) {
-      setSendBackError(err instanceof Error ? err.message : 'Send back failed');
+      setSendBackError(err instanceof Error ? err.message : 'Move to step failed');
     } finally {
       setSendBackLoading(false);
     }
@@ -1260,9 +1268,9 @@ export default function TrackPRPage() {
                                     type="button"
                                     onClick={() => void openAdminSendBack(pr)}
                                     className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-2.5 text-xs font-semibold text-orange-700 hover:bg-orange-100"
-                                    title="Send PR back to any workflow step"
+                                    title="Move PR to any workflow step — completes current task and creates the next"
                                   >
-                                    Send Back
+                                    Move to step
                                   </button>
                                 )}
                                 {isSuperAdmin ? (
@@ -1872,8 +1880,8 @@ export default function TrackPRPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-5">
             <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <i className="ri-arrow-go-back-line text-orange-600"></i>
-              Admin Send Back
+              <i className="ri-route-line text-orange-600"></i>
+              Move to step
             </h3>
             <p className="text-sm text-gray-600 mt-1 break-words">
               <span className="font-semibold text-gray-900">{sendBackModal.prNumber}</span>
@@ -1881,11 +1889,12 @@ export default function TrackPRPage() {
               {sendBackModal.title}
             </p>
             <p className="text-xs text-gray-500 mt-2">
-              Admin: send to any step — Edit PR, RFQ Entry, approvals, Requester Create PO, Mugesh Sign &amp; Upload, or Buyer Final Verify.
+              Completes the current pending task and opens the selected step for the assignee
+              (Edit PR, RFQ Entry, approvals, Create PO, sign, or final verify).
             </p>
 
             <label className="block text-xs font-semibold text-gray-700 mt-4 mb-1">
-              Send back to
+              Move to
             </label>
             <select
               value={sendBackReturnTo}
@@ -1908,7 +1917,7 @@ export default function TrackPRPage() {
               value={sendBackRemarks}
               onChange={(e) => setSendBackRemarks(e.target.value)}
               rows={3}
-              placeholder="Why is this PR being sent back?"
+              placeholder="Why is this PR being moved to this step?"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y"
             />
 
@@ -1931,7 +1940,7 @@ export default function TrackPRPage() {
                 disabled={sendBackLoading || !sendBackReturnTo}
                 className="px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
               >
-                {sendBackLoading ? 'Sending…' : 'Confirm Send Back'}
+                {sendBackLoading ? 'Moving…' : 'Confirm move'}
               </button>
             </div>
           </div>

@@ -86,6 +86,8 @@ export interface PRDetail {
   submittedDate: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryItem[];
+  currentApprover?: { name?: string; email?: string; role?: string | null } | null;
+  currentStage?: string | null;
   attachments?: { id: number; fileName: string; size: number }[];
   poId?: number | null;
   poNumber?: string;
@@ -146,10 +148,32 @@ function Field({
 
 function historyTone(status: string) {
   const s = String(status || '').toLowerCase();
+  if (s.includes('current') || s === 'pending' || s.includes('await')) {
+    return { tone: 'blue', icon: 'ri-user-follow-line' };
+  }
   if (s.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
   if (s.includes('return')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
   if (s.includes('approv') || s.includes('complet')) return { tone: 'green', icon: 'ri-check-line' };
   return { tone: 'teal', icon: 'ri-time-line' };
+}
+
+const CLOSED_PR_STATUSES = new Set([
+  'DRAFT',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+  'PO_ISSUED',
+]);
+
+function isPrAwaitingAction(pr: PRDetail) {
+  const raw = String(pr.status || '').toUpperCase();
+  if (CLOSED_PR_STATUSES.has(raw) && raw !== 'APPROVED') return false;
+  // Approved can still have Create PO / sign tasks — show current if owner known or statusUI pending-like
+  const ui = String(pr.statusUI || pr.statusFrontend || '').toLowerCase();
+  if (ui.includes('pending') || ui.includes('await') || raw.startsWith('PENDING_')) return true;
+  if (raw === 'RETURNED') return true;
+  if (raw === 'APPROVED' && pr.currentApprover?.name) return true;
+  return Boolean(pr.currentApprover?.name);
 }
 
 export default function PRDetailDrawer({
@@ -206,7 +230,7 @@ export default function PRDetailDrawer({
     String(pr?.statusUI || '').toLowerCase().includes('return');
   const isDraft = pr?.status === 'DRAFT' || pr?.statusFrontend === 'draft';
 
-  const history = pr
+  const pastHistory = pr
     ? collapsePrAdminEditHistory(
         pr.approvalHistory.map((item) => ({
           stage: item.stage,
@@ -218,6 +242,23 @@ export default function PRDetailDrawer({
         }))
       )
     : [];
+
+  const currentStepEntry =
+    pr && isPrAwaitingAction(pr)
+      ? {
+          stage: String(pr.statusUI || pr.statusFrontend || pr.currentStage || 'Current step').trim(),
+          user: String(pr.currentApprover?.name || pr.currentApprover?.role || 'Awaiting assignment').trim(),
+          role: String(pr.currentApprover?.role || '').trim(),
+          date: 'Now',
+          status: 'current',
+          remarks: pr.currentApprover?.name
+            ? `Current step — waiting on ${pr.currentApprover.name}`
+            : 'Current step — waiting for the assigned owner',
+          isCurrent: true as const,
+        }
+      : null;
+
+  const history = currentStepEntry ? [currentStepEntry, ...pastHistory] : pastHistory;
 
   return (
     <div className={`dfx-root fixed inset-0 z-[60] flex justify-end${closing ? ' is-closing' : ''}`}>
@@ -292,11 +333,13 @@ export default function PRDetailDrawer({
               </div>
               <div className="dfx-stat" style={{ '--i': 2 } as CSSProperties}>
                 <span className="dfx-stat-ic">
-                  <i className="ri-user-line" aria-hidden />
+                  <i className="ri-price-tag-3-line" aria-hidden />
                 </span>
                 <div className="min-w-0">
-                <small>Required By</small>
-                <b>{pr.requiredDate || '—'}</b>
+                <small>Request Type</small>
+                <b className="truncate" title={pr.requestType || undefined}>
+                  {pr.requestType || '—'}
+                </b>
               </div>
               </div>
             </div>
@@ -554,10 +597,13 @@ export default function PRDetailDrawer({
                   <ol className="dfx-timeline">
                     {history.map((item, index) => {
                       const t = historyTone(item.status);
+                      const isCurrent = Boolean(
+                        (item as { isCurrent?: boolean }).isCurrent || item.status === 'current'
+                      );
                       return (
                         <li
                           key={index}
-                          className={`dfx-tl-item tone-${t.tone}`}
+                          className={`dfx-tl-item tone-${t.tone}${isCurrent ? ' is-current' : ''}`}
                           style={{ '--i': index } as CSSProperties}
                         >
                           <span className="dfx-tl-dot">
@@ -568,10 +614,25 @@ export default function PRDetailDrawer({
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-semibold text-slate-800">
                                   {item.stage}
+                                  {isCurrent ? (
+                                    <span className="ml-2 inline-flex align-middle rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1565C0]">
+                                      Current
+                                    </span>
+                                  ) : null}
                                 </p>
                                 <p className="break-words text-xs text-slate-500">
-                                  {item.user}
-                                  {formatPersonRoleSuffix(item.role, item.user)}
+                                  {isCurrent ? (
+                                    <>
+                                      <span className="font-semibold text-slate-700">Owner: </span>
+                                      {item.user}
+                                      {formatPersonRoleSuffix(item.role, item.user)}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {item.user}
+                                      {formatPersonRoleSuffix(item.role, item.user)}
+                                    </>
+                                  )}
                                 </p>
                               </div>
                               <span className="dfx-tl-date">{item.date}</span>

@@ -219,6 +219,16 @@
 .dfx-tl-item.tone-green { --tone: #0c9f68; --tone-soft: #e7f9f1; --tone-glow: rgba(12,159,104,.4); }
 .dfx-tl-item.tone-red { --tone: #e5304a; --tone-soft: #fff0f2; --tone-glow: rgba(229,48,74,.4); }
 .dfx-tl-item.tone-orange { --tone: #f2761c; --tone-soft: #fff4e6; --tone-glow: rgba(242,118,28,.4); }
+.dfx-tl-item.tone-blue { --tone: #1E88E5; --tone-soft: #E3F2FD; --tone-glow: rgba(30,136,229,.4); }
+.dfx-tl-item.tone-teal { --tone: #0f6b7a; --tone-soft: #e6f6f8; --tone-glow: rgba(15,107,122,.4); }
+.dfx-tl-item.is-current .dfx-tl-card {
+  background: linear-gradient(135deg, #E3F2FD 0%, #fff 55%);
+  border-color: #90CAF9;
+  box-shadow: 0 8px 20px -14px rgba(30, 136, 229, 0.45);
+}
+.dfx-tl-item.is-current .dfx-tl-dot {
+  animation: dfx-pop .5s cubic-bezier(.3,1.6,.5,1) both, dfx-ring 1.6s ease-out infinite;
+}
 .dfx-tl-dot {
   position: relative; z-index: 1; width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
   color: #fff; font-size: 16px; background: var(--tone); border: 3px solid #f3f8fb;

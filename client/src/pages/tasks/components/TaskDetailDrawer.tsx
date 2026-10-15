@@ -65,11 +65,14 @@ interface PRTask {
   category: string;
   priority: string;
   status: string;
+  statusUI?: string;
   totalAmount: number;
   currency: string;
   submittedDate: string;
   requiredDate: string;
   currentApprover: string;
+  /** Real pending-task owner (name + role), separate from stage label in currentApprover */
+  currentStepOwner?: { name?: string; role?: string } | null;
   justification: string;
   vendorSelection?: 'own' | 'scm';
   purchaseType?: string;
@@ -146,6 +149,9 @@ function Field({
 
 function historyTone(status: string) {
   const s = String(status || '').toLowerCase();
+  if (s.includes('current') || s === 'pending' || s.includes('await')) {
+    return { tone: 'blue', icon: 'ri-user-follow-line' };
+  }
   if (s.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
   if (s.includes('return') || s.includes('rework')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
   if (s.includes('approv') || s.includes('complet') || s.includes('submit'))
@@ -174,7 +180,7 @@ export default function TaskDetailDrawer({
   const status = String(task.status || '').toLowerCase();
   const showActions = canShowActions(status, canAct);
   const lineItems = Array.isArray(task.lineItems) ? task.lineItems : [];
-  const approvalHistory = collapsePrAdminEditHistory(
+  const pastHistory = collapsePrAdminEditHistory(
     (Array.isArray(task.approvalHistory) ? task.approvalHistory : []).map((step) => ({
       stage: step.step,
       step: step.step,
@@ -185,6 +191,33 @@ export default function TaskDetailDrawer({
       remarks: step.remarks,
     }))
   );
+  const showCurrentStep =
+    showActions ||
+    String(task.status || '')
+      .toLowerCase()
+      .includes('pending');
+  const stepLabel =
+    String(task.statusUI || task.currentApprover || '').trim() ||
+    String(task.status || 'Current step')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  const ownerName = String(task.currentStepOwner?.name || '').trim();
+  const ownerRole = String(task.currentStepOwner?.role || '').trim();
+  const currentStepEntry = showCurrentStep
+    ? {
+        stage: stepLabel,
+        step: stepLabel,
+        approver: ownerName || 'Awaiting assignment',
+        role: ownerRole,
+        date: 'Now',
+        status: 'current',
+        remarks: ownerName
+          ? `Current step — waiting on ${ownerName}`
+          : 'Current step — waiting for the assigned owner',
+        isCurrent: true as const,
+      }
+    : null;
+  const approvalHistory = currentStepEntry ? [currentStepEntry, ...pastHistory] : pastHistory;
   const [hasQuotes, setHasQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>('details');
   const [closing, setClosing] = useState(false);
@@ -322,11 +355,13 @@ export default function TaskDetailDrawer({
             </div>
             <div className="dfx-stat" style={{ '--i': 2 } as CSSProperties}>
               <span className="dfx-stat-ic">
-                <i className="ri-calendar-event-line" aria-hidden />
+                <i className="ri-price-tag-3-line" aria-hidden />
               </span>
               <div className="min-w-0">
-                <small>Required By</small>
-                <b>{formatDate(task.requiredDate) || '—'}</b>
+                <small>Request Type</small>
+                <b className="truncate" title={task.requestType || undefined}>
+                  {task.requestType || '—'}
+                </b>
               </div>
             </div>
           </div>
@@ -587,10 +622,13 @@ export default function TaskDetailDrawer({
                     <ol key="history" className="dfx-timeline">
                       {approvalHistory.map((step, idx) => {
                         const t = historyTone(step.status);
+                        const isCurrent = Boolean(
+                          (step as { isCurrent?: boolean }).isCurrent || step.status === 'current'
+                        );
                         return (
                           <li
                             key={`${step.stage}-${step.date}-${idx}`}
-                            className={`dfx-tl-item tone-${t.tone}`}
+                            className={`dfx-tl-item tone-${t.tone}${isCurrent ? ' is-current' : ''}`}
                             style={{ '--i': idx } as CSSProperties}
                           >
                             <span className="dfx-tl-dot">
@@ -601,13 +639,30 @@ export default function TaskDetailDrawer({
                                 <div className="min-w-0">
                                   <p className="break-words text-sm font-semibold text-slate-800">
                                     {step.stage || step.step}
+                                    {isCurrent ? (
+                                      <span className="ml-2 inline-flex align-middle rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1565C0]">
+                                        Current
+                                      </span>
+                                    ) : null}
                                   </p>
                                   <p className="break-words text-xs text-slate-500">
-                                    {step.approver}
-                                    {formatPersonRoleSuffix(step.role, step.approver)}
+                                    {isCurrent ? (
+                                      <>
+                                        <span className="font-semibold text-slate-700">Owner: </span>
+                                        {step.approver}
+                                        {formatPersonRoleSuffix(step.role, step.approver)}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {step.approver}
+                                        {formatPersonRoleSuffix(step.role, step.approver)}
+                                      </>
+                                    )}
                                   </p>
                                 </div>
-                                <span className="dfx-tl-date">{formatDateTime(step.date)}</span>
+                                <span className="dfx-tl-date">
+                                  {isCurrent ? 'Now' : formatDateTime(step.date)}
+                                </span>
                               </div>
                               {step.remarks ? <p className="dfx-tl-remark">{step.remarks}</p> : null}
                             </div>

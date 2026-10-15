@@ -629,30 +629,43 @@ async function getTimelineAssignees(prId, requesterId, prStatus = null) {
   }
 
   const pendingTask = taskRows[0];
+  const pendingRole = String(pendingTask?.assigned_role || '').trim() || null;
   const currentApproverName =
     pendingTask?.user_name ||
-    (pendingTask?.assigned_role === 'HOD Approver' ? l1Name : null) ||
-    (pendingTask?.assigned_role === 'SCM Buyer' ? scmName : null) ||
-    (pendingTask?.assigned_role === 'SCM Manager' ? scmManagerName : null) ||
+    (pendingRole === 'HOD Approver' ? l1Name : null) ||
+    (pendingRole === 'SCM Buyer' ? scmName : null) ||
+    (pendingRole === 'SCM Manager' ? scmManagerName : null) ||
+    pendingRole ||
     null;
   const currentApproverEmail =
     pendingTask?.user_email ||
-    (pendingTask?.assigned_role === 'HOD Approver' ? l1Email : null) ||
-    (pendingTask?.assigned_role === 'SCM Buyer' ? scmEmail : null) ||
-    (pendingTask?.assigned_role === 'SCM Manager' ? scmManagerEmail : null) ||
+    (pendingRole === 'HOD Approver' ? l1Email : null) ||
+    (pendingRole === 'SCM Buyer' ? scmEmail : null) ||
+    (pendingRole === 'SCM Manager' ? scmManagerEmail : null) ||
     null;
 
+  // Resolve requester name when the pending task is owned by the requester
+  let requesterNameForTask = null;
+  if (pendingRole === 'Requester' && requesterId && !pendingTask?.user_name) {
+    const [rq] = await pool.query(`SELECT name, email FROM users WHERE id = ? LIMIT 1`, [requesterId]);
+    requesterNameForTask = rq[0]?.name || rq[0]?.email?.split('@')[0] || 'Requester';
+  }
+  const resolvedOwnerName =
+    (pendingRole === 'Requester' ? pendingTask?.user_name || requesterNameForTask : null) ||
+    currentApproverName;
+
   return {
-    currentApprover: currentApproverName
+    currentApprover: pendingTask || resolvedOwnerName
       ? {
-          name: currentApproverName,
+          name: resolvedOwnerName || pendingRole || 'Pending owner',
           email: currentApproverEmail,
           // Never surface CFO designation for Mugesh (or CFO queue assignee) in timeline UIs
           role:
-            isSassMugeshRequester({ email: currentApproverEmail, name: currentApproverName }) ||
-            String(pendingTask?.assigned_role || '') === 'CFO'
+            isSassMugeshRequester({ email: currentApproverEmail, name: resolvedOwnerName }) ||
+            pendingRole === 'CFO'
               ? ''
-              : pendingTask?.assigned_role || null,
+              : pendingRole,
+          taskType: pendingTask?.task_type || null,
         }
       : null,
     l1Manager: l1Name || l1Email ? { name: l1Name, email: l1Email } : null,
@@ -4371,8 +4384,8 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
     if (!ok) throw new Error('Unauthorized');
   }
   const remarksText = String(remarks || '').trim();
-  if (!remarksText) throw new Error('Remarks are required for send back');
-  if (!returnTo) throw new Error('Select a previous stage to send back to');
+  if (!remarksText) throw new Error('Remarks are required to move this PR');
+  if (!returnTo) throw new Error('Select a workflow step to move to');
 
   const conn = await pool.getConnection();
   try {
@@ -4384,7 +4397,7 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
     const pr = prRows[0];
 
     if (pr.status === PR_STATUS.DRAFT) {
-      throw new Error('Cannot send back a draft PR. Submit it first, or edit the draft.');
+      throw new Error('Cannot move a draft PR. Submit it first, or edit the draft.');
     }
 
     const applyResult = await applySendBackToTarget(conn, pr, returnTo, remarksText, user, {
@@ -4410,12 +4423,12 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
         const requesterPo = String(pr.po_creation_by || 'scm') === 'requester';
         throw new Error(
           requesterPo
-            ? 'This PR has no purchase order. Send it back to Requester Create PO or an earlier step.'
-            : 'This PR has no purchase order. Send it back to SCM Buyer Create PO or an earlier step.'
+            ? 'This PR has no purchase order. Move it to Requester Create PO or an earlier step first.'
+            : 'This PR has no purchase order. Move it to SCM Buyer Create PO or an earlier step first.'
         );
       }
       await reopenPurchaseOrderForAdminSendBack(conn, poId, poStepStatus, applyResult.target?.poSignStep || null);
-    } else if (applyResult.target?.key === 'REQUESTER_PO') {
+    } else if (applyResult.target?.key === 'REQUESTER_PO' || applyResult.target?.key === 'SCM_PO') {
       const [anyPo] = await conn.query(
         `SELECT id FROM purchase_orders
          WHERE pr_id = ? AND status <> 'rejected'
@@ -4424,10 +4437,11 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
       );
       const poId = Number(anyPo[0]?.id || 0);
       if (poId) {
+        const requesterPo = applyResult.target?.key === 'REQUESTER_PO';
         await conn.query(
           `UPDATE purchase_orders SET
              status = 'draft',
-             po_sign_step = 'requester',
+             po_sign_step = ?,
              signed_at = NULL,
              signer_id = NULL,
              signature_name = NULL,
@@ -4438,10 +4452,14 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
              cancellation_reason = NULL,
              cancelled_by = NULL,
              cancelled_at = NULL,
-             created_by = ?,
+             created_by = COALESCE(?, created_by),
              updated_at = NOW()
            WHERE id = ?`,
-          [pr.requester_id || null, poId]
+          [
+            requesterPo ? 'requester' : 'draft',
+            requesterPo ? pr.requester_id || null : null,
+            poId,
+          ]
         );
       }
     } else {
@@ -4454,7 +4472,7 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
              updated_at = NOW()
          WHERE pr_id = ?
            AND status NOT IN ('cancelled', 'rejected')`,
-        [`Send-back from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
+        [`Moved from workflow: ${remarksText.slice(0, 450)}`, user.id, prId]
       );
     }
 
@@ -4462,10 +4480,10 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
       [
         prId,
-        pr.current_stage || 'ADMIN_SEND_BACK',
+        pr.current_stage || 'ADMIN_MOVE_STEP',
         user.id,
         'rework',
-        `[Admin send-back by ${user.name || user.role}] ${applyResult.remarksLine}`,
+        `[Admin move by ${user.name || user.role}] ${applyResult.remarksLine}`,
       ]
     );
 
@@ -4476,7 +4494,16 @@ export async function adminSendBackPurchaseRequest(user, prId, returnTo, remarks
       remarks: remarksText,
       approverRole: user.role,
     });
-    return updatedPr;
+    const movedTo = applyResult.movedTo || {
+      key: applyResult.target?.key,
+      label: applyResult.target?.label,
+      assignedRole: applyResult.target?.assignedRole || null,
+    };
+    return {
+      pr: updatedPr,
+      movedTo,
+      taskCreated: Boolean(applyResult.taskCreated),
+    };
   } catch (err) {
     await conn.rollback();
     throw err;

@@ -366,8 +366,23 @@ router.delete('/:id', requireRoles('Super Admin'), async (req, res) => {
 router.post('/:id/admin/send-back', canApproveAdmin, async (req, res) => {
   try {
     const { returnTo, remarks } = req.body || {};
-    const pr = await adminSendBackPurchaseRequest(req.user, Number(req.params.id), returnTo, remarks);
-    res.json({ data: pr, message: 'PR sent back successfully' });
+    const result = await adminSendBackPurchaseRequest(
+      req.user,
+      Number(req.params.id),
+      returnTo,
+      remarks
+    );
+    const label = result?.movedTo?.label || 'selected step';
+    const role = result?.movedTo?.assignedRole;
+    const taskNote = result?.taskCreated
+      ? role
+        ? ` — task created for ${role}`
+        : ' — task created'
+      : '';
+    res.json({
+      data: result,
+      message: `Moved to ${label}${taskNote}`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
