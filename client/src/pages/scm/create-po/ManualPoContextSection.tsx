@@ -198,7 +198,17 @@ export function hydrateComparisonRoundsFromStored(
           paymentTerms: String(q.paymentTerms || 'Net 30 Days'),
           recommended: Boolean(q.recommended),
           files: [],
-          storedFiles: (q.files || []).filter((f) => f?.fileName),
+          storedFiles: dedupeStoredFiles(
+            (q.files || [])
+              .filter((f): f is { fileName: string; storedName?: string; mimeType?: string | null } =>
+                Boolean(f?.fileName)
+              )
+              .map((f) => ({
+                fileName: String(f.fileName),
+                storedName: f.storedName,
+                mimeType: f.mimeType,
+              }))
+          ),
         };
       }),
     };
@@ -229,14 +239,48 @@ export function hydrateManualPrDetailsFromStored(
   };
 }
 
+function fileIdentity(file: File) {
+  return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
+/** Keep one local File per name+size+mtime (stops one pick adding many rows). */
+function dedupeLocalFiles(files: File[]) {
+  const seen = new Set<string>();
+  const out: File[] = [];
+  for (const file of files) {
+    const id = fileIdentity(file);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(file);
+  }
+  return out;
+}
+
+function dedupeStoredFiles(
+  files: Array<{ fileName: string; storedName?: string; mimeType?: string | null }> = []
+) {
+  const seen = new Set<string>();
+  const out: Array<{ fileName: string; storedName?: string; mimeType?: string | null }> = [];
+  for (const file of files) {
+    const name = String(file?.fileName || '').trim();
+    if (!name) continue;
+    const key = `${name}::${String(file.storedName || '').trim()}`;
+    if (seen.has(key) || seen.has(name)) continue;
+    seen.add(key);
+    seen.add(name);
+    out.push(file);
+  }
+  return out;
+}
+
 function quoteFilesForDisplay(q: ManualVendorQuoteRow) {
-  const local = q.files.map((f) => ({
+  const local = dedupeLocalFiles(q.files).map((f) => ({
     fileName: f.name,
     isLocal: true as const,
     storedName: null as string | null,
   }));
   const localNames = new Set(local.map((f) => f.fileName));
-  const stored = (q.storedFiles || [])
+  const stored = dedupeStoredFiles(q.storedFiles)
     .filter((f) => f?.fileName && !localNames.has(f.fileName))
     .map((f) => ({
       fileName: f.fileName,
@@ -255,7 +299,7 @@ export function mergeStoredFilesIntoRounds(
   for (const round of fromServer) {
     for (const q of round.vendorQuotes) {
       const key = `${round.round}::${vendorStableKey(q)}`;
-      serverByVendorRound.set(key, q.storedFiles || []);
+      serverByVendorRound.set(key, dedupeStoredFiles(q.storedFiles || []));
     }
   }
   return current.map((round) => ({
@@ -263,24 +307,63 @@ export function mergeStoredFilesIntoRounds(
     vendorQuotes: round.vendorQuotes.map((q) => {
       const key = `${round.round}::${vendorStableKey(q)}`;
       const serverStored = serverByVendorRound.get(key);
-      if (!serverStored?.length) return q;
-      const byName = new Map(serverStored.map((f) => [f.fileName, f]));
-      const mergedStored = [
-        ...serverStored,
-        ...(q.storedFiles || []).filter((f) => f.fileName && !byName.has(f.fileName)),
-      ];
-      // Drop local Files that now exist as stored on server (same name)
-      const nextLocal = q.files.filter((f) => !byName.has(f.name));
-      return { ...q, storedFiles: mergedStored, files: nextLocal };
+      if (!serverStored?.length) {
+        return {
+          ...q,
+          files: dedupeLocalFiles(q.files),
+          storedFiles: dedupeStoredFiles(q.storedFiles),
+        };
+      }
+      // Server list is authoritative for this vendor/round (stops autosave stacking copies)
+      const byName = new Set(serverStored.map((f) => f.fileName));
+      const nextLocal = dedupeLocalFiles(q.files.filter((f) => !byName.has(f.name)));
+      return { ...q, storedFiles: serverStored, files: nextLocal };
     }),
   }));
+}
+
+/** Build save payload files: keep stored refs; upload only new locals not already stored. */
+export async function buildManualQuoteFilesPayload(
+  row: Pick<ManualVendorQuoteRow, 'files' | 'storedFiles'>,
+  toAttachment: (file: File) => Promise<{
+    fileName: string;
+    mimeType?: string | null;
+    data?: string;
+    dataBase64?: string;
+  }>
+) {
+  const stored = dedupeStoredFiles(row.storedFiles || []).filter((f) => f.fileName);
+  const storedNames = new Set(stored.map((f) => f.fileName));
+  const locals = dedupeLocalFiles(row.files || []).filter((f) => f.name && !storedNames.has(f.name));
+  const uploaded = await Promise.all(locals.map((file) => toAttachment(file)));
+  const out: Array<{
+    fileName: string;
+    mimeType?: string | null;
+    storedName?: string;
+    data?: string;
+    dataBase64?: string;
+  }> = stored.map((f) => ({
+    fileName: f.fileName,
+    mimeType: f.mimeType || null,
+    storedName: f.storedName,
+  }));
+  const seen = new Set(storedNames);
+  for (const file of uploaded) {
+    const name = String(file.fileName || '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(file);
+  }
+  return out;
 }
 
 type Props = {
   prDetails: ManualPrDetails;
   onPrDetailsChange: (next: ManualPrDetails) => void;
   comparisonRounds: ManualComparisonRound[];
-  onComparisonRoundsChange: (next: ManualComparisonRound[]) => void;
+  onComparisonRoundsChange: (
+    next: ManualComparisonRound[] | ((prev: ManualComparisonRound[]) => ManualComparisonRound[])
+  ) => void;
   vendors: VendorRecord[];
   onVendorsChange?: (next: VendorRecord[]) => void;
   /** Saved PO id — required to Preview quotation files after Save Draft / GCS */
@@ -371,10 +454,10 @@ export default function ManualPoContextSection({
 
   const quotedCount = comparisonRows.filter((r) => r.hasActiveQuote).length;
 
-  const ensureRound = (roundNum: number): ManualComparisonRound[] => {
-    if (comparisonRounds.some((r) => r.round === roundNum)) return comparisonRounds;
+  const ensureRound = (rounds: ManualComparisonRound[], roundNum: number): ManualComparisonRound[] => {
+    if (rounds.some((r) => r.round === roundNum)) return rounds;
     const next = emptyComparisonRound(roundNum);
-    return [...comparisonRounds, next].sort((a, b) => a.round - b.round);
+    return [...rounds, next].sort((a, b) => a.round - b.round);
   };
 
   const findQuoteInRounds = (vendorKey: string, roundNum: number, rounds = comparisonRounds) => {
@@ -392,20 +475,39 @@ export default function ManualPoContextSection({
     quoteKey: string,
     patch: Partial<ManualVendorQuoteRow>
   ) => {
-    return rounds.map((round) => {
+    const withRound = ensureRound(rounds, roundNum);
+    return withRound.map((round) => {
       if (round.round !== roundNum) return round;
       const exists = round.vendorQuotes.some((q) => q.key === quoteKey);
+      const nextPatch = {
+        ...patch,
+        files: Array.isArray(patch.files) ? dedupeLocalFiles(patch.files) : patch.files,
+        storedFiles: Array.isArray(patch.storedFiles)
+          ? dedupeStoredFiles(patch.storedFiles)
+          : patch.storedFiles,
+      };
       if (!exists) {
         const base = emptyManualVendorQuote(quoteKey);
         return {
           ...round,
-          vendorQuotes: [...round.vendorQuotes, { ...base, ...patch, key: quoteKey }],
+          vendorQuotes: [...round.vendorQuotes, { ...base, ...nextPatch, key: quoteKey }],
         };
       }
       return {
         ...round,
         vendorQuotes: round.vendorQuotes.map((q) =>
-          q.key === quoteKey ? { ...q, ...patch } : q
+          q.key === quoteKey
+            ? {
+                ...q,
+                ...nextPatch,
+                files: Array.isArray(nextPatch.files)
+                  ? dedupeLocalFiles(nextPatch.files)
+                  : dedupeLocalFiles(q.files),
+                storedFiles: Array.isArray(nextPatch.storedFiles)
+                  ? dedupeStoredFiles(nextPatch.storedFiles)
+                  : dedupeStoredFiles(q.storedFiles),
+              }
+            : q
         ),
       };
     });
@@ -413,14 +515,13 @@ export default function ManualPoContextSection({
 
   const openEdit = (vendorKey: string, targetRound?: number) => {
     const roundNum = Math.max(1, Number(targetRound) || preferredTab || 1);
-    let rounds = ensureRound(roundNum);
+    let rounds = ensureRound(comparisonRounds, roundNum);
     const { vendor, quote, round } = findQuoteInRounds(vendorKey, roundNum, rounds);
     const roundRow = round || rounds.find((r) => r.round === roundNum);
     if (!roundRow) return;
 
-    let quoteKey = quote?.key;
-    let nextQuote = quote || null;
-    if (!quoteKey || !nextQuote) {
+    let quoteKey = quote?.key || '';
+    if (!quoteKey || !quote) {
       // New round slot: keep vendor identity only — never copy prior round price/files
       const newQuote = emptyManualVendorQuote(`vq-${Date.now()}-${roundNum}`);
       if (vendor) {
@@ -428,7 +529,6 @@ export default function ManualPoContextSection({
         newQuote.vendorName = vendor.vendorName;
         newQuote.vendorEmail = vendor.vendorEmail;
       } else {
-        // Fallback: identity from any existing round for this vendor key
         for (const r of rounds) {
           const hit = r.vendorQuotes.find((q) => vendorStableKey(q) === vendorKey);
           if (hit) {
@@ -440,44 +540,42 @@ export default function ManualPoContextSection({
         }
       }
       quoteKey = newQuote.key;
-      nextQuote = newQuote;
       rounds = rounds.map((r) =>
-        r.round === roundNum
-          ? { ...r, vendorQuotes: [...r.vendorQuotes, newQuote] }
-          : r
+        r.round === roundNum ? { ...r, vendorQuotes: [...r.vendorQuotes, newQuote] } : r
       );
+      onComparisonRoundsChange(rounds);
     }
 
-    onComparisonRoundsChange(rounds);
     setPreferredTab(roundNum);
     setEditTarget({
       vendorKey,
       roundNum,
-      quoteKey: quoteKey!,
+      quoteKey,
       roundKey: roundRow.key,
     });
   };
 
   const addVendor = () => {
-    const roundNum = 1;
-    let rounds = ensureRound(roundNum);
+    const roundNum = Math.max(1, Number(preferredTab) || 1);
     const newQuote = emptyManualVendorQuote(`vq-${Date.now()}-new`);
-    rounds = rounds.map((r) =>
-      r.round === roundNum ? { ...r, vendorQuotes: [...r.vendorQuotes, newQuote] } : r
-    );
-    onComparisonRoundsChange(rounds);
+    onComparisonRoundsChange((prev) => {
+      const rounds = ensureRound(prev, roundNum).map((r) =>
+        r.round === roundNum ? { ...r, vendorQuotes: [...r.vendorQuotes, newQuote] } : r
+      );
+      return rounds;
+    });
     setPreferredTab(roundNum);
     setEditTarget({
       vendorKey: vendorStableKey(newQuote),
       roundNum,
       quoteKey: newQuote.key,
-      roundKey: rounds.find((r) => r.round === roundNum)!.key,
+      roundKey: `round-${roundNum}`,
     });
   };
 
   const removeVendor = (vendorKey: string) => {
-    onComparisonRoundsChange(
-      comparisonRounds.map((round) => ({
+    onComparisonRoundsChange((prev) =>
+      prev.map((round) => ({
         ...round,
         vendorQuotes: round.vendorQuotes.filter((q) => vendorStableKey(q) !== vendorKey),
       }))
@@ -486,8 +584,8 @@ export default function ManualPoContextSection({
   };
 
   const setRecommendedVendor = (vendorKey: string) => {
-    onComparisonRoundsChange(
-      comparisonRounds.map((round) => ({
+    onComparisonRoundsChange((prev) =>
+      prev.map((round) => ({
         ...round,
         vendorQuotes: round.vendorQuotes.map((q) => ({
           ...q,
@@ -499,15 +597,35 @@ export default function ManualPoContextSection({
 
   const addNextRound = (nextRound: number) => {
     if (nextRound > 20) return;
-    const rounds = ensureRound(nextRound);
-    onComparisonRoundsChange(rounds);
+    onComparisonRoundsChange((prev) => ensureRound(prev, nextRound));
     setPreferredTab(nextRound);
+  };
+
+  const removeRound = (roundNum: number) => {
+    if (roundNum <= 1) return;
+    onComparisonRoundsChange((prev) => {
+      const filtered = prev.filter((r) => r.round !== roundNum);
+      return filtered.length ? filtered : [emptyComparisonRound(1)];
+    });
+    if (editTarget?.roundNum === roundNum) setEditTarget(null);
+    setPreferredTab((tab) => {
+      const n = Number(tab) || 1;
+      if (n === roundNum) return Math.max(1, roundNum - 1);
+      if (n > roundNum) return Math.max(1, n - 1);
+      return tab;
+    });
   };
 
   const editingQuote = useMemo(() => {
     if (!editTarget) return null;
     const round = comparisonRounds.find((r) => r.round === editTarget.roundNum);
-    return round?.vendorQuotes.find((q) => q.key === editTarget.quoteKey) || null;
+    const quote = round?.vendorQuotes.find((q) => q.key === editTarget.quoteKey) || null;
+    if (!quote) return null;
+    return {
+      ...quote,
+      files: dedupeLocalFiles(quote.files),
+      storedFiles: dedupeStoredFiles(quote.storedFiles),
+    };
   }, [editTarget, comparisonRounds]);
 
   const saveEdit = () => {
@@ -516,20 +634,32 @@ export default function ManualPoContextSection({
       alert('Please select or enter vendor name');
       return;
     }
-    onComparisonRoundsChange(
-      upsertQuote(comparisonRounds, editTarget.roundNum, editTarget.quoteKey, editingQuote)
+    onComparisonRoundsChange((prev) =>
+      upsertQuote(prev, editTarget.roundNum, editTarget.quoteKey, {
+        ...editingQuote,
+        files: dedupeLocalFiles(editingQuote.files),
+        storedFiles: dedupeStoredFiles(editingQuote.storedFiles),
+      })
     );
     setEditTarget(null);
   };
 
-  const updateEditingQuote = (patch: Partial<ManualVendorQuoteRow>) => {
+  const updateEditingQuote = (
+    patch:
+      | Partial<ManualVendorQuoteRow>
+      | ((current: ManualVendorQuoteRow) => Partial<ManualVendorQuoteRow>)
+  ) => {
     if (!editTarget) return;
-    onComparisonRoundsChange(
-      upsertQuote(comparisonRounds, editTarget.roundNum, editTarget.quoteKey, {
-        ...editingQuote,
-        ...patch,
-      })
-    );
+    onComparisonRoundsChange((prev) => {
+      const round = prev.find((r) => r.round === editTarget.roundNum);
+      const current = round?.vendorQuotes.find((q) => q.key === editTarget.quoteKey);
+      if (!current) return prev;
+      const resolved = typeof patch === 'function' ? patch(current) : patch;
+      return upsertQuote(prev, editTarget.roundNum, editTarget.quoteKey, {
+        ...current,
+        ...resolved,
+      });
+    });
   };
 
   const openAddVendor = (typedName = '') => {
@@ -774,7 +904,8 @@ export default function ManualPoContextSection({
             <p className="text-xs font-semibold uppercase tracking-wide text-[#1565C0]">Vendor comparison</p>
             <h2 className="text-base font-bold text-gray-900 mt-0.5">Get quotes and pick a vendor</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Tap <strong>Edit</strong> to fill the quote, then <strong>Choose</strong> a vendor.
+              Tap <strong>Edit</strong> on a round to fill the quote, then <strong>Choose</strong> a
+              vendor. Use Q1 / Q2… tabs for negotiation rounds.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -814,7 +945,7 @@ export default function ManualPoContextSection({
                 : null
             }
             quotedCount={quotedCount}
-            singleQuote
+            maxRounds={roundCount}
             preferredTab={preferredTab}
             onEdit={(row, targetRound) => openEdit(row.id, targetRound)}
             onChoose={(row) => {
@@ -823,6 +954,8 @@ export default function ManualPoContextSection({
             }}
             onRemove={(row) => removeVendor(row.id)}
             onViewFile={(row) => void openQuoteFile(row)}
+            onNextRound={addNextRound}
+            onRemoveRound={removeRound}
           />
         )}
 
@@ -942,11 +1075,12 @@ export default function ManualPoContextSection({
                     accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                     className="hidden"
                     onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      if (files.length) {
-                        updateEditingQuote({ files: [...editingQuote.files, ...files] });
-                      }
+                      const picked = Array.from(e.target.files || []);
                       e.target.value = '';
+                      if (!picked.length) return;
+                      updateEditingQuote((current) => ({
+                        files: dedupeLocalFiles([...(current.files || []), ...picked]),
+                      }));
                     }}
                   />
                 </label>
@@ -954,7 +1088,7 @@ export default function ManualPoContextSection({
                   <ul className="mt-3 space-y-1.5">
                     {editingQuote.files.map((f, fi) => (
                       <li
-                        key={`local-${f.name}-${fi}`}
+                        key={`local-${fileIdentity(f)}`}
                         className="flex items-center justify-between gap-2 text-sm text-gray-700 bg-gray-50 rounded-lg px-3 py-2"
                       >
                         <span className="truncate flex items-center gap-1.5">
@@ -965,9 +1099,9 @@ export default function ManualPoContextSection({
                         <button
                           type="button"
                           onClick={() =>
-                            updateEditingQuote({
-                              files: editingQuote.files.filter((_, i) => i !== fi),
-                            })
+                            updateEditingQuote((current) => ({
+                              files: current.files.filter((_, i) => i !== fi),
+                            }))
                           }
                           className="text-rose-600 text-xs font-semibold"
                         >
@@ -1008,9 +1142,9 @@ export default function ManualPoContextSection({
                           <button
                             type="button"
                             onClick={() =>
-                              updateEditingQuote({
-                                storedFiles: (editingQuote.storedFiles || []).filter((_, i) => i !== fi),
-                              })
+                              updateEditingQuote((current) => ({
+                                storedFiles: (current.storedFiles || []).filter((_, i) => i !== fi),
+                              }))
                             }
                             className="text-rose-600 text-xs font-semibold"
                           >

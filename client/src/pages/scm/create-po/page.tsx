@@ -30,6 +30,7 @@ import {
   EntityRecord,
 } from '../../../services/api';
 import ManualPoContextSection, {
+  buildManualQuoteFilesPayload,
   emptyComparisonRound,
   findRecommendedManualQuote,
   hydrateComparisonRoundsFromStored,
@@ -3415,14 +3416,7 @@ export default function CreatePOPage() {
                 recommended: row.recommended,
                 round: round.round,
                 sortOrder: idx,
-                files: [
-                  ...(row.storedFiles || []).map((f) => ({
-                    fileName: f.fileName,
-                    mimeType: f.mimeType || null,
-                    storedName: f.storedName,
-                  })),
-                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
-                ],
+                files: await buildManualQuoteFilesPayload(row, fileToAttachmentPayload),
               }))
             ),
           }))
@@ -3476,7 +3470,9 @@ export default function CreatePOPage() {
       setLetterheadLocked(true);
       setDraftSaved(true);
       setTimeout(() => setDraftSaved(false), 3000);
-      if (!editPoId && savedId) {
+      // Explicit Save Draft: bind URL. Silent autosave must NOT navigate — remount was
+      // re-hydrating quotation files and stacking duplicates while Edit quote stayed open.
+      if (!silent && !editPoId && savedId) {
         keepLocalDraftAfterSaveRef.current = true;
         const params = new URLSearchParams({ poId: String(savedId), from: 'create-po' });
         if (isManualPoFlow) params.set('manual', '1');
@@ -3593,7 +3589,12 @@ export default function CreatePOPage() {
     const fp = autoSaveFingerprint;
     autoSaveTimerRef.current = setTimeout(() => {
       void handleSaveDraftRef.current({ silent: true }).then((ok) => {
-        if (ok) lastAutoSavedFingerprintRef.current = fp;
+        if (!ok) return;
+        // After merge replaces local Files with stored refs, fingerprint changes —
+        // adopt the post-merge fingerprint so we don't immediately re-autosave.
+        window.setTimeout(() => {
+          lastAutoSavedFingerprintRef.current = autoSaveFingerprintRef.current || fp;
+        }, 0);
       });
     }, 2500);
 
@@ -4024,14 +4025,7 @@ export default function CreatePOPage() {
                 recommended: row.recommended,
                 round: round.round,
                 sortOrder: idx,
-                files: [
-                  ...(row.storedFiles || []).map((f) => ({
-                    fileName: f.fileName,
-                    mimeType: f.mimeType || null,
-                    storedName: f.storedName,
-                  })),
-                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
-                ],
+                files: await buildManualQuoteFilesPayload(row, fileToAttachmentPayload),
               }))
             ),
           }))

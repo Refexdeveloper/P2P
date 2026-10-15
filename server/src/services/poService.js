@@ -323,20 +323,43 @@ async function savePoAttachmentAwaited(poId, prefix, fileName, base64Data) {
 async function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
   const storedQuotes = [];
   for (const row of vendorQuotes) {
-    const fileRows = [];
+    // One entry per fileName — prefer already-stored refs over re-uploading the same PDF.
+    const byName = new Map();
     for (const file of row.files || []) {
-      if (!file?.fileName) continue;
+      const fileName = String(file?.fileName || '').trim();
+      if (!fileName) continue;
       const storedName = String(file.storedName || file.filePath || '').trim();
+      const prev = byName.get(fileName);
       if (storedName) {
-        fileRows.push({
-          fileName: file.fileName || path.basename(storedName),
+        byName.set(fileName, {
+          fileName,
           storedName,
+          mimeType: file.mimeType || prev?.mimeType || null,
+        });
+        continue;
+      }
+      if (prev?.storedName) continue;
+      if (!file.data && !file.dataBase64) continue;
+      if (!prev) {
+        byName.set(fileName, {
+          fileName,
+          data: file.data || file.dataBase64,
+          mimeType: file.mimeType || null,
+        });
+      }
+    }
+
+    const fileRows = [];
+    for (const file of byName.values()) {
+      if (file.storedName) {
+        fileRows.push({
+          fileName: file.fileName,
+          storedName: file.storedName,
           mimeType: file.mimeType || null,
         });
         continue;
       }
-      if (!file.data && !file.dataBase64) continue;
-      const saved = await savePoAttachmentAwaited(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
+      const saved = await savePoAttachmentAwaited(poId, 'manual-quote', file.fileName, file.data);
       if (saved.fileName) {
         fileRows.push({
           fileName: saved.fileName,
