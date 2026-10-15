@@ -6,13 +6,21 @@ import { uploadToGcs, downloadFromGcs, gcsEnabled, awaitGcsUpload } from './gcsS
 import {
   getPreferredScmManagerEmail,
   getPreferredScmManagerName,
+  getPreferredPoApproverEmail,
+  getPreferredPoApproverName,
   resolveScmManagerUser,
+  resolvePoApproverUser,
+  isPreferredPoApproverUser,
+  DEFAULT_PO_APPROVER_SIGNATURE_FILE,
 } from '../utils/scmAssignee.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SIGNATURE_UPLOAD_DIR = path.join(__dirname, '../../uploads/signatures');
 export const SIGNATURE_SEED_DIR = path.join(__dirname, '../../assets/signatures');
+/** Mounesh (SCM Manager) — kept for create/send identity; not used for Tarkeshwar PO sign. */
 export const DEFAULT_SCM_MANAGER_SIGNATURE_FILE = 'mounesh_rathakar_default.jpg';
+/** Tarkeshwar — default handwritten image stamped on PO Sign & Approval. */
+export const DEFAULT_PO_APPROVER_SIGNATURE_FILE_NAME = DEFAULT_PO_APPROVER_SIGNATURE_FILE;
 const LEGACY_SCM_MANAGER_SIGNATURE_FILES = ['rajeev_v_default.png'];
 
 function defaultSignatureMime(fileName = DEFAULT_SCM_MANAGER_SIGNATURE_FILE) {
@@ -116,14 +124,13 @@ export async function ensureDefaultScmManagerSignatureFile() {
   return fs.existsSync(dest) ? dest : null;
 }
 
-export function getDefaultScmManagerSignatureDataUrl() {
-  // Sync path for PDF render; file should already be on disk from seed/assets
+function ensureSignatureFileOnDisk(fileName) {
   ensureDir(SIGNATURE_UPLOAD_DIR);
-  const dest = path.join(SIGNATURE_UPLOAD_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
+  const dest = path.join(SIGNATURE_UPLOAD_DIR, fileName);
   if (!(fs.existsSync(dest) && fs.statSync(dest).size > 0)) {
     const seedCandidates = [
-      path.join(SIGNATURE_SEED_DIR, DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
-      path.join(__dirname, '../../assets/signatures', DEFAULT_SCM_MANAGER_SIGNATURE_FILE),
+      path.join(SIGNATURE_SEED_DIR, fileName),
+      path.join(__dirname, '../../assets/signatures', fileName),
     ];
     for (const seed of seedCandidates) {
       if (fs.existsSync(seed) && fs.statSync(seed).size > 0) {
@@ -132,7 +139,48 @@ export function getDefaultScmManagerSignatureDataUrl() {
       }
     }
   }
+  return fs.existsSync(dest) && fs.statSync(dest).size > 0 ? dest : null;
+}
+
+export function getDefaultScmManagerSignatureDataUrl() {
+  // Sync path for PDF render; file should already be on disk from seed/assets
+  ensureSignatureFileOnDisk(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
   return signatureFileToDataUrl(DEFAULT_SCM_MANAGER_SIGNATURE_FILE);
+}
+
+export async function ensureDefaultPoApproverSignatureFile() {
+  const dest = ensureSignatureFileOnDisk(DEFAULT_PO_APPROVER_SIGNATURE_FILE);
+  if (dest && gcsEnabled()) {
+    try {
+      await awaitGcsUpload(
+        `signatures/${DEFAULT_PO_APPROVER_SIGNATURE_FILE}`,
+        fs.readFileSync(dest),
+        defaultSignatureMime(DEFAULT_PO_APPROVER_SIGNATURE_FILE),
+        { skipIfExists: true }
+      );
+    } catch (err) {
+      console.warn('[GCS] PO approver signature upload skipped:', err.message);
+    }
+  }
+  return dest;
+}
+
+export function getDefaultPoApproverSignatureDataUrl() {
+  ensureSignatureFileOnDisk(DEFAULT_PO_APPROVER_SIGNATURE_FILE);
+  return signatureFileToDataUrl(DEFAULT_PO_APPROVER_SIGNATURE_FILE);
+}
+
+/** Signature used when the current user signs a PO (Tarkeshwar → his image; else Mounesh). */
+export function getSignerDefaultSignatureDataUrl(user) {
+  if (isPreferredPoApproverUser(user)) {
+    return getDefaultPoApproverSignatureDataUrl() || getDefaultScmManagerSignatureDataUrl();
+  }
+  return getDefaultScmManagerSignatureDataUrl();
+}
+
+export function getSignerDefaultSignatureFileName(user) {
+  if (isPreferredPoApproverUser(user)) return DEFAULT_PO_APPROVER_SIGNATURE_FILE;
+  return DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
 }
 
 export function getDefaultScmManagerSignatureInfo() {
@@ -202,6 +250,22 @@ export async function updateDefaultScmManagerSignature({
  * Seed the SCM Manager default signature into user_signatures.
  * When backfill=true (startup migrate), also stamp signed POs and clear old PDFs for regen.
  */
+async function upsertUserSignatureGallery(userId, fileName, label) {
+  if (!userId || !fileName) return null;
+  const [existing] = await pool.query(
+    `SELECT id FROM user_signatures
+     WHERE user_id = ? AND image_path = ?
+     LIMIT 1`,
+    [userId, fileName]
+  );
+  if (existing.length) return existing[0].id;
+  const [result] = await pool.query(
+    `INSERT INTO user_signatures (user_id, label, image_path) VALUES (?, ?, ?)`,
+    [userId, label, fileName]
+  );
+  return result.insertId;
+}
+
 export async function ensureDefaultScmManagerSignature({ backfill = false } = {}) {
   const filePath = await ensureDefaultScmManagerSignatureFile();
   if (!filePath) {
@@ -211,54 +275,42 @@ export async function ensureDefaultScmManagerSignature({ backfill = false } = {}
   const manager = await resolveScmManagerUser();
   let galleryId = null;
   if (manager?.id) {
-    const [existing] = await pool.query(
-      `SELECT id FROM user_signatures
-       WHERE user_id = ? AND image_path = ?
-       LIMIT 1`,
-      [manager.id, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
-    );
-    if (existing.length) {
-      galleryId = existing[0].id;
+    const legacyPlaceholders = LEGACY_SCM_MANAGER_SIGNATURE_FILES.map(() => '?').join(', ');
+    const [legacy] = legacyPlaceholders
+      ? await pool.query(
+          `SELECT id FROM user_signatures
+           WHERE user_id = ? AND image_path IN (${legacyPlaceholders})
+           LIMIT 1`,
+          [manager.id, ...LEGACY_SCM_MANAGER_SIGNATURE_FILES]
+        )
+      : [[]];
+    if (legacy[0]) {
+      await pool.query(
+        `UPDATE user_signatures SET label = ?, image_path = ? WHERE id = ?`,
+        [`${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE, legacy[0].id]
+      );
+      galleryId = legacy[0].id;
     } else {
-      const legacyPlaceholders = LEGACY_SCM_MANAGER_SIGNATURE_FILES.map(() => '?').join(', ');
-      const [legacy] = legacyPlaceholders
-        ? await pool.query(
-            `SELECT id FROM user_signatures
-             WHERE user_id = ? AND image_path IN (${legacyPlaceholders})
-             LIMIT 1`,
-            [manager.id, ...LEGACY_SCM_MANAGER_SIGNATURE_FILES]
-          )
-        : [[]];
-      if (legacy[0]) {
-        await pool.query(
-          `UPDATE user_signatures SET label = ?, image_path = ? WHERE id = ?`,
-          [`${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE, legacy[0].id]
-        );
-        galleryId = legacy[0].id;
-      } else {
-        const [result] = await pool.query(
-          `INSERT INTO user_signatures (user_id, label, image_path) VALUES (?, ?, ?)`,
-          [manager.id, `${getPreferredScmManagerName()} Default Signature`, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
-        );
-        galleryId = result.insertId;
-      }
+      galleryId = await upsertUserSignatureGallery(
+        manager.id,
+        DEFAULT_SCM_MANAGER_SIGNATURE_FILE,
+        `${getPreferredScmManagerName()} Default Signature`
+      );
     }
   }
 
+  // Keep Mounesh image in gallery; do not rewrite already-signed POs to Tarkeshwar.
   let backfilled = 0;
   if (backfill) {
-    // Only stamp POs that were actually signed by SCM Manager — never auto-approve
-    // or decorate unsigned manual / pending workflow POs with a default signature.
     const [signedRows] = await pool.query(
-      `SELECT id, signed_pdf_path, signature_image_path, signature_name, status, signer_id
+      `SELECT id, signed_pdf_path, signature_image_path
        FROM purchase_orders
        WHERE signed_at IS NOT NULL
           OR signer_id IS NOT NULL
           OR (signed_pdf_path IS NOT NULL AND signature_image_path IS NOT NULL)`
     );
-
     for (const row of signedRows) {
-      const alreadyDefault = row.signature_image_path === DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
+      if (row.signature_image_path) continue;
       await pool.query(
         `UPDATE purchase_orders
          SET signature_image_path = ?,
@@ -267,16 +319,7 @@ export async function ensureDefaultScmManagerSignature({ backfill = false } = {}
          WHERE id = ?`,
         [DEFAULT_SCM_MANAGER_SIGNATURE_FILE, getPreferredScmManagerName(), row.id]
       );
-
-      if (row.signed_pdf_path) {
-        const pdfFull = path.join(__dirname, '../../uploads/po', path.basename(String(row.signed_pdf_path)));
-        try {
-          if (fs.existsSync(pdfFull)) fs.unlinkSync(pdfFull);
-        } catch {
-          /* ignore */
-        }
-      }
-      if (!alreadyDefault) backfilled += 1;
+      backfilled += 1;
     }
   }
 
@@ -289,15 +332,46 @@ export async function ensureDefaultScmManagerSignature({ backfill = false } = {}
   };
 }
 
+/** Seed Tarkeshwar's signature into his gallery for PO Sign & Approval. */
+export async function ensureDefaultPoApproverSignature() {
+  const filePath = await ensureDefaultPoApproverSignatureFile();
+  if (!filePath) {
+    return { ok: false, reason: 'PO approver signature file missing' };
+  }
+  const approver = await resolvePoApproverUser();
+  const galleryId = approver?.id
+    ? await upsertUserSignatureGallery(
+        approver.id,
+        DEFAULT_PO_APPROVER_SIGNATURE_FILE,
+        `${getPreferredPoApproverName()} Default Signature`
+      )
+    : null;
+  return {
+    ok: true,
+    approverId: approver?.id || null,
+    approverEmail: approver?.email || getPreferredPoApproverEmail(),
+    galleryId,
+    fileName: DEFAULT_PO_APPROVER_SIGNATURE_FILE,
+  };
+}
+
 export async function listUserSignatures(userId) {
   await ensureDefaultScmManagerSignature({ backfill: false }).catch(() => null);
+  await ensureDefaultPoApproverSignature().catch(() => null);
+  const [userRows] = await pool.query(`SELECT id, email, name, role FROM users WHERE id = ? LIMIT 1`, [
+    userId,
+  ]);
+  const preferPoApprover = isPreferredPoApproverUser(userRows[0] || {});
+  const preferredFile = preferPoApprover
+    ? DEFAULT_PO_APPROVER_SIGNATURE_FILE
+    : DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
   const [rows] = await pool.query(
     `SELECT id, label, image_path, created_at FROM user_signatures
      WHERE user_id = ? ORDER BY
        CASE WHEN image_path = ? THEN 0 ELSE 1 END,
        created_at DESC
      LIMIT 20`,
-    [userId, DEFAULT_SCM_MANAGER_SIGNATURE_FILE]
+    [userId, preferredFile]
   );
   const out = [];
   for (const r of rows) {
@@ -309,7 +383,7 @@ export async function listUserSignatures(userId) {
       imagePath: r.image_path,
       imageDataUrl,
       createdAt: r.created_at,
-      isDefault: r.image_path === DEFAULT_SCM_MANAGER_SIGNATURE_FILE,
+      isDefault: r.image_path === preferredFile,
     });
   }
   return out;

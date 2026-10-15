@@ -27,15 +27,19 @@ import {
   resolveScmBuyerUser,
   getScmBuyerNotifyEmails,
   resolveScmManagerUser,
+  resolvePoApproverUser,
   getScmManagerNotifyEmails,
+  getPoApproverNotifyEmails,
   getPreferredScmManagerName,
   getPreferredScmManagerEmail,
-  getPreferredScmManagerDesignation,
+  getPreferredPoApproverName,
   resolveScmManagerSignName,
+  resolveSignerDesignation,
   insertScmManagerPoApprovalTask,
   insertScmBuyerVerifyTask,
   resolveBuyerVerifyAssignee,
   canEditAnyScmPurchaseOrder,
+  isPreferredPoApproverUser,
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
@@ -119,9 +123,13 @@ async function resolveRoleEmails(role) {
     return emails.map((email) => ({ email, name: 'SCM Buyer' }));
   }
   if (role === 'SCM Manager') {
-    const emails = await getScmManagerNotifyEmails();
-    const manager = await resolveScmManagerUser();
-    return emails.map((email) => ({ email, name: manager?.name || 'SCM Manager' }));
+    // PO Sign & Approval goes to Tarkeshwar; Mounesh remains create/send manager
+    const emails = await getPoApproverNotifyEmails();
+    const approver = await resolvePoApproverUser();
+    return emails.map((email) => ({
+      email,
+      name: approver?.name || getPreferredPoApproverName() || 'SCM Manager',
+    }));
   }
   const [rows] = await pool.query(
     `SELECT email, name FROM users WHERE role = ? AND is_active = 1`,
@@ -2893,6 +2901,27 @@ export async function listPurchaseOrders(
         'paid'
       )`;
     }
+    // Tarkeshwar (PO approver): only POs Mounesh created/sent
+    if (isPreferredPoApproverUser(user)) {
+      sql += ` AND (
+        EXISTS (
+          SELECT 1 FROM users creator
+          WHERE creator.id = po.created_by
+            AND (
+              LOWER(creator.email) = ?
+              OR LOWER(creator.email) LIKE 'mounesh.r@%'
+            )
+        )
+        OR EXISTS (
+          SELECT 1 FROM workflow_tasks wt
+          WHERE wt.pr_id = po.pr_id
+            AND wt.task_type = 'PO_APPROVAL'
+            AND wt.status = 'pending'
+            AND wt.assigned_user_id = ?
+        )
+      )`;
+      params.push(getPreferredScmManagerEmail(), user.id);
+    }
   } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
     sql += ` AND po.created_by = ?`;
     params.push(user.id);
@@ -3663,10 +3692,12 @@ export async function signPurchaseOrder(user, poId, {
   } else if (dscDetails) {
     // DSC stamp is generated on the client and sent as signatureImage; allow text-only if missing
   } else {
-    // Fall back to SCM Manager default handwritten signature
-    const { getDefaultScmManagerSignatureDataUrl, DEFAULT_SCM_MANAGER_SIGNATURE_FILE } =
-      await import('./signatureService.js');
-    const defaultUrl = getDefaultScmManagerSignatureDataUrl();
+    // Fall back to signer default: Tarkeshwar image for PO approver, else Mounesh
+    const {
+      getSignerDefaultSignatureDataUrl,
+      getSignerDefaultSignatureFileName,
+    } = await import('./signatureService.js');
+    const defaultUrl = getSignerDefaultSignatureDataUrl(user);
     if (!defaultUrl) {
       throw new Error('Please provide a signature (draw, upload, gallery, or Digital Signature / DSC)');
     }
@@ -3674,7 +3705,7 @@ export async function signPurchaseOrder(user, poId, {
     const { ext, buffer } = parseDataUrlImage(defaultUrl);
     signatureImageData = buffer;
     signatureImagePath = await saveSignatureFile(buffer, ext, `po_${poId}_${Date.now()}`);
-    if (!signatureImagePath) signatureImagePath = DEFAULT_SCM_MANAGER_SIGNATURE_FILE;
+    if (!signatureImagePath) signatureImagePath = getSignerDefaultSignatureFileName(user);
   }
 
   const po = await enrichPO(rows[0]);
@@ -3684,7 +3715,7 @@ export async function signPurchaseOrder(user, poId, {
     signed: true,
     signature: {
       name: signName,
-      designation: getPreferredScmManagerDesignation(),
+      designation: resolveSignerDesignation(user),
       date: formatDateTime(new Date()),
       comments: remarks.trim(),
       imageDataUrl,
@@ -4681,22 +4712,23 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   if (canBuyerRevise) {
-    const manager = await resolveScmManagerUser();
-    const managerEmails = await getScmManagerNotifyEmails();
-    const managerName = manager?.name || getPreferredScmManagerName() || 'Mounesh Rathakar';
-    if (managerEmails.length) {
+    const approver = await resolvePoApproverUser();
+    const approverEmails = await getPoApproverNotifyEmails();
+    const approverName =
+      approver?.name || getPreferredPoApproverName() || 'Tarkeshwar Singh';
+    if (approverEmails.length) {
       const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
       queuePoWorkflowNotification(updatedPo, {
         action: 'assign',
         stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managerEmails,
-        recipientName: managerName,
+        recipientEmails: approverEmails,
+        recipientName: approverName,
         actorName: user.name,
         actorRole: user.role,
         remarks:
           body?.resubmitForApproval || body?.changeSummary
-            ? `Revised after send-back — sent to SCM Manager (${managerName}) for sign`
-            : `PO submitted to SCM Manager (${managerName}) for sign`,
+            ? `Revised after send-back — sent to ${approverName} for PO sign`
+            : `PO submitted by ${user.name || 'SCM'} to ${approverName} for sign`,
         portalUrl: poPortalUrl(`/scm/po-approval?poId=${poId}`),
         ctaLabel: 'Open PO Approval',
         attachments,

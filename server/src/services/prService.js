@@ -4806,7 +4806,15 @@ export async function listTasks(user) {
   }
 
   if (user.role === 'SCM Manager') {
-    const [poSignRows] = await pool.query(
+    // Tarkeshwar: PO Sign & Approval tasks only. Mounesh (creator): skip — he sends to Tarkeshwar.
+    const { isPreferredPoApproverUser, isPreferredScmManagerUser, getPreferredScmManagerEmail } =
+      await import('../utils/scmAssignee.js');
+    const viewerIsPoApprover = isPreferredPoApproverUser(user);
+    const viewerIsMounesh = isPreferredScmManagerUser(user);
+    const showPoSignTasks = viewerIsPoApprover || !viewerIsMounesh;
+
+    const [poSignRows] = showPoSignTasks
+      ? await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.updated_at,
               COALESCE(NULLIF(TRIM(pr.title), ''), CONCAT('Manual ', IF(po.purchase_type = 'work_order', 'WO', 'PO'))) AS title,
               COALESCE(pr.priority, 'MEDIUM') AS priority,
@@ -4822,8 +4830,22 @@ export async function listTasks(user) {
        LEFT JOIN workflow_tasks wt ON wt.pr_id = po.pr_id
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
        WHERE po.status = 'pending_approval'
-       ORDER BY po.updated_at DESC`
-    );
+         AND (
+           ? = 0
+           OR EXISTS (
+             SELECT 1 FROM users creator
+             WHERE creator.id = po.created_by
+               AND (
+                 LOWER(creator.email) = ?
+                 OR LOWER(creator.email) LIKE 'mounesh.r@%'
+               )
+           )
+           OR (wt.assigned_user_id = ?)
+         )
+       ORDER BY po.updated_at DESC`,
+      [viewerIsPoApprover ? 1 : 0, getPreferredScmManagerEmail(), user.id]
+    )
+      : [[]];
     for (const row of poSignRows) {
       const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
       tasks.push({
@@ -5042,6 +5064,8 @@ export async function listTasks(user) {
 
   // Final guard: Mugesh-only Cloud Subscription tasks never leak to Srivaths / other users
   const mugeshOnlyViewer = viewerIsMugesh || userEmail === mugeshEmail;
+  const { isPreferredPoApproverUser: isPoApproverLogin } = await import('../utils/scmAssignee.js');
+  const tarkeshwarOnlyPoApproval = isPoApproverLogin(user);
   return tasks.filter((t) => {
     if (t?.isSassInvoiceUpload && !mugeshOnlyViewer) return false;
     if (
@@ -5051,6 +5075,8 @@ export async function listTasks(user) {
     ) {
       return false;
     }
+    // Tarkeshwar: only PO Sign & Approval tasks (from Mounesh send)
+    if (tarkeshwarOnlyPoApproval && !t?.isPoSign) return false;
     return true;
   });
 }

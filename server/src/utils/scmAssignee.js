@@ -176,10 +176,19 @@ export async function reassignPendingScmBuyerTasks(conn = null) {
   return { buyers, buyer: buyers[0] || null, updated: result?.affectedRows || 0 };
 }
 
-/** Default SCM Manager for login, task assignment, and mail. */
+/** Default SCM Manager (Mounesh) — creates / sends PO; dashboard & masters. */
 export const DEFAULT_SCM_MANAGER_EMAIL = 'mounesh.r@refex.co.in';
 export const DEFAULT_SCM_MANAGER_NAME = 'Mounesh Rathakar';
 export const DEFAULT_SCM_MANAGER_DESIGNATION = 'Head Procurement';
+
+/**
+ * Designated PO Sign & Approval assignee.
+ * Mounesh creates & sends the PO → Tarkeshwar only sees / signs PO approval tasks.
+ */
+export const DEFAULT_PO_APPROVER_EMAIL = 'tarkeshwar.singh@refex.co.in';
+export const DEFAULT_PO_APPROVER_NAME = 'Tarkeshwar Singh';
+export const DEFAULT_PO_APPROVER_DESIGNATION = 'Authorized Signatory';
+export const DEFAULT_PO_APPROVER_SIGNATURE_FILE = 'tarkeshwar_singh_default.jpg';
 
 const REMOVED_SCM_MANAGER_EMAILS = ['rajeev.v@refex.co.in'];
 
@@ -207,6 +216,17 @@ export function getPreferredScmManagerDesignation() {
   return fromEnv || DEFAULT_SCM_MANAGER_DESIGNATION;
 }
 
+export function getPreferredPoApproverDesignation() {
+  const fromEnv = String(process.env.PO_APPROVER_DESIGNATION || '').trim();
+  return fromEnv || DEFAULT_PO_APPROVER_DESIGNATION;
+}
+
+/** Designation printed under the signature for the signing user. */
+export function resolveSignerDesignation(user) {
+  if (isPreferredPoApproverUser(user)) return getPreferredPoApproverDesignation();
+  return getPreferredScmManagerDesignation();
+}
+
 function isPlaceholderScmManagerName(name) {
   const n = String(name || '').trim().toLowerCase();
   return (
@@ -221,12 +241,39 @@ function isPlaceholderScmManagerName(name) {
   );
 }
 
+export function getPreferredPoApproverEmail() {
+  const fromEnv = String(process.env.PO_APPROVER_EMAIL || '')
+    .trim()
+    .toLowerCase();
+  if (fromEnv && !REMOVED_SCM_MANAGER_EMAILS.includes(fromEnv)) return fromEnv;
+  return DEFAULT_PO_APPROVER_EMAIL;
+}
+
+export function getPreferredPoApproverName() {
+  const fromEnv = String(process.env.PO_APPROVER_NAME || '').trim();
+  if (fromEnv) return fromEnv;
+  return DEFAULT_PO_APPROVER_NAME;
+}
+
+export function isPreferredPoApproverUser(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return email === getPreferredPoApproverEmail() || email.startsWith('tarkeshwar.singh@');
+}
+
+export function isPreferredScmManagerUser(user) {
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  return email === getPreferredScmManagerEmail() || email.includes('mounesh.r@');
+}
+
 /** Name printed on the signed PO — never the email local-part. */
 export function resolveScmManagerSignName({ holderName, signatureName, user } = {}) {
-  const preferred = getPreferredScmManagerName();
   const email = String(user?.email || '').trim().toLowerCase();
-  const isDesignated =
-    email === getPreferredScmManagerEmail() || email.includes('mounesh.r@');
+  const preferred = isPreferredPoApproverUser(user)
+    ? getPreferredPoApproverName()
+    : getPreferredScmManagerName();
+  const isDesignated = isPreferredPoApproverUser(user) || isPreferredScmManagerUser(user);
   const holder = String(holderName || '').trim();
   if (holder && !isPlaceholderScmManagerName(holder)) return holder;
   const typed = String(signatureName || '').trim();
@@ -344,29 +391,110 @@ export async function ensurePreferredScmManagerUser(conn = null) {
   return managerId;
 }
 
-/** Point every pending SCM Manager workflow task at the designated manager. */
+/**
+ * Ensure Tarkeshwar (PO Sign & Approval) login exists as SCM Manager.
+ * Mounesh stays the primary SCM Manager for create/send; Tarkeshwar only signs.
+ */
+export async function ensurePreferredPoApproverUser(conn = null) {
+  const db = conn || pool;
+  const email = getPreferredPoApproverEmail();
+  const name = getPreferredPoApproverName();
+
+  const [byEmail] = await db.query(
+    `SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1`,
+    [email]
+  );
+  let approverId = byEmail[0]?.id || null;
+  if (approverId) {
+    await db.query(
+      `UPDATE users
+       SET role = 'SCM Manager', is_active = 1, name = ?
+       WHERE id = ?`,
+      [name, approverId]
+    );
+  } else {
+    const hash = await bcrypt.hash('demo1234', 10);
+    const [result] = await db.query(
+      `INSERT INTO users (name, email, password_hash, role, is_active)
+       VALUES (?, ?, ?, 'SCM Manager', 1)`,
+      [name, email, hash]
+    );
+    approverId = result.insertId;
+  }
+  return approverId;
+}
+
+/** Resolve Tarkeshwar (or env override) for PO_APPROVAL assignment. */
+export async function resolvePoApproverUser(conn = null) {
+  const db = conn || pool;
+  const email = getPreferredPoApproverEmail();
+  const [rows] = await db.query(
+    `SELECT id, email, name, role
+     FROM users
+     WHERE LOWER(email) = ? AND is_active = 1
+     LIMIT 1`,
+    [email]
+  );
+  if (rows[0]) return mapBuyerRow(rows[0]);
+
+  // Fall back to primary SCM Manager if Tarkeshwar is not seeded yet
+  return resolveScmManagerUser(conn);
+}
+
+export async function getPoApproverNotifyEmails(conn = null) {
+  const emails = new Set([getPreferredPoApproverEmail()]);
+  const user = await resolvePoApproverUser(conn);
+  if (user?.email) emails.add(String(user.email).trim().toLowerCase());
+  return [...emails];
+}
+
+/**
+ * Pending SCM Manager tasks:
+ * - PO_APPROVAL → Tarkeshwar (PO Sign)
+ * - all other SCM Manager tasks → Mounesh
+ */
 export async function reassignPendingScmManagerTasks(conn = null) {
   const manager = await resolveScmManagerUser(conn);
-  if (!manager?.id) return { manager: null, updated: 0 };
+  const approver = await resolvePoApproverUser(conn);
+  if (!manager?.id && !approver?.id) return { manager: null, approver: null, updated: 0 };
   const db = conn || pool;
-  const [result] = await db.query(
-    `UPDATE workflow_tasks
-     SET assigned_user_id = ?
-     WHERE assigned_role = 'SCM Manager'
-       AND status = 'pending'`,
-    [manager.id]
-  );
-  return { manager, updated: result?.affectedRows || 0 };
+  let updated = 0;
+
+  if (approver?.id) {
+    const [poResult] = await db.query(
+      `UPDATE workflow_tasks
+       SET assigned_user_id = ?
+       WHERE assigned_role = 'SCM Manager'
+         AND task_type = 'PO_APPROVAL'
+         AND status = 'pending'`,
+      [approver.id]
+    );
+    updated += poResult?.affectedRows || 0;
+  }
+
+  if (manager?.id) {
+    const [otherResult] = await db.query(
+      `UPDATE workflow_tasks
+       SET assigned_user_id = ?
+       WHERE assigned_role = 'SCM Manager'
+         AND task_type <> 'PO_APPROVAL'
+         AND status = 'pending'`,
+      [manager.id]
+    );
+    updated += otherResult?.affectedRows || 0;
+  }
+
+  return { manager, approver, updated };
 }
 
 export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr) {
-  const manager = await resolveScmManagerUser(db);
+  const approver = await resolvePoApproverUser(db);
   await db.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'PO_APPROVAL', 'SCM Manager', ?, 'pending', ?)`,
-    [prId, manager?.id || null, dueDateStr]
+    [prId, approver?.id || null, dueDateStr]
   );
-  return manager;
+  return approver;
 }
 
 /**

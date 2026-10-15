@@ -412,6 +412,8 @@ function isMastersNavCode(code?: string) {
 
 const EMAIL_NAV_CODES: Record<string, string[]> = {
   'srivaths.varadharajan@refex.co.in': ['nav.tasks', 'nav.cfo_insights'],
+  // Tarkeshwar — PO Sign & Approval only (Mounesh creates/sends)
+  'tarkeshwar.singh@refex.co.in': ['nav.po_approval', 'nav.tasks'],
 };
 
 function roleForMasterMenus(role?: string | null, email?: string | null) {

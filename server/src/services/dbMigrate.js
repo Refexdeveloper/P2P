@@ -724,21 +724,34 @@ export async function runStartupMigrations() {
   try {
     const {
       ensurePreferredScmManagerUser,
+      ensurePreferredPoApproverUser,
       reassignPendingScmManagerTasks,
       getPreferredScmManagerEmail,
+      getPreferredPoApproverEmail,
     } = await import('../utils/scmAssignee.js');
     const managerId = await ensurePreferredScmManagerUser();
+    const approverId = await ensurePreferredPoApproverUser();
     const reassignedMgr = await reassignPendingScmManagerTasks();
+    const { seedUserPermissionsForRole } = await import('./permissionService.js');
     if (managerId) {
-      const { seedUserPermissionsForRole } = await import('./permissionService.js');
       await seedUserPermissionsForRole(managerId, 'SCM Manager');
       await pool.query(
         `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
         [managerId, 'nav.scm_manager_dashboard']
       );
     }
+    if (approverId) {
+      await seedUserPermissionsForRole(approverId, 'SCM Manager');
+      for (const code of ['nav.po_approval', 'nav.tasks']) {
+        await pool.query(
+          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
+          [approverId, code]
+        );
+      }
+    }
     console.log(
       `SCM Manager assignee: ${getPreferredScmManagerEmail()} id=${managerId}` +
+        `; PO approver: ${getPreferredPoApproverEmail()} id=${approverId}` +
         ` (pending tasks assigned=${reassignedMgr.updated})`
     );
   } catch (err) {
@@ -754,7 +767,10 @@ export async function runStartupMigrations() {
   }
 
   try {
-    const { ensureDefaultScmManagerSignature } = await import('./signatureService.js');
+    const {
+      ensureDefaultScmManagerSignature,
+      ensureDefaultPoApproverSignature,
+    } = await import('./signatureService.js');
     const sig = await ensureDefaultScmManagerSignature({ backfill: true });
     if (sig?.ok) {
       console.log(
@@ -763,6 +779,15 @@ export async function runStartupMigrations() {
       );
     } else {
       console.warn('SCM Manager default signature seed skipped:', sig?.reason || 'unknown');
+    }
+    const poSig = await ensureDefaultPoApproverSignature();
+    if (poSig?.ok) {
+      console.log(
+        `PO approver signature seeded for ${poSig.approverEmail}` +
+          ` (galleryId=${poSig.galleryId}, file=${poSig.fileName})`
+      );
+    } else {
+      console.warn('PO approver signature seed skipped:', poSig?.reason || 'unknown');
     }
   } catch (err) {
     console.warn('SCM Manager default signature seed skipped:', err.message);
