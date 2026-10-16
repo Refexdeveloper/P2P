@@ -244,6 +244,18 @@ export default function RfqApprovalDetailPage() {
           </div>
         </div>
 
+        {String(data.sendBackRemarks || '').trim() ? (
+          <div className="rounded-xl border-2 border-orange-400 bg-orange-50 px-4 py-3 ring-2 ring-orange-200/70">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-orange-800 flex items-center gap-1.5">
+              <i className="ri-arrow-go-back-line" aria-hidden />
+              Sent back to this step
+            </p>
+            <p className="mt-1.5 text-sm font-medium text-orange-950 whitespace-pre-wrap leading-relaxed">
+              {String(data.sendBackRemarks).trim()}
+            </p>
+          </div>
+        ) : null}
+
         {data.canApprove && (
           <div className="flex flex-col xs:flex-row sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
             <button

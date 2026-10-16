@@ -102,8 +102,8 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
           {showUserMenu && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowUserMenu(false)}></div>
-              <div className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-1.5rem)] bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)}></div>
+              <div className="absolute right-0 mt-2 w-56 max-w-[calc(100vw-1.5rem)] bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                 <div className="p-4 border-b border-gray-200">
                   <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
                   <p className="text-xs text-gray-500 mt-1 truncate">{user?.email}</p>
@@ -128,8 +128,12 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={handleLogout}
-                    className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                   >
                     <i className="ri-logout-box-line"></i>
                     <span className="whitespace-nowrap">Logout</span>

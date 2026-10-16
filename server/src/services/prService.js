@@ -731,7 +731,7 @@ async function enrichPR(row) {
       .then(([rows]) => rows),
     pool
       .query(
-        `SELECT finalized_at FROM rfq_configs WHERE pr_id = ? LIMIT 1`,
+        `SELECT finalized_at, send_back_remarks FROM rfq_configs WHERE pr_id = ? LIMIT 1`,
         [row.id]
       )
       .then(([rows]) => rows),
@@ -882,6 +882,7 @@ async function enrichPR(row) {
     poId: po?.id || null,
     poStatus: po?.status || '',
     rfqFinalized: Boolean(rfqMetaRows[0]?.finalized_at),
+    sendBackRemarks: rfqMetaRows[0]?.send_back_remarks || '',
     vendorQuoteRounds: mapVendorQuoteRounds(vendorQuoteRows),
     submittedDate: formatDate(row.submitted_at || row.created_at),
     createdAt: formatDate(row.created_at),

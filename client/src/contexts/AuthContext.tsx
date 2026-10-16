@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { ensureNavigation } from '../constants/roleNavigation';
 import { authApi, AuthUser, NavItem } from '../services/api';
-import { clearSsoBounce, goToRefexOne } from '../utils/refexOneUrl';
+import { clearSsoBounce, goToRefexOne, markLoggingOut } from '../utils/refexOneUrl';
 import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, MEET_DESIGNATION, getUserDesignation, isDineshUser, isMeetUser, isSrivathsUser } from '../utils/roleDisplay';
 
 export type UserRole =
@@ -317,6 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    markLoggingOut();
     setUser(null);
     setToken(null);
     localStorage.removeItem('p2p_token');
@@ -327,7 +328,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    // Regular users return to RefexOne; admin local login stays at /admin/login
     goToRefexOne();
   };
 

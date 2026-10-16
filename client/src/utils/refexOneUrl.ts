@@ -72,8 +72,20 @@ export function getUnauthenticatedSsoUrl(returnPath?: string): string {
   return buildRefexOneSamlSsoUrl(null, getSamlReturnUrl(returnPath));
 }
 
+let loggingOut = false;
+
+/** True while logout is navigating away, so SSO does not sign the user back in. */
+export function isLoggingOut(): boolean {
+  return loggingOut;
+}
+
+export function markLoggingOut(): void {
+  loggingOut = true;
+}
+
 /** Full-page navigate to RefexOne portal (logout). */
 export function goToRefexOne(): void {
+  markLoggingOut();
   window.location.replace(getRefexOneUrl());
 }
 

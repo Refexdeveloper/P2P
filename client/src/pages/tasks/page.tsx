@@ -309,6 +309,7 @@ export default function TasksPage() {
     currentStepOwner?: { name?: string; role?: string } | null;
     statusUI?: string;
     justification: string;
+    sendBackRemarks?: string;
     vendorSelection?: 'own' | 'scm';
     vendorQuoteRounds?: Array<{
       invitationId: number;
@@ -559,6 +560,7 @@ export default function TasksPage() {
         })(),
         statusUI: String(pr.statusUI || pr.statusFrontend || '').trim(),
         justification: String(pr.justification || 'No justification provided.'),
+        sendBackRemarks: String(pr.sendBackRemarks || ''),
         vendorSelection,
         purchaseType,
         isSass,

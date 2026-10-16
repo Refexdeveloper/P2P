@@ -74,6 +74,7 @@ interface PRTask {
   /** Real pending-task owner (name + role), separate from stage label in currentApprover */
   currentStepOwner?: { name?: string; role?: string } | null;
   justification: string;
+  sendBackRemarks?: string;
   vendorSelection?: 'own' | 'scm';
   purchaseType?: string;
   isSass?: boolean;
@@ -211,9 +212,11 @@ export default function TaskDetailDrawer({
         role: ownerRole,
         date: 'Now',
         status: 'current',
-        remarks: ownerName
-          ? `Current step — waiting on ${ownerName}`
-          : 'Current step — waiting for the assigned owner',
+        remarks: String(task.sendBackRemarks || '').trim()
+          ? String(task.sendBackRemarks).trim()
+          : ownerName
+            ? `Current step — waiting on ${ownerName}`
+            : 'Current step — waiting for the assigned owner',
         isCurrent: true as const,
       }
     : null;
@@ -404,6 +407,17 @@ export default function TaskDetailDrawer({
               <div className="dfx-pane space-y-4 px-5 py-5 sm:px-7">
                 {activeTab === 'details' && (
                   <div key="details" className="space-y-4">
+                    {String(task.sendBackRemarks || '').trim() ? (
+                      <div className="rounded-xl border-2 border-orange-400 bg-orange-50 px-4 py-3 ring-2 ring-orange-200/70">
+                        <p className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-orange-800">
+                          <i className="ri-arrow-go-back-line" aria-hidden />
+                          Sent back to this step
+                        </p>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm font-medium leading-relaxed text-orange-950">
+                          {String(task.sendBackRemarks).trim()}
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="dfx-field" style={{ '--i': 0 } as CSSProperties}>
                       <span className="dfx-avatar">{task.requesterAvatar || 'R'}</span>
                       <div className="min-w-0 flex-1">
@@ -664,7 +678,17 @@ export default function TaskDetailDrawer({
                                   {isCurrent ? 'Now' : formatDateTime(step.date)}
                                 </span>
                               </div>
-                              {step.remarks ? <p className="dfx-tl-remark">{step.remarks}</p> : null}
+                              {step.remarks ? (
+                                <p
+                                  className={`dfx-tl-remark${
+                                    isCurrent && String(task.sendBackRemarks || '').trim()
+                                      ? ' mt-2 rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-2 font-semibold text-orange-950'
+                                      : ''
+                                  }`}
+                                >
+                                  {step.remarks}
+                                </p>
+                              ) : null}
                             </div>
                           </li>
                         );

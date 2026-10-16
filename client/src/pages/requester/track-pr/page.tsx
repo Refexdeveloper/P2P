@@ -840,7 +840,11 @@ export default function TrackPRPage() {
       const res = await prApi.sendBackTargets(pr.prId, { admin: true });
       const list = res.data || [];
       setSendBackTargets(list);
-      setSendBackReturnTo(list[0]?.key || '');
+      const preferred =
+        res.defaultKey && list.some((t) => t.key === res.defaultKey)
+          ? res.defaultKey
+          : list[list.length - 1]?.key || '';
+      setSendBackReturnTo(preferred);
     } catch (err) {
       setSendBackError(err instanceof Error ? err.message : 'Failed to load stages');
     } finally {

@@ -3,6 +3,7 @@ import {
   listSendBackTargets,
   listAdminSendBackTargets,
   resolveSendBackTarget,
+  immediatePreviousSendBackKey,
 } from '../utils/sendBackTargets.js';
 import { resolveScmBuyerUser, getPreferredScmManagerEmail } from '../utils/scmAssignee.js';
 import { SASS_MUGESH_EMAIL } from './sassWorkflow.js';
@@ -59,15 +60,23 @@ export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
-  if (admin) {
-    return listAdminSendBackTargets(
-      rows[0].status,
-      rows[0].vendor_selection,
-      rows[0].pr_flow,
-      rows[0].po_creation_by
-    );
-  }
-  return listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
+  const targets = admin
+    ? listAdminSendBackTargets(
+        rows[0].status,
+        rows[0].vendor_selection,
+        rows[0].pr_flow,
+        rows[0].po_creation_by
+      )
+    : listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
+  const preferred = immediatePreviousSendBackKey(
+    rows[0].status,
+    rows[0].vendor_selection,
+    rows[0].pr_flow
+  );
+  const defaultKey = targets.some((t) => t.key === preferred)
+    ? preferred
+    : targets[targets.length - 1]?.key || null;
+  return { targets, defaultKey };
 }
 
 /**

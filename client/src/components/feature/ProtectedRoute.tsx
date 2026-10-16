@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../../utils/refexOneUrl';
+import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso, isLoggingOut } from '../../utils/refexOneUrl';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -12,7 +12,7 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const location = useLocation();
 
   useEffect(() => {
-    if (isLoading || isAuthenticated) return;
+    if (isLoading || isAuthenticated || isLoggingOut()) return;
     const returnPath = `${location.pathname}${location.search || ''}`;
     goToRefexOneSamlSso(getUnauthenticatedSsoUrl(returnPath));
   }, [isAuthenticated, isLoading, location.pathname, location.search]);

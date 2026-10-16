@@ -66,6 +66,7 @@ export interface PRDetail {
   entityCostCenter?: string;
   priority: string;
   justification: string;
+  sendBackRemarks?: string;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
@@ -251,9 +252,11 @@ export default function PRDetailDrawer({
           role: String(pr.currentApprover?.role || '').trim(),
           date: 'Now',
           status: 'current',
-          remarks: pr.currentApprover?.name
-            ? `Current step — waiting on ${pr.currentApprover.name}`
-            : 'Current step — waiting for the assigned owner',
+          remarks: String(pr.sendBackRemarks || '').trim()
+            ? String(pr.sendBackRemarks).trim()
+            : pr.currentApprover?.name
+              ? `Current step — waiting on ${pr.currentApprover.name}`
+              : 'Current step — waiting for the assigned owner',
           isCurrent: true as const,
         }
       : null;
@@ -386,6 +389,17 @@ export default function PRDetailDrawer({
 
           {pr && (
             <div key={activeTab} className="dfx-pane space-y-4 px-5 py-5 sm:px-7">
+              {String(pr.sendBackRemarks || '').trim() ? (
+                <div className="rounded-xl border-2 border-orange-400 bg-orange-50 px-4 py-3 ring-2 ring-orange-200/70">
+                  <p className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-orange-800">
+                    <i className="ri-arrow-go-back-line" aria-hidden />
+                    Sent back to this step
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-sm font-medium leading-relaxed text-orange-950">
+                    {String(pr.sendBackRemarks).trim()}
+                  </p>
+                </div>
+              ) : null}
               {isReturned && activeTab === 'details' && (
                 <div className="dfx-alert">
                   <span className="dfx-alert-ic">
@@ -637,7 +651,17 @@ export default function PRDetailDrawer({
                               </div>
                               <span className="dfx-tl-date">{item.date}</span>
                             </div>
-                            {item.remarks && <p className="dfx-tl-remark">{item.remarks}</p>}
+                            {item.remarks && (
+                              <p
+                                className={`dfx-tl-remark${
+                                  isCurrent && String(pr?.sendBackRemarks || '').trim()
+                                    ? ' mt-2 rounded-lg border border-orange-300 bg-orange-50 px-2.5 py-2 font-semibold text-orange-950'
+                                    : ''
+                                }`}
+                              >
+                                {item.remarks}
+                              </p>
+                            )}
                           </div>
                         </li>
                       );

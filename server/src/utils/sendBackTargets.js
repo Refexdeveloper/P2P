@@ -259,6 +259,12 @@ const SCM_ONLY_KEYS = new Set(['SCM_RFQ', 'SCM_MANAGER', 'L2_PRE', 'CFO_PRE']);
  * List send-back targets for a PR at its current status (manager / task holder).
  * Filters own vs SCM where useful.
  */
+/** Immediate previous step for this status — default Send Back selection. */
+export function immediatePreviousSendBackKey(status, vendorSelection = 'scm', prFlow = 'standard') {
+  const previous = listSendBackTargets(status, vendorSelection, prFlow);
+  return previous[previous.length - 1]?.key || null;
+}
+
 export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
   if (prFlow === 'functional') {
     const keys = FUNCTIONAL_PREVIOUS_BY_STATUS[status] || ['REQUESTER'];

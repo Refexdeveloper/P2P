@@ -1048,7 +1048,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
 
       if (markSubmitted) {
         await pool.query(
-          `UPDATE rfq_configs SET requester_submitted_at = NOW(), updated_at = NOW() WHERE pr_id = ?`,
+          `UPDATE rfq_configs SET requester_submitted_at = NOW(), send_back_remarks = NULL, updated_at = NOW() WHERE pr_id = ?`,
           [prId]
         );
       }
@@ -1247,7 +1247,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
 
   if (markSubmitted) {
     await pool.query(
-      `UPDATE rfq_configs SET requester_submitted_at = NOW(), updated_at = NOW() WHERE pr_id = ?`,
+      `UPDATE rfq_configs SET requester_submitted_at = NOW(), send_back_remarks = NULL, updated_at = NOW() WHERE pr_id = ?`,
       [prId]
     );
   }
@@ -2117,7 +2117,7 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
     await pool.query(
       `UPDATE rfq_configs
        SET recommended_invitation_id = ?, recommendation_justification = ?,
-           requester_submitted_at = NOW(), updated_at = NOW()
+           requester_submitted_at = NOW(), send_back_remarks = NULL, updated_at = NOW()
        WHERE pr_id = ?`,
       [recommendedInvitationId, justification, prId]
     );
@@ -2148,7 +2148,7 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
 
   await pool.query(
     `UPDATE rfq_configs
-     SET recommended_invitation_id = ?, recommendation_justification = ?, finalized_at = NOW(), updated_at = NOW()
+     SET recommended_invitation_id = ?, recommendation_justification = ?, finalized_at = NOW(), send_back_remarks = NULL, updated_at = NOW()
      WHERE pr_id = ?`,
     [recommendedInvitationId, justification, prId]
   );
@@ -3039,6 +3039,7 @@ export async function getVendorComparisonMatrix(user, prId) {
     recommendedVendorId: config.recommendedInvitationId,
     recommendedVendorName: recommendedVendor?.name || '',
     recommendationJustification: config.recommendationJustification || '',
+    sendBackRemarks: config.sendBackRemarks || '',
     recommendedRound: recommendedLatestRound?.round || recommendedVendor?.round || null,
     recommendedQuoteLineItems: Array.isArray(recommendedQuoteLineItems)
       ? recommendedQuoteLineItems
@@ -3565,6 +3566,12 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       `UPDATE purchase_requests SET status = ?, current_stage = ?, updated_at = NOW() WHERE id = ?`,
       [newStatus, newStage, prId]
     );
+    if (action === 'approve' || action === 'reject') {
+      await conn.query(
+        `UPDATE rfq_configs SET send_back_remarks = NULL, updated_at = NOW() WHERE pr_id = ?`,
+        [prId]
+      );
+    }
 
     await conn.query(
       `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()

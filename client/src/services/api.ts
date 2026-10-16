@@ -1,4 +1,4 @@
-import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso } from '../utils/refexOneUrl';
+import { getUnauthenticatedSsoUrl, goToRefexOneSamlSso, isLoggingOut } from '../utils/refexOneUrl';
 
 const LIVE_API = 'https://p2p-backend-645830234926.asia-south1.run.app';
 /** API base URL — set VITE_API_URL in client/.env (see .env.example). */
@@ -41,7 +41,7 @@ function holdForRefexRelogin() {
 
 /** A stored P2P session failed its check — send the user through Refex One login again. */
 function beginRefexOneRelogin() {
-  if (refexReloginStarted || typeof window === 'undefined') return;
+  if (refexReloginStarted || isLoggingOut() || typeof window === 'undefined') return;
   const path = window.location.pathname;
   if (
     path === '/login' ||
@@ -350,7 +350,7 @@ export const prApi = {
       body: JSON.stringify(body),
     }),
   sendBackTargets: (id: number, opts?: { admin?: boolean }) =>
-    request<{ data: { key: string; label: string }[] }>(
+    request<{ data: { key: string; label: string }[]; defaultKey?: string | null }>(
       `/api/purchase-requests/${id}/send-back-targets${opts?.admin ? '?admin=1' : ''}`
     ),
   /** Track PR admin: move PR to any workflow step (completes current task, creates next) */
@@ -857,6 +857,8 @@ export interface VendorComparisonData {
   recommendedVendorId: number | null;
   recommendedVendorName: string;
   recommendationJustification?: string;
+  /** Remarks from the person who sent this PR back to the current step */
+  sendBackRemarks?: string;
   recommendedRound?: number | null;
   recommendedQuoteLineItems?: Array<{
     lineItemId?: string | number;

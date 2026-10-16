@@ -335,8 +335,8 @@ router.post('/:id/resubmit', canCreatePr, async (req, res) => {
 router.get('/:id/send-back-targets', async (req, res) => {
   try {
     const admin = String(req.query.admin || '') === '1' || String(req.query.admin || '') === 'true';
-    const targets = await getSendBackTargetsForPr(Number(req.params.id), { admin });
-    res.json({ data: targets });
+    const { targets, defaultKey } = await getSendBackTargetsForPr(Number(req.params.id), { admin });
+    res.json({ data: targets, defaultKey });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

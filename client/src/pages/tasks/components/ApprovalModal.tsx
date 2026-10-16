@@ -98,7 +98,11 @@ export default function ApprovalModal({
         if (cancelled) return;
         const list = res.data || [];
         setTargets(list);
-        setReturnTo(list[0]?.key || '');
+        const preferred =
+          res.defaultKey && list.some((t) => t.key === res.defaultKey)
+            ? res.defaultKey
+            : list[list.length - 1]?.key || '';
+        setReturnTo(preferred);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -174,7 +178,7 @@ export default function ApprovalModal({
       setError('Please provide a reason for rejection (minimum 10 characters)');
       return;
     }
-    const selectedReturnTo = returnTo || targets[0]?.key || '';
+    const selectedReturnTo = returnTo || targets[targets.length - 1]?.key || '';
     if (type === 'return' && prId && !selectedReturnTo) {
       setError('Select a previous stage to send back to');
       return;

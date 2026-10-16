@@ -59,7 +59,11 @@ export default function PostRfqApprovalModal({
         if (cancelled) return;
         const list = res.data || [];
         setTargets(list);
-        setReturnTo(list[0]?.key || '');
+        const preferred =
+          res.defaultKey && list.some((t) => t.key === res.defaultKey)
+            ? res.defaultKey
+            : list[list.length - 1]?.key || '';
+        setReturnTo(preferred);
       })
       .catch((err) => {
         if (!cancelled) {

@@ -4,6 +4,7 @@ import { getRoleHomePath, useAuth } from '../../contexts/AuthContext';
 import {
   getUnauthenticatedSsoUrl,
   goToRefexOneSamlSso,
+  isLoggingOut,
   markSsoBounce,
   ssoBouncePending,
 } from '../../utils/refexOneUrl';
@@ -13,7 +14,7 @@ export default function Home() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isLoggingOut()) return;
     if (!user) {
       if (ssoBouncePending()) {
         navigate('/auth/refexone', { replace: true });
