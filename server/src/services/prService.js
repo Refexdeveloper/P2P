@@ -4806,15 +4806,14 @@ export async function listTasks(user) {
   }
 
   if (user.role === 'SCM Manager') {
-    // Tarkeshwar: PO Sign & Approval tasks only. Mounesh (creator): skip — he sends to Tarkeshwar.
+    // Buyer-created PO → Mounesh signs. Mounesh-created PO → Tarkeshwar signs.
     const { isPreferredPoApproverUser, isPreferredScmManagerUser, getPreferredScmManagerEmail } =
       await import('../utils/scmAssignee.js');
     const viewerIsPoApprover = isPreferredPoApproverUser(user);
     const viewerIsMounesh = isPreferredScmManagerUser(user);
-    const showPoSignTasks = viewerIsPoApprover || !viewerIsMounesh;
+    const mouneshEmail = getPreferredScmManagerEmail();
 
-    const [poSignRows] = showPoSignTasks
-      ? await pool.query(
+    const [poSignRows] = await pool.query(
       `SELECT po.id AS po_id, po.po_number, po.grand_total, po.pr_id, po.updated_at,
               COALESCE(NULLIF(TRIM(pr.title), ''), CONCAT('Manual ', IF(po.purchase_type = 'work_order', 'WO', 'PO'))) AS title,
               COALESCE(pr.priority, 'MEDIUM') AS priority,
@@ -4831,21 +4830,33 @@ export async function listTasks(user) {
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
        WHERE po.status = 'pending_approval'
          AND (
-           ? = 0
-           OR EXISTS (
+           (? = 1 AND EXISTS (
              SELECT 1 FROM users creator
              WHERE creator.id = po.created_by
                AND (
                  LOWER(creator.email) = ?
                  OR LOWER(creator.email) LIKE 'mounesh.r@%'
                )
-           )
-           OR (wt.assigned_user_id = ?)
+           ))
+           OR (? = 1 AND NOT EXISTS (
+             SELECT 1 FROM users creator
+             WHERE creator.id = po.created_by
+               AND (
+                 LOWER(creator.email) = ?
+                 OR LOWER(creator.email) LIKE 'mounesh.r@%'
+               )
+           ))
+           OR (? = 1)
          )
        ORDER BY po.updated_at DESC`,
-      [viewerIsPoApprover ? 1 : 0, getPreferredScmManagerEmail(), user.id]
-    )
-      : [[]];
+      [
+        viewerIsPoApprover ? 1 : 0,
+        mouneshEmail,
+        viewerIsMounesh && !viewerIsPoApprover ? 1 : 0,
+        mouneshEmail,
+        !viewerIsPoApprover && !viewerIsMounesh ? 1 : 0,
+      ]
+    );
     for (const row of poSignRows) {
       const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
       tasks.push({

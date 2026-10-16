@@ -182,8 +182,9 @@ export const DEFAULT_SCM_MANAGER_NAME = 'Mounesh Rathakar';
 export const DEFAULT_SCM_MANAGER_DESIGNATION = 'Head Procurement';
 
 /**
- * Designated PO Sign & Approval assignee.
- * Mounesh creates & sends the PO → Tarkeshwar only sees / signs PO approval tasks.
+ * Designated second signer (Tarkeshwar).
+ * SCM Buyer creates the PO → Mounesh signs, then Buyer Final Verify.
+ * Mounesh creates the PO → Tarkeshwar signs, then Buyer Final Verify.
  */
 export const DEFAULT_PO_APPROVER_EMAIL = 'tarkeshwar.singh@refex.co.in';
 export const DEFAULT_PO_APPROVER_NAME = 'Tarkeshwar Singh';
@@ -424,7 +425,29 @@ export async function ensurePreferredPoApproverUser(conn = null) {
   return approverId;
 }
 
-/** Resolve Tarkeshwar (or env override) for PO_APPROVAL assignment. */
+async function loadUserById(userId, conn = null) {
+  const id = Number(userId || 0);
+  if (!id) return null;
+  const db = conn || pool;
+  const [rows] = await db.query(
+    `SELECT id, email, name, role FROM users WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  return rows[0] ? mapBuyerRow(rows[0]) : null;
+}
+
+/**
+ * PO Sign & Approval assignee from who created the PO.
+ * Mounesh created it → Tarkeshwar. Anyone else (SCM Buyer) → Mounesh.
+ */
+export async function resolvePoSignAssignee(creator, conn = null) {
+  const user =
+    creator && typeof creator === 'object' ? creator : await loadUserById(creator, conn);
+  if (isPreferredScmManagerUser(user)) return resolvePoApproverUser(conn);
+  return resolveScmManagerUser(conn);
+}
+
+/** Resolve Tarkeshwar (or env override) — signer when Mounesh created the PO. */
 export async function resolvePoApproverUser(conn = null) {
   const db = conn || pool;
   const email = getPreferredPoApproverEmail();
@@ -450,7 +473,8 @@ export async function getPoApproverNotifyEmails(conn = null) {
 
 /**
  * Pending SCM Manager tasks:
- * - PO_APPROVAL → Tarkeshwar (PO Sign)
+ * - PO_APPROVAL created by Mounesh → Tarkeshwar
+ * - PO_APPROVAL created by SCM Buyer → Mounesh
  * - all other SCM Manager tasks → Mounesh
  */
 export async function reassignPendingScmManagerTasks(conn = null) {
@@ -460,14 +484,29 @@ export async function reassignPendingScmManagerTasks(conn = null) {
   const db = conn || pool;
   let updated = 0;
 
-  if (approver?.id) {
+  const [poTasks] = await db.query(
+    `SELECT wt.id,
+            (
+              SELECT po.created_by
+              FROM purchase_orders po
+              WHERE po.pr_id = wt.pr_id
+              ORDER BY po.id DESC
+              LIMIT 1
+            ) AS created_by
+     FROM workflow_tasks wt
+     WHERE wt.assigned_role = 'SCM Manager'
+       AND wt.task_type = 'PO_APPROVAL'
+       AND wt.status = 'pending'`
+  );
+  for (const task of poTasks) {
+    const signer = await resolvePoSignAssignee(task.created_by, db);
+    if (!signer?.id) continue;
     const [poResult] = await db.query(
       `UPDATE workflow_tasks
        SET assigned_user_id = ?
-       WHERE assigned_role = 'SCM Manager'
-         AND task_type = 'PO_APPROVAL'
-         AND status = 'pending'`,
-      [approver.id]
+       WHERE id = ?
+         AND (assigned_user_id IS NULL OR assigned_user_id <> ?)`,
+      [signer.id, task.id, signer.id]
     );
     updated += poResult?.affectedRows || 0;
   }
@@ -487,8 +526,16 @@ export async function reassignPendingScmManagerTasks(conn = null) {
   return { manager, approver, updated };
 }
 
-export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr) {
-  const approver = await resolvePoApproverUser(db);
+export async function insertScmManagerPoApprovalTask(db, prId, dueDateStr, createdByUserId = null) {
+  let creatorId = Number(createdByUserId || 0) || null;
+  if (!creatorId && prId) {
+    const [rows] = await db.query(
+      `SELECT created_by FROM purchase_orders WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
+      [prId]
+    );
+    creatorId = rows[0]?.created_by || null;
+  }
+  const approver = await resolvePoSignAssignee(creatorId, db);
   await db.query(
     `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
      VALUES (?, 'PO_APPROVAL', 'SCM Manager', ?, 'pending', ?)`,

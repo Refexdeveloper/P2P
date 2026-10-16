@@ -15,7 +15,7 @@ import adminRoutes from './routes/admin.routes.js';
 import accountsRoutes from './routes/accounts.routes.js';
 import cloudSubscriptionRoutes from './routes/cloudSubscription.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
-import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
+import { testSmtpConnection, sendTestEmail, flushOutboundMail, resumeStuckQueuedEmails } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
 import { startSlaBreachScheduler } from './services/slaBreachService.js';
 import { startCloudSubscriptionScheduler } from './services/cloudSubscriptionService.js';
@@ -40,6 +40,19 @@ app.use(
 // Vendor docs (up to 6 PDFs) + quotation PDFs are sent as base64 (~1.37x); allow several files per request
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Keep the request open until SMTP finishes, and resend rows left in Queued.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api') || req.path.startsWith('/api/health')) return next();
+  const json = res.json.bind(res);
+  res.json = (body) =>
+    flushOutboundMail()
+      .catch((err) => console.error('Outbound mail flush failed:', err.message))
+      .then(() => json(body));
+  flushOutboundMail()
+    .catch((err) => console.error('Outbound mail flush failed:', err.message))
+    .then(() => next());
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -210,9 +223,14 @@ async function start() {
 
   app.listen(PORT, () => {
     try {
-      testSmtpConnection().catch((err) => {
-        console.error('SMTP connection test failed unexpectedly:', err.message);
-      });
+      testSmtpConnection()
+        .catch((err) => {
+          console.error('SMTP connection test failed unexpectedly:', err.message);
+        })
+        .then(() => resumeStuckQueuedEmails())
+        .catch((err) => {
+          console.error('Queued email sweep failed:', err.message);
+        });
     } catch (err) {
       console.error('SMTP connection test failed unexpectedly:', err.message);
     }

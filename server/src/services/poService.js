@@ -27,12 +27,10 @@ import {
   resolveScmBuyerUser,
   getScmBuyerNotifyEmails,
   resolveScmManagerUser,
-  resolvePoApproverUser,
+  resolvePoSignAssignee,
   getScmManagerNotifyEmails,
-  getPoApproverNotifyEmails,
   getPreferredScmManagerName,
   getPreferredScmManagerEmail,
-  getPreferredPoApproverName,
   resolveScmManagerSignName,
   resolveSignerDesignation,
   insertScmManagerPoApprovalTask,
@@ -40,6 +38,7 @@ import {
   resolveBuyerVerifyAssignee,
   canEditAnyScmPurchaseOrder,
   isPreferredPoApproverUser,
+  isPreferredScmManagerUser,
 } from '../utils/scmAssignee.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
@@ -123,12 +122,11 @@ async function resolveRoleEmails(role) {
     return emails.map((email) => ({ email, name: 'SCM Buyer' }));
   }
   if (role === 'SCM Manager') {
-    // PO Sign & Approval goes to Tarkeshwar; Mounesh remains create/send manager
-    const emails = await getPoApproverNotifyEmails();
-    const approver = await resolvePoApproverUser();
+    const approver = await resolveScmManagerUser();
+    const emails = await getScmManagerNotifyEmails();
     return emails.map((email) => ({
       email,
-      name: approver?.name || getPreferredPoApproverName() || 'SCM Manager',
+      name: approver?.name || getPreferredScmManagerName() || 'SCM Manager',
     }));
   }
   const [rows] = await pool.query(
@@ -136,6 +134,27 @@ async function resolveRoleEmails(role) {
     [role]
   );
   return rows.map((r) => ({ email: r.email, name: r.name }));
+}
+
+/** Mail + name for the person who must sign this PO. */
+async function resolvePoSignRecipient(po) {
+  const creatorId = Number(po?.createdByUserId || po?.created_by || 0) || null;
+  const approver = await resolvePoSignAssignee(creatorId);
+  const email = String(approver?.email || '').trim();
+  return {
+    approver,
+    emails: email ? [email] : [],
+    name: approver?.name || 'SCM Manager',
+  };
+}
+
+/** SCM Manager may sign only the POs assigned to them. Super Admin is not blocked here. */
+async function assertPoSignActor(user, poRow) {
+  if (user?.role === 'Super Admin') return;
+  const signer = await resolvePoSignAssignee(poRow?.created_by);
+  if (signer?.id && Number(signer.id) !== Number(user?.id)) {
+    throw new Error(`This PO is assigned to ${signer.name} for sign and approval`);
+  }
 }
 
 async function resolvePoNotifyParties(po) {
@@ -1909,7 +1928,7 @@ export async function createPurchaseOrder(user, prId, body) {
     if (!skipApproval) {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 2);
-      await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0]);
+      await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0], user.id);
     }
 
     // Complete SCM Create PO step and mark PR as PO created
@@ -1947,16 +1966,16 @@ export async function createPurchaseOrder(user, prId, body) {
     po.pdfPath = fileName;
 
     if (!skipApproval) {
-      const managers = await resolveRoleEmails('SCM Manager');
+      const signer = await resolvePoSignRecipient(po);
       const attachments = await poPdfMailAttachment(po);
       queuePoWorkflowNotification(po, {
         action: 'assign',
         stageLabel: 'SCM Manager PO Approval',
-        recipientEmails: managers.map((m) => m.email),
-        recipientName: managers[0]?.name || 'SCM Manager',
+        recipientEmails: signer.emails,
+        recipientName: signer.name,
         actorName: user.name,
         actorRole: user.role,
-        remarks: `PO ${poNumber} created and sent for approval`,
+        remarks: `PO ${poNumber} created and sent to ${signer.name} for sign and approval`,
         portalUrl: poPortalUrl('/scm/po-approval'),
         ctaLabel: 'Open PO Approval',
         attachments,
@@ -2019,16 +2038,16 @@ export async function createManualPurchaseOrder(user, body = {}) {
       }
       if (!skipApproval && po) {
         try {
-          const managers = await resolveRoleEmails('SCM Manager');
+          const signer = await resolvePoSignRecipient(po);
           const attachments = await poPdfMailAttachment(po);
           queuePoWorkflowNotification(po, {
             action: 'assign',
             stageLabel: 'SCM Manager PO Approval',
-            recipientEmails: managers.map((m) => m.email),
-            recipientName: managers[0]?.name || 'SCM Manager',
+            recipientEmails: signer.emails,
+            recipientName: signer.name,
             actorName: user.name,
             actorRole: user.role,
-            remarks: `Manual ${po.poNumber} created and sent for approval`,
+            remarks: `Manual ${po.poNumber} created and sent to ${signer.name} for sign and approval`,
             portalUrl: poPortalUrl('/scm/po-approval'),
             ctaLabel: 'Open PO Approval',
             attachments,
@@ -2212,16 +2231,16 @@ export async function createManualPurchaseOrder(user, body = {}) {
 
     if (!skipApproval) {
       try {
-        const managers = await resolveRoleEmails('SCM Manager');
+        const signer = await resolvePoSignRecipient(po);
         const attachments = await poPdfMailAttachment(po);
         queuePoWorkflowNotification(po, {
           action: 'assign',
           stageLabel: 'SCM Manager PO Approval',
-          recipientEmails: managers.map((m) => m.email),
-          recipientName: managers[0]?.name || 'SCM Manager',
+          recipientEmails: signer.emails,
+          recipientName: signer.name,
           actorName: user.name,
           actorRole: user.role,
-          remarks: `Manual ${poNumber} created and sent for approval`,
+          remarks: `Manual ${poNumber} created and sent to ${signer.name} for sign and approval`,
           portalUrl: poPortalUrl('/scm/po-approval'),
           ctaLabel: 'Open PO Approval',
           attachments,
@@ -2901,10 +2920,21 @@ export async function listPurchaseOrders(
         'paid'
       )`;
     }
-    // Tarkeshwar (PO approver): only POs Mounesh created/sent
+    // Tarkeshwar signs only POs Mounesh created. Mounesh signs buyer-created POs.
     if (isPreferredPoApproverUser(user)) {
+      sql += ` AND EXISTS (
+          SELECT 1 FROM users creator
+          WHERE creator.id = po.created_by
+            AND (
+              LOWER(creator.email) = ?
+              OR LOWER(creator.email) LIKE 'mounesh.r@%'
+            )
+        )`;
+      params.push(getPreferredScmManagerEmail());
+    } else if (isPreferredScmManagerUser(user)) {
       sql += ` AND (
-        EXISTS (
+        po.status <> 'pending_approval'
+        OR NOT EXISTS (
           SELECT 1 FROM users creator
           WHERE creator.id = po.created_by
             AND (
@@ -2912,15 +2942,8 @@ export async function listPurchaseOrders(
               OR LOWER(creator.email) LIKE 'mounesh.r@%'
             )
         )
-        OR EXISTS (
-          SELECT 1 FROM workflow_tasks wt
-          WHERE wt.pr_id = po.pr_id
-            AND wt.task_type = 'PO_APPROVAL'
-            AND wt.status = 'pending'
-            AND wt.assigned_user_id = ?
-        )
       )`;
-      params.push(getPreferredScmManagerEmail(), user.id);
+      params.push(getPreferredScmManagerEmail());
     }
   } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
     sql += ` AND po.created_by = ?`;
@@ -3638,6 +3661,7 @@ export async function signPurchaseOrder(user, poId, {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
+  await assertPoSignActor(user, rows[0]);
 
   const dscDetails =
     dsc && typeof dsc === 'object'
@@ -3960,13 +3984,13 @@ export async function rejectBuyerFinalVerify(user, poId, remarks) {
 
   const updated = await getPurchaseOrderById(poId);
   const parties = await resolvePoNotifyParties(rows[0]);
-  const managers = await resolveRoleEmails('SCM Manager');
-  const recipientEmails = [...new Set([...parties.emails, ...managers.map((m) => m.email)])];
+  const signer = await resolvePoSignRecipient(rows[0]);
+  const recipientEmails = [...new Set([...parties.emails, ...signer.emails])];
   queuePoWorkflowNotification(updated, {
     action: 'reject',
     stageLabel: 'SCM Buyer Final Verify — Rejected',
     recipientEmails,
-    recipientName: parties.name || managers[0]?.name || 'Team',
+    recipientName: parties.name || signer.name || 'Team',
     actorName: user.name,
     actorRole: user.role,
     remarks: remarks.trim(),
@@ -4016,7 +4040,12 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
   if (rows[0].pr_id) {
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 2);
-    await insertScmManagerPoApprovalTask(pool, rows[0].pr_id, dueDate.toISOString().split('T')[0]);
+    await insertScmManagerPoApprovalTask(
+      pool,
+      rows[0].pr_id,
+      dueDate.toISOString().split('T')[0],
+      rows[0].created_by
+    );
 
     await pool.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
@@ -4026,31 +4055,29 @@ export async function sendBackBuyerFinalVerify(user, poId, remarks) {
   }
 
   const updated = await getPurchaseOrderById(poId);
-  const managers = await resolveRoleEmails('SCM Manager');
-  const rajeevEmail = getPreferredScmManagerEmail();
-  const managerEmails = [
-    ...new Set([
-      ...managers.map((m) => m.email).filter(Boolean),
-      rajeevEmail,
-    ].filter(Boolean)),
-  ];
+  const signer = await resolvePoSignRecipient(rows[0]);
+  const mouneshEmail = getPreferredScmManagerEmail();
+  const ccEmails =
+    mouneshEmail && !signer.emails.some((email) => String(email).toLowerCase() === mouneshEmail)
+      ? [mouneshEmail]
+      : [];
   queuePoWorkflowNotification(updated, {
     action: 'sendback',
     stageLabel: 'SCM Manager PO Approval — Sent Back',
-    recipientEmails: managerEmails,
-    recipientName: managers[0]?.name || getPreferredScmManagerName() || 'SCM Manager',
+    recipientEmails: signer.emails,
+    recipientName: signer.name,
     actorName: user.name,
     actorRole: user.role,
     remarks: remarks.trim(),
     portalUrl: poPortalUrl('/scm/po-approval'),
     ctaLabel: 'Review & Re-sign PO',
-    ccEmails: rajeevEmail ? [rajeevEmail] : [],
+    ccEmails,
   });
 
   queueApproverActionConfirmationForUser(updated, user, 'return', {
     remarks: remarks.trim(),
     approverRole: user.role,
-    ccEmails: rajeevEmail ? [rajeevEmail] : [],
+    ccEmails,
   });
 
   return updated;
@@ -4065,6 +4092,7 @@ export async function sendBackPurchaseOrder(user, poId, remarks) {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
+  if (user.role === 'SCM Manager') await assertPoSignActor(user, rows[0]);
   if (!remarks?.trim()) throw new Error('Send-back remarks are required');
 
   await pool.query(
@@ -4339,6 +4367,7 @@ export async function rejectPurchaseOrder(user, poId, remarks) {
   const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
   if (!rows.length) throw new Error('PO not found');
   if (rows[0].status !== 'pending_approval') throw new Error('PO is not pending approval');
+  await assertPoSignActor(user, rows[0]);
   if (!remarks?.trim()) throw new Error('Rejection remarks are required');
 
   await pool.query(
@@ -4645,7 +4674,12 @@ export async function updatePurchaseOrder(user, poId, body) {
         );
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
-        await insertScmManagerPoApprovalTask(conn, existing.pr_id, dueDate.toISOString().split('T')[0]);
+        await insertScmManagerPoApprovalTask(
+          conn,
+          existing.pr_id,
+          dueDate.toISOString().split('T')[0],
+          existing.created_by
+        );
       } else if (existing.manual_context_json) {
         // Clear send-back marker on manual PO after resubmit to Rajeev
         try {
@@ -4712,10 +4746,9 @@ export async function updatePurchaseOrder(user, poId, body) {
   }
 
   if (canBuyerRevise) {
-    const approver = await resolvePoApproverUser();
-    const approverEmails = await getPoApproverNotifyEmails();
-    const approverName =
-      approver?.name || getPreferredPoApproverName() || 'Tarkeshwar Singh';
+    const signer = await resolvePoSignRecipient(updatedPo);
+    const approverEmails = signer.emails;
+    const approverName = signer.name;
     if (approverEmails.length) {
       const attachments = await poPdfMailAttachment(updatedPo).catch(() => undefined);
       queuePoWorkflowNotification(updatedPo, {

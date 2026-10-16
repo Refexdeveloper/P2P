@@ -97,6 +97,42 @@ function getTransporter() {
   return transporter;
 }
 
+const SMTP_SEND_TIMEOUT_MS = 40_000;
+
+function resetTransporter() {
+  const current = transporter;
+  transporter = null;
+  smtpReady = false;
+  try {
+    current?.close?.();
+  } catch {
+    /* ignore a transporter that is already closed */
+  }
+}
+
+/** Send one message. A hung SMTP connection becomes a failure instead of a forever Queued row. */
+async function sendSmtpMail(payload) {
+  let timer;
+  const sent = getTransporter().sendMail(payload);
+  sent.catch(() => {});
+  try {
+    return await Promise.race([
+      sent,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('SMTP send timed out before the message was accepted')),
+          SMTP_SEND_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } catch (err) {
+    if (/timed out/i.test(String(err?.message || ''))) resetTransporter();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Serialize outbound mail so Gmail isn't hit with parallel SMTP sessions. */
 let mailQueue = Promise.resolve();
 function enqueueMail(job) {
@@ -104,8 +140,23 @@ function enqueueMail(job) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false)');
     return Promise.resolve(null);
   }
-  const run = mailQueue.then(() => job());
-  mailQueue = run.catch(() => {});
+  const run = mailQueue.then(() => {
+    let timer;
+    const work = Promise.resolve().then(() => job());
+    work.catch(() => {});
+    return Promise.race([
+      work,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error('Email job timed out before send finished')),
+          55_000
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
+  });
+  mailQueue = run.catch((err) => {
+    console.error('Email queue job failed:', err.message);
+  });
   return run;
 }
 
@@ -528,8 +579,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     await ensureSmtpReady();
   }
   try {
-    const transport = getTransporter();
-    const info = await transport.sendMail({
+    const info = await sendSmtpMail({
       from: getFromAddress(),
       to: toList.join(', '),
       cc: mailOptions.cc?.length ? mailOptions.cc.join(', ') : undefined,
@@ -539,7 +589,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
       html,
       attachments: mailAttachments?.length ? mailAttachments : undefined,
     });
-    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
+    await updateEmailLog(logId, { status: 'sent', messageId: info.messageId, errorMessage: null });
     console.log(
       `Email sent to ${toList.join(', ')}${mailOptions.cc?.length ? ` (cc: ${mailOptions.cc.join(', ')})` : ''} — ${info.messageId}`
     );
@@ -549,8 +599,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
     // One reconnect + retry — transient SMTP drops often surface as Failed on return/reject mail
     try {
       await ensureSmtpReady();
-      const transport = getTransporter();
-      const info = await transport.sendMail({
+      const info = await sendSmtpMail({
         from: getFromAddress(),
         to: toList.join(', '),
         cc: mailOptions.cc?.length ? mailOptions.cc.join(', ') : undefined,
@@ -560,7 +609,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
         html,
         attachments: mailAttachments?.length ? mailAttachments : undefined,
       });
-      await updateEmailLog(logId, { status: 'sent', messageId: info.messageId });
+      await updateEmailLog(logId, { status: 'sent', messageId: info.messageId, errorMessage: null });
       console.log(`Email sent (retry) to ${toList.join(', ')} — ${info.messageId}`);
       return info;
     } catch (err2) {
@@ -1419,7 +1468,16 @@ export async function sendPoWorkflowNotification(po, {
     prId: po?.prId || po?.pr_id || null,
     poNumber: po?.poNumber || po?.po_number || null,
     prNumber: po?.prNumber || po?.pr_number || null,
-    meta: { action, stageLabel, actorRole, cc },
+    meta: {
+      action,
+      stageLabel,
+      actorName,
+      actorRole,
+      remarks,
+      portalUrl,
+      ctaLabel,
+      cc,
+    },
   });
 }
 
@@ -1971,14 +2029,14 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
 
   await updateEmailLog(log.id, {
     status: 'queued',
-    errorMessage: null,
+    errorMessage: 'resending',
     toAddresses: to,
     ccAddresses: cc,
     meta: retriggerMeta,
   });
 
   try {
-    const info = await getTransporter().sendMail({
+    const info = await sendSmtpMail({
       from: getFromAddress(),
       to: to.join(', '),
       cc: cc.length ? cc.join(', ') : undefined,
@@ -2012,4 +2070,89 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     });
     throw err;
   }
+}
+
+const QUEUE_RETRY_MIN_AGE_SECONDS = 60;
+const QUEUE_RETRY_MAX_AGE_DAYS = 14;
+const QUEUE_RETRY_BATCH = 6;
+
+/**
+ * Mail left in Queued means SMTP never finished (request ended or the connection hung).
+ * Resend recent rows. Give up on anything older than two weeks.
+ */
+export async function resumeStuckQueuedEmails() {
+  if (!EMAIL_SEND_ENABLED) return { resent: 0, failed: 0 };
+  let resent = 0;
+  let failed = 0;
+  try {
+    const [stale] = await pool.query(
+      `UPDATE email_logs
+       SET status = 'failed',
+           error_message = 'Stayed queued too long and was not sent'
+       WHERE status = 'queued'
+         AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      [QUEUE_RETRY_MAX_AGE_DAYS]
+    );
+    if (stale?.affectedRows) {
+      console.log(`Marked ${stale.affectedRows} ancient queued emails as failed`);
+    }
+
+    const [rows] = await pool.query(
+      `SELECT id FROM email_logs
+       WHERE status = 'queued'
+         AND created_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)
+         AND (error_message IS NULL OR error_message = '' OR error_message NOT LIKE 'resending%')
+       ORDER BY id ASC
+       LIMIT ?`,
+      [QUEUE_RETRY_MIN_AGE_SECONDS, QUEUE_RETRY_BATCH]
+    );
+
+    for (const row of rows) {
+      const [claim] = await pool.query(
+        `UPDATE email_logs
+         SET error_message = 'resending'
+         WHERE id = ?
+           AND status = 'queued'
+           AND (error_message IS NULL OR error_message = '' OR error_message NOT LIKE 'resending%')`,
+        [row.id]
+      );
+      if (!claim?.affectedRows) continue;
+      try {
+        await retriggerEmailLog(row.id);
+        resent += 1;
+        console.log(`Resent queued email #${row.id}`);
+      } catch (err) {
+        failed += 1;
+        console.error(`Queued email #${row.id} resend failed:`, err.message);
+        await updateEmailLog(row.id, {
+          status: 'failed',
+          errorMessage: err.message || 'Resend failed',
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Queued email sweep failed:', err.message);
+  }
+  if (resent || failed) console.log(`Queued email sweep: resent=${resent} failed=${failed}`);
+  return { resent, failed };
+}
+
+let lastSweepFinished = 0;
+let sweepPromise = null;
+
+function sweepStuckQueuedEmails() {
+  if (sweepPromise) return sweepPromise;
+  sweepPromise = resumeStuckQueuedEmails().finally(() => {
+    sweepPromise = null;
+    lastSweepFinished = Date.now();
+  });
+  return sweepPromise;
+}
+
+/** Finish in-flight mail, then resend anything still sitting in Queued. */
+export function flushOutboundMail() {
+  return mailQueue.then(() => {
+    if (Date.now() - lastSweepFinished < 20_000) return null;
+    return sweepStuckQueuedEmails();
+  });
 }
