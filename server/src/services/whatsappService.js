@@ -16,10 +16,10 @@ import { createWhatsAppLog, updateWhatsAppLog } from './whatsappLogService.js';
 const WHATSAPP_SEND_ENABLED = true;
 
 /** Manual Unfyd credentials (override env). */
-const WHATSAPP_APP_KEY = "ak_9abbd541cca5faf62c";
-const WHATSAPP_APP_SECRET = "97375eca676e4e6488c7195f611b213c797d9ca04e6f4825";
+const WHATSAPP_APP_KEY = "ak_3f873de0b9f26bddd8";
+const WHATSAPP_APP_SECRET = "911829e9e0ca8d739a55ce5ce66ae3abbce6b76f0389b231";
 
-const DEFAULT_API_URL = 'https://whatsapp.unfyd.com/unfyd-meta-api/api/v1/hsm/send';
+const DEFAULT_API_URL = 'https://whatsapp.unfyd.com:9443/unfyd-meta-api/api/v1/hsm/send';
 const DEFAULT_TEMPLATE = 'workflow_all_application';
 const DEFAULT_LANG = 'en_US';
 const LIVE_APP_URL = 'https://p2p-backend-645830234926.asia-south1.run.app';
