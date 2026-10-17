@@ -899,34 +899,11 @@ export const PO_STYLES = `
     break-inside: avoid;
     object-fit: contain;
   }
-  body.po-document-pdf-pages .annexure-ii-body img,
-  body.po-document-pdf-pages .annexure-ii img,
-  body.po-document-pdf-pages .page-annexure-ii img,
-  body.po-document-pdf-pages .annexure-ii-body table td img,
-  body.po-document-pdf-pages .annexure-ii-body table th img,
-  body.po-document-pdf-pages tr[data-annexure-ii] td img {
-    max-width: 100% !important;
-    width: auto !important;
-    height: auto !important;
-    /* Fit the whole picture in the page body — do not crop or cap at a thumbnail height. */
-    max-height: calc(var(--pdf-content-h, 920px) - 28px) !important;
-    object-fit: contain !important;
-  }
-  /* Legacy Excel screenshot-only annexure: use full content width, not a tiny centered thumb */
   body.po-document-pdf-pages .annexure-ii-body > figure:only-child,
   body.po-document-pdf-pages .annexure-ii-body > p:only-child {
     margin: 0;
     text-align: left;
     width: 100%;
-  }
-  body.po-document-pdf-pages .annexure-ii-body > figure:only-child img,
-  body.po-document-pdf-pages .annexure-ii-body > p:only-child > img:only-child,
-  body.po-document-pdf-pages .annexure-ii-body > img:only-child {
-    width: auto !important;
-    max-width: 100% !important;
-    height: auto !important;
-    max-height: calc(var(--pdf-content-h, 920px) - 28px) !important;
-    object-fit: contain !important;
   }
   .annexure-ii-body figure {
     margin: 12px 0;
@@ -1169,40 +1146,43 @@ export const PO_STYLES = `
     margin: 3px 0 0;
   }
 
-  /* Uploaded images inside Annexure-I / Terms cells — keep paginable, never blow past footer */
-  body.po-document-pdf-pages table.terms td img,
-  body.po-document-pdf-pages table.annexure-table td img,
-  body.po-document-pdf-pages table.terms-compact td img {
-    max-width: 100% !important;
-    max-height: 160px !important;
-    width: auto !important;
-    height: auto !important;
-    object-fit: contain;
-    display: block;
-    margin: 6px 0;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-  body.po-document-pdf-pages table.terms td figure,
-  body.po-document-pdf-pages table.annexure-table td figure {
-    margin: 6px 0;
-    max-width: 100%;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-  /* Annexure II uploads: later rule wins over the 160px terms-cell cap above. */
+  /*
+    Uploaded pictures in the PO body.
+    Show the whole image. If it is taller or wider than the page body, scale it down to fit.
+    Letterhead and signature images are excluded.
+  */
   body.po-document-pdf-pages .annexure-ii-body img,
   body.po-document-pdf-pages .annexure-ii img,
+  body.po-document-pdf-pages .annexure-figure img,
   body.po-document-pdf-pages .page-annexure-ii img,
   body.po-document-pdf-pages .annexure-ii-body table td img,
   body.po-document-pdf-pages .annexure-ii-body table th img,
   body.po-document-pdf-pages tr[data-annexure-ii] td img,
-  body.po-document-pdf-pages table.annexure-table tr[data-annexure-ii] td img {
-    max-width: 100% !important;
+  body.po-document-pdf-pages table.annexure-table td img,
+  body.po-document-pdf-pages table.annexure-table th img,
+  body.po-document-pdf-pages table.terms td img,
+  body.po-document-pdf-pages table.terms th img,
+  body.po-document-pdf-pages table.terms-compact td img,
+  body.po-document-pdf-pages table.terms-compact th img {
+    display: block !important;
+    box-sizing: border-box !important;
     width: auto !important;
     height: auto !important;
-    max-height: calc(var(--pdf-content-h, 920px) - 28px) !important;
+    max-width: 100% !important;
+    max-height: calc(var(--pdf-content-h, 920px) - 16px) !important;
     object-fit: contain !important;
+    object-position: top center !important;
+    margin: 4px auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  body.po-document-pdf-pages table.terms td figure,
+  body.po-document-pdf-pages table.annexure-table td figure,
+  body.po-document-pdf-pages .annexure-figure {
+    margin: 0;
+    max-width: 100%;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   /* Preview / draft PDF — moderately compact PO header / vendor details */

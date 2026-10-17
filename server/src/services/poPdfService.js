@@ -1028,33 +1028,27 @@ function pruneEmptyPages(pages) {
   return pages;
 }
 
-/** Shrink images on an overflowing page so content fits before notes/ack. */
-function shrinkOverflowImagesOnPage(pages, pageIndex, maxHeightPx = 120) {
+/** Fit uploaded pictures to the page body. Do not turn them into a short thumbnail. */
+function shrinkOverflowImagesOnPage(pages, pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return false;
   const page = pages[pageIndex];
   if (!page?.length) return false;
 
+  const fitStyle =
+    'max-width:100% !important;width:auto !important;height:auto !important;max-height:calc(var(--pdf-content-h, 920px) - 16px) !important;object-fit:contain !important;object-position:top center !important;display:block;';
   let changed = false;
   const shrinkHtml = (html) => {
     let out = String(html || '');
     const before = out;
     out = out.replace(/<img\b([^>]*)>/gi, (_full, attrs) => {
       let a = String(attrs || '');
-      if (/style\s*=\s*"/i.test(a)) {
-        a = a.replace(/style\s*=\s*"[^"]*"/i, (styleAttr) => {
-          let s = styleAttr.replace(/max-height\s*:\s*[^;!"']+/gi, `max-height:${maxHeightPx}px`);
-          if (!/max-height\s*:/i.test(s)) {
-            s = s.replace(/style\s*=\s*"/i, `style="max-height:${maxHeightPx}px !important;`);
-          } else {
-            s = s.replace(/max-height\s*:\s*[^;"]+/i, `max-height:${maxHeightPx}px !important`);
-          }
-          return s;
-        });
-      } else {
-        a = `${a} style="max-height:${maxHeightPx}px !important;max-width:100% !important;height:auto !important;object-fit:contain;"`;
+      if (/\bclass\s*=\s*["'][^"']*(?:header-logo|footer-logo|run-header|run-footer|sig-img)/i.test(a)) {
+        return `<img${a}>`;
       }
-      a = a.replace(/\sheight\s*=\s*["'][^"']*["']/gi, '');
-      return `<img${a}>`;
+      if (/max-height\s*:\s*calc\(var\(--pdf-content-h/i.test(a)) return `<img${a}>`;
+      a = a.replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, '');
+      a = a.replace(/\s(?:width|height)\s*=\s*["'][^"']*["']/gi, '');
+      return `<img${a} style="${fitStyle}">`;
     });
     if (out !== before) changed = true;
     return out;
@@ -1615,7 +1609,7 @@ async function paginatePoHtml(browser, po, options) {
         if (!shiftLastUnitFromPage(pages, worstPage)) {
           if (!splitTrailingImageFromOverflowRow(pages, worstPage)) {
             if (!splitOverflowingAnnexureIiTable(pages, worstPage)) {
-              if (!shrinkOverflowImagesOnPage(pages, worstPage, Math.max(90, 160 - repair * 12))) {
+              if (!shrinkOverflowImagesOnPage(pages, worstPage)) {
                 break;
               }
             }
@@ -1851,12 +1845,11 @@ function isSignedPdfFrozen(po, isSigned) {
 
 /**
  * Ensure a real PDF file exists for the PO.
- * After SCM Manager sign and buyer final verify, the stored signed PDF is served as-is.
- * It is rewritten only when an admin/buyer save calls generatePoPdf, or when forceRegenerate is set.
+ * After buyer final verify, the stored signed PDF is served as-is.
+ * Until then, View PDF builds a fresh file so a table open is not an older copy.
  */
 export async function ensurePoPdf(po, options = {}) {
   const isSigned = Boolean(po.signedPdfPath || po.signatureImagePath || options.signed);
-  const isDraft = String(po.statusRaw || po.status || '').toLowerCase() === 'draft';
   const pdfFrozen = isSignedPdfFrozen(po, isSigned);
   const poNumber = String(po.poNumber || po.po_number || '').trim() || `PO-${po.id || 'draft'}`;
   const safePoNumber = poNumber.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_');
@@ -1875,18 +1868,10 @@ export async function ensurePoPdf(po, options = {}) {
   const pdfPath = path.join(PO_UPLOAD_DIR, path.basename(pdfName));
   const gcsKey = `purchase-orders/${path.basename(pdfName)}`;
 
-  const pdfMtime = fs.existsSync(pdfPath) ? fs.statSync(pdfPath).mtimeMs : 0;
-  const poUpdatedMs = Number(po.updatedAtMs || 0);
-  // A signed PDF is written at SCM Manager sign (and again only on admin/buyer save).
-  // Later updated_at changes must not rebuild it on View PDF.
-  const pdfStale =
-    !isSigned && poUpdatedMs > 0 && pdfMtime > 0 && poUpdatedMs > pdfMtime + 500;
   const nameMismatch = !pdfFileMatchesPoNumber(pdfName, poNumber);
-  const canReuse = options.forceRegenerate
-    ? false
-    : pdfFrozen
-      ? !nameMismatch
-      : !isDraft && !pdfStale && !nameMismatch;
+  // In-progress POs always render again, so the table view is not an older saved file.
+  // A signed PDF after buyer final verify stays as stored.
+  const canReuse = options.forceRegenerate || !pdfFrozen ? false : !nameMismatch;
 
   if (fs.existsSync(pdfPath) && looksLikePdfFile(pdfPath) && canReuse) {
     return { fullPath: pdfPath, fileName: path.basename(pdfName), isHtml: false };

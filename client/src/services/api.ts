@@ -2167,6 +2167,26 @@ export const adminApi = {
         body: JSON.stringify({ extraTo: extraTo || '' }),
       }
     ),
+  sendP2pActivityReport: (to?: string) =>
+    request<{
+      data: {
+        to: string;
+        subject: string;
+        report: {
+          totalPrs: number;
+          prsToday: number;
+          requesters: number;
+          totalPos: number;
+          posToday: number;
+          loggedToday: number;
+          totalUsers: number;
+        };
+      };
+      message: string;
+    }>('/api/admin/p2p-report/send', {
+      method: 'POST',
+      body: JSON.stringify({ to: to || 'sathishkumar.r@refex.co.in' }),
+    }),
   /** Force-send SCM Manager PO approval email (manual PO / missed notify). */
   notifyScmManagerPo: (poNumberOrId: string, extraTo?: string) =>
     request<{

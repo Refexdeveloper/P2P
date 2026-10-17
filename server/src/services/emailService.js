@@ -472,7 +472,7 @@ function normalizeMailAttachments(attachments) {
   return out;
 }
 
-async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
+export async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
     return null;
@@ -480,7 +480,7 @@ async function sendMailToRecipients(recipients, subject, html, text, attachments
 
   // Never mention CFO / Group CEO in any outbound mail (Mugesh is not CFO)
   subject = sanitizeEmailCfoMentions(subject);
-  html = sanitizeEmailCfoMentions(withEmailLogo(html));
+  html = sanitizeEmailCfoMentions(mailOptions.skipLogo ? html : withEmailLogo(html));
   text = sanitizeEmailCfoMentions(text);
 
   const toList = (recipients || []).filter(Boolean);
@@ -2074,6 +2074,15 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     subject = built.subject;
     html = built.html;
     text = built.text;
+  } else if (type === 'p2p_activity_report') {
+    const { loadP2pActivityReport, buildP2pActivityReportEmail, P2P_REPORT_TO } = await import(
+      './p2pActivityReportService.js'
+    );
+    const built = buildP2pActivityReportEmail(await loadP2pActivityReport());
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+    if (!to.length) to = [P2P_REPORT_TO];
   } else if (type === 'smtp_test') {
     if (!to.length) to = extra;
     html = `<p>P2P SMTP test (admin retrigger) at <strong>${new Date().toISOString()}</strong></p>`;
