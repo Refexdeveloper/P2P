@@ -362,7 +362,7 @@ function pdfPageHtml(parts, contentHtml, pageNo, totalPages, contentMaxPx) {
       ? ` style="height:${contentMaxPx}px;max-height:${contentMaxPx}px;min-height:0"`
       : '';
   return `
-<div class="pdf-page">
+<div class="pdf-page" style="--pdf-content-h:${Math.max(0, Number(contentMaxPx) || 920)}px">
   <header class="pdf-header">${parts.headerHtml}</header>
   <main class="pdf-content"${contentStyle}>${contentHtml}</main>
   <footer class="pdf-footer">
@@ -1061,10 +1061,14 @@ function shrinkOverflowImagesOnPage(pages, pageIndex, maxHeightPx = 120) {
   };
 
   for (const block of page) {
+    // Annexure II pictures stay at page height. Shrinking them leaves a short, cropped image.
+    if (blockLooksLikeAnnexureIi(block) || block.type === 'annexure-ii-table') continue;
     if (block.html != null) {
       block.html = shrinkHtml(block.html);
     } else if (block.rows?.length) {
-      block.rows = block.rows.map((row) => shrinkHtml(row));
+      block.rows = block.rows.map((row) =>
+        /data-annexure-ii=/i.test(row) ? row : shrinkHtml(row)
+      );
     }
   }
   return changed;
@@ -1084,7 +1088,7 @@ function buildMeasureHtml(parts) {
 
   return wrapPoHtmlDocument(
     `
-    <div class="pdf-page pdf-page-measure" style="height:297mm;max-height:297mm;width:210mm">
+    <div class="pdf-page pdf-page-measure" style="height:297mm;max-height:297mm;width:210mm;--pdf-content-h:920px">
       <header class="pdf-header" data-block="header">${parts.headerHtml}</header>
       <main class="pdf-content pdf-content-measure" data-block="content-area">
         <div data-block="details">${parts.detailsHtml}</div>
