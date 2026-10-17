@@ -268,8 +268,7 @@ export default function PRDetailDrawer({
       <div className="dfx-overlay absolute inset-0" onClick={requestClose} />
       <aside className="dfx-panel relative flex h-full w-full max-w-2xl flex-col overflow-hidden">
         {/* Hero header */}
-        <header className="dfx-hero relative shrink-0 px-5 pb-5 pt-5 sm:px-7">
-          <div className="dfx-art" aria-hidden="true" />
+        <header className="dfx-hero dfx-hero--plain relative shrink-0 px-5 pb-5 pt-5 sm:px-7">
           <div className="dfx-bubbles" aria-hidden="true">
             <i /><i /><i /><i /><i />
           </div>

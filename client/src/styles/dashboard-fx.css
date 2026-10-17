@@ -754,3 +754,20 @@
 .trk-table td:last-child { overflow: visible; }
 .trk-table td p, .trk-table td > span { overflow: hidden; text-overflow: ellipsis; }
 .trk-table th { white-space: normal !important; }
+
+/* ---------------- My Tasks: hero background without the illustration ----------------
+   The left half of tasks-hero.jpg is only waves; show it on the left and a mirrored
+   copy on the right so the "Purchase Request" card, cart icons and leaves are hidden. */
+.tfx-hero--plain { background: linear-gradient(180deg, #d6f3fb 0%, #e9f9fd 60%, #f6fcfe 100%); }
+.tfx-hero--plain::before,
+.tfx-hero--plain::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 50%; z-index: 0; pointer-events: none;
+  background: url('/images/tasks-hero.jpg') no-repeat;
+  background-size: 200% auto;
+  background-position: left 35%;
+}
+.tfx-hero--plain::before { left: 0; }
+.tfx-hero--plain::after { right: 0; transform: scaleX(-1); }
+@media (max-width: 991px) {
+  .tfx-hero--plain::before, .tfx-hero--plain::after { background-size: auto 100%; background-position: left center; }
+}

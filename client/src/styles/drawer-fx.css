@@ -420,3 +420,19 @@
 .dfx-hero-text .dfx-title { margin-top: 6px; text-shadow: none; }
 .dfx-hero .dfx-hero-text.min-w-0.flex-1 { max-width: 70%; }
 @media (max-width: 640px) { .dfx-hero .dfx-hero-text.min-w-0.flex-1 { max-width: none; } }
+
+/* ---------------- Task drawer: waves only, no illustration ----------------
+   Clean left half of tasks-hero.jpg, mirrored on the right (same as My Tasks hero). */
+.dfx-hero.dfx-hero--plain { background: linear-gradient(180deg, #d6f3fb 0%, #e9f9fd 60%, #f6fcfe 100%); overflow: hidden; isolation: isolate; }
+.dfx-hero.dfx-hero--plain::before,
+.dfx-hero.dfx-hero--plain::after {
+  content: ''; display: block; position: absolute; top: 0; bottom: 0; width: 50%; z-index: -1; pointer-events: none;
+  background: url('/images/tasks-hero.jpg') no-repeat;
+  background-size: auto 220%;
+  background-position: left 30%;
+  opacity: .9;
+}
+.dfx-hero.dfx-hero--plain::before { left: 0; }
+.dfx-hero.dfx-hero--plain::after { right: 0; transform: scaleX(-1); }
+.dfx-hero--plain .min-w-0.flex-1 { max-width: none; }
+.dfx-hero--plain .dfx-stats { margin-top: 18px !important; }

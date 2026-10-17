@@ -334,7 +334,7 @@ export default function Dashboard({
         className={`${publicView ? '' : 'tasks-fx'} fi-fx min-h-full font-sans text-[#0F172A]`}
         style={publicView ? { margin: 0 } : embedded ? { marginTop: 0 } : undefined}
       >
-        <section className="tfx-hero" id="cfo-insights-top">
+        <section className="tfx-hero tfx-hero--plain" id="cfo-insights-top">
           <div className="tfx-bubbles" aria-hidden="true">
             <i /><i /><i /><i /><i /><i /><i />
           </div>
