@@ -167,7 +167,7 @@ export default function AdminEmailLogsPage() {
       const res = await adminApi.sendP2pActivityReport('sathishkumar.r@refex.co.in');
       const report = res.data?.report;
       const detail = report
-        ? ` — L1 ${report.l1 ?? 0}, L2 ${report.l2 ?? 0}, RFQ Entry ${report.rfqEntry ?? 0}, approved POs ${report.approvedPos ?? 0}`
+        ? ` — total PRs ${report.totalPrs ?? 0}, pending PRs ${report.pendingPrs ?? 0}, Mugesh signed ${report.mugeshSigned ?? 0}, Meet signed ${report.meetSigned ?? 0}`
         : '';
       showToast((res.message || 'P2P report sent') + detail, 'success');
       await load();
@@ -248,7 +248,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Send P2P activity report</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              L1, L2, and RFQ Entry tasks, approved POs, SCM Buyer created POs, and Rajeev’s pending and approved POs. Sends to sathishkumar.r@refex.co.in.
+              Today’s new PRs and POs first, then user activity with last sign-in, pending, completed, pending duration, and SLA breached. Sends to sathishkumar.r@refex.co.in.
             </p>
             <button
               type="button"
