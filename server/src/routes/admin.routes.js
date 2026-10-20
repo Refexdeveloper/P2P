@@ -21,6 +21,7 @@ import {
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
 import { repairUnsignedManualPosToPendingApproval } from '../services/poService.js';
+import { P2P_REPORT_TO, sendP2pActivityReport } from '../services/p2pActivityReportService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -89,6 +90,19 @@ router.post('/reset-data', async (req, res) => {
   try {
     const data = await resetAllData(req.user, { confirm: req.body?.confirm });
     res.json({ data, message: data.message });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/p2p-report/send', async (req, res) => {
+  try {
+    const to = String(req.body?.to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+    const data = await sendP2pActivityReport(to);
+    res.json({
+      data,
+      message: `P2P report sent to ${data.to}`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

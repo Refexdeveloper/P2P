@@ -516,7 +516,7 @@ function normalizeMailAttachments(attachments) {
   return out;
 }
 
-async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
+export async function sendMailToRecipients(recipients, subject, html, text, attachments = [], mailOptions = {}) {
   if (!EMAIL_SEND_ENABLED) {
     console.log('Email send skipped (EMAIL_SEND_ENABLED=false):', subject);
     return null;

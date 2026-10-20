@@ -1943,6 +1943,24 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify({ permissions }),
     }),
+  sendP2pActivityReport: (to?: string) =>
+    request<{
+      data: {
+        to: string;
+        subject: string;
+        report: {
+          totalPrs: number;
+          totalPos: number;
+          approvedPos: number;
+          mouneshSigned: number;
+          tarkeshSigned: number;
+        };
+      };
+      message: string;
+    }>('/api/admin/p2p-report/send', {
+      method: 'POST',
+      body: JSON.stringify({ to: to || '' }),
+    }),
   listEmailLogs: (params?: {
     status?: string;
     emailType?: string;

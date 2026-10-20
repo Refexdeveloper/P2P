@@ -18,6 +18,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   rfq_submitted: 'RFQ Quote Submitted',
   po_vendor: 'PO Vendor Acceptance',
   po_workflow: 'PO Assign / Send Back / Reject',
+  p2p_activity_report: 'P2P Activity Report',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };
@@ -64,6 +65,7 @@ export default function AdminEmailLogsPage() {
   const [notifyPoInput, setNotifyPoInput] = useState('');
   const [notifyExtraTo, setNotifyExtraTo] = useState('');
   const [notifyingPo, setNotifyingPo] = useState(false);
+  const [sendingReport, setSendingReport] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const limit = 40;
 
@@ -159,6 +161,25 @@ export default function AdminEmailLogsPage() {
     }
   };
 
+  const handleSendP2pReport = async () => {
+    setSendingReport(true);
+    try {
+      const res = await adminApi.sendP2pActivityReport('sathishkumar.r@refex.co.in');
+      const report = res.data?.report;
+      showToast(
+        report
+          ? `${res.message} — ${report.totalPrs} PRs, ${report.totalPos} POs, ${report.approvedPos} approved`
+          : res.message || 'Report sent',
+        'success'
+      );
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Report send failed', 'error');
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
   const handleNotifyScmManager = async () => {
     const key = notifyPoInput.trim();
     if (!key) {
@@ -224,6 +245,23 @@ export default function AdminEmailLogsPage() {
             User activity
           </button>
         </div>
+
+        {channel === 'email' ? (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Send P2P activity report</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">
+              Total PRs, total POs, approved POs, Mounesh signed, Tarkesh signed, and each SCM buyer’s created and approved POs. Sends to sathishkumar.r@refex.co.in. Cancelled POs are excluded.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSendP2pReport()}
+              disabled={sendingReport}
+              className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm disabled:opacity-60"
+            >
+              {sendingReport ? 'Sending…' : 'Send report to sathishkumar.r@refex.co.in'}
+            </button>
+          </div>
+        ) : null}
 
         {channel === 'email' ? (
           <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
