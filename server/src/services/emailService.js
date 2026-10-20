@@ -524,7 +524,7 @@ export async function sendMailToRecipients(recipients, subject, html, text, atta
 
   // Never mention CFO / Group CEO in any outbound mail (Mugesh is not CFO)
   subject = sanitizeEmailCfoMentions(subject);
-  html = sanitizeEmailCfoMentions(withEmailLogo(html));
+  html = sanitizeEmailCfoMentions(mailOptions.skipLogo ? html : withEmailLogo(html));
   text = sanitizeEmailCfoMentions(text);
 
   const toList = (recipients || []).filter(Boolean);

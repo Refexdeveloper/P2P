@@ -250,7 +250,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
             <h2 className="text-sm font-semibold text-slate-900">Send RMC P2P Report</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Same main-branch mail design. Total PRs, total POs, approved POs, Mounesh signed, Tarkesh signed, and each SCM buyer’s created and approved POs. Sends to sathishkumar.r@refex.co.in.
+              RMC P2P Report in the Refex report layout. Total PRs, total POs, approved POs, Mounesh signed, Tarkesh signed, and user activity with created and approved POs. Sends to sathishkumar.r@refex.co.in.
             </p>
             <button
               type="button"
