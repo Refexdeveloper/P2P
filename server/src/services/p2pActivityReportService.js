@@ -149,85 +149,114 @@ export async function loadP2pActivityReport(now = new Date()) {
   };
 }
 
-function card(value, label, sub, color) {
-  return `<td width="32%" align="center" valign="top" style="background:#ffffff; border:1px solid #e5e7eb; border-radius:8px; padding:16px 8px;">
-<div style="font-size:26px; font-weight:bold; color:${color};">${escapeHtml(value)}</div>
-<div style="font-size:12px; font-weight:bold; color:#1a1a1a; margin-top:6px;">${escapeHtml(label)}</div>
-<div style="font-size:11px; color:#6b7280; margin-top:2px;">${escapeHtml(sub)}</div>
-</td>`;
+function statCell(label, value, note) {
+  return `
+    <td width="33%" style="padding:0 6px 12px 6px;vertical-align:top;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+        <tr>
+          <td style="padding:14px 16px;">
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;margin-bottom:6px;">${escapeHtml(label)}</div>
+            <div style="font-size:22px;color:#0f172a;font-weight:800;line-height:1.2;">${escapeHtml(value)}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:4px;line-height:1.4;">${escapeHtml(note)}</div>
+          </td>
+        </tr>
+      </table>
+    </td>`;
 }
 
 function buyerRows(buyers) {
   if (!buyers.length) {
-    return `<tr><td colspan="4" style="padding:14px; color:#6b7280;">No SCM buyers.</td></tr>`;
+    return `<tr><td colspan="4" style="padding:14px 12px;font-size:13px;color:#64748b;">No SCM buyers.</td></tr>`;
   }
   return buyers
-    .map((buyer, index) => {
-      const bg = index % 2 === 0 ? '#ffffff' : '#f8fafc';
-      return `<tr style="background:${bg};" bgcolor="${bg}">
-<td style="padding:10px 12px; border-top:1px solid #e5e7eb;">
-<div style="font-weight:bold; color:#111827;">${escapeHtml(buyer.name)}</div>
-<div style="font-size:11px; color:#6b7280;">${escapeHtml(buyer.email)}</div>
+    .map(
+      (buyer) => `<tr>
+<td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;">
+  <strong style="display:block;color:#111827;">${escapeHtml(buyer.name)}</strong>
+  <span style="color:#6b7280;font-size:12px;">${escapeHtml(buyer.email)}</span>
 </td>
-<td style="padding:10px 12px; border-top:1px solid #e5e7eb; color:#111827; white-space:nowrap;">${escapeHtml(buyer.lastLogin)}</td>
-<td style="padding:10px 12px; border-top:1px solid #e5e7eb; font-weight:bold; color:#1d4ed8;" align="center">${buyer.createdPos}</td>
-<td style="padding:10px 12px; border-top:1px solid #e5e7eb; font-weight:bold; color:#047857;" align="center">${buyer.approvedPos}</td>
-</tr>`;
-    })
+<td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;white-space:nowrap;">${escapeHtml(buyer.lastLogin)}</td>
+<td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#1d4ed8;font-weight:700;text-align:center;">${buyer.createdPos}</td>
+<td style="padding:12px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#047857;font-weight:700;text-align:center;">${buyer.approvedPos}</td>
+</tr>`
+    )
     .join('');
 }
 
 export function buildP2pActivityReportEmail(report) {
-  const subject = `P2P Report — ${report.generatedAt}`;
-  const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><title>P2P Report</title></head>
-<body style="margin:0; padding:0; background:#eef2f6;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f6;">
-<tr><td align="center" style="padding:28px 12px;">
-<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:10px;">
-<tr><td style="padding:24px 28px 8px 28px;">
-<div style="font-size:20px; font-weight:bold; color:#111827;">P2P Procurement Report</div>
-<div style="font-size:12px; color:#6b7280; margin-top:4px;">Main branch · Mounesh · Tarkesh · SCM Buyers</div>
-<div style="font-size:12px; color:#6b7280; margin-top:2px;">${escapeHtml(report.generatedAt)}</div>
-</td></tr>
-<tr><td style="padding:16px 28px 8px 28px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-${card(report.totalPrs, 'Total PRs', 'Draft and cancelled excluded', '#111827')}
-<td width="2%"></td>
-${card(report.totalPos, 'Total POs', 'Cancelled POs excluded', '#1d4ed8')}
-<td width="2%"></td>
-${card(report.approvedPos, 'Approved POs', 'Mounesh + Tarkesh signed', '#047857')}
-</tr></table>
-</td></tr>
-<tr><td style="padding:18px 28px 8px 28px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-${card(report.mouneshSigned, `${report.mouneshName} signed`, 'POs he has signed', '#047857')}
-<td width="4%"></td>
-${card(report.tarkeshSigned, `${report.tarkeshName} signed`, 'POs he has signed', '#047857')}
-<td width="32%"></td>
-</tr></table>
-</td></tr>
-<tr><td style="padding:22px 28px 8px 28px; font-size:15px; font-weight:bold; color:#111827;">SCM buyer activity</td></tr>
-<tr><td style="padding:8px 28px 24px 28px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:13px;">
-<tr style="background:#14503a;" bgcolor="#14503a">
-<td style="padding:10px 12px; color:#ffffff; font-weight:bold;">SCM Buyer</td>
-<td style="padding:10px 12px; color:#ffffff; font-weight:bold;">Last signed in</td>
-<td style="padding:10px 12px; color:#ffffff; font-weight:bold;" align="center">Created POs</td>
-<td style="padding:10px 12px; color:#ffffff; font-weight:bold;" align="center">Approved POs</td>
-</tr>
-${buyerRows(report.buyers)}
-</table>
-<div style="font-size:11px; color:#9ca3af; margin-top:12px; line-height:1.5;">
-Cancelled and draft purchase orders are not counted. Approved POs are purchase orders signed by ${escapeHtml(report.mouneshName)} or ${escapeHtml(report.tarkeshName)}. Created POs and approved POs in the table are for each SCM buyer.
-</div>
-</td></tr>
-</table>
-</td></tr></table>
-</body></html>`;
+  const subject = `RMC P2P Report — ${report.generatedAt}`;
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2f7;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table width="640" cellpadding="0" cellspacing="0" border="0" style="max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #dbe3ee;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:28px 32px;">
+              <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;font-weight:700;">P2P Procurement</div>
+              <div style="font-size:24px;color:#ffffff;font-weight:800;margin-top:8px;">RMC P2P Report</div>
+              <div style="font-size:14px;color:#cbd5e1;margin-top:8px;line-height:1.5;">Main branch summary for ${escapeHtml(report.generatedAt)}. Draft and cancelled records are excluded.</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 26px 8px 26px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  ${statCell('Total PRs', report.totalPrs, 'Draft and cancelled excluded')}
+                  ${statCell('Total POs', report.totalPos, 'Cancelled POs excluded')}
+                  ${statCell('Approved POs', report.approvedPos, 'Mounesh + Tarkesh signed')}
+                </tr>
+                <tr>
+                  ${statCell(`${report.mouneshName} signed`, report.mouneshSigned, 'POs he has signed')}
+                  ${statCell(`${report.tarkeshName} signed`, report.tarkeshSigned, 'POs he has signed')}
+                  <td width="33%"></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px 24px 32px;">
+              <div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:12px;">SCM buyer activity</div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;border-radius:8px;border-collapse:collapse;overflow:hidden;background:#ffffff;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:left;">SCM Buyer</th>
+                    <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:left;">Last signed in</th>
+                    <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:center;">Created POs</th>
+                    <th style="padding:12px 10px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;text-align:center;">Approved POs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${buyerRows(report.buyers)}
+                </tbody>
+              </table>
+              <div style="font-size:12px;color:#64748b;margin-top:12px;line-height:1.5;">
+                Approved POs are purchase orders signed by ${escapeHtml(report.mouneshName)} or ${escapeHtml(report.tarkeshName)}. Created POs and approved POs in the table are for each SCM buyer.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 32px 28px;border-top:1px solid #e2e8f0;font-size:13px;color:#64748b;">
+              Thanks,<br/>
+              <strong style="color:#0f172a;">P2P Procurement</strong>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
   const text = [
-    'P2P Procurement Report',
+    'RMC P2P Report',
     report.generatedAt,
     `Total PRs: ${report.totalPrs}`,
     `Total POs: ${report.totalPos}`,

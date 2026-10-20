@@ -18,7 +18,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   rfq_submitted: 'RFQ Quote Submitted',
   po_vendor: 'PO Vendor Acceptance',
   po_workflow: 'PO Assign / Send Back / Reject',
-  p2p_activity_report: 'P2P Activity Report',
+  p2p_activity_report: 'RMC P2P Report',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };
@@ -248,9 +248,9 @@ export default function AdminEmailLogsPage() {
 
         {channel === 'email' ? (
           <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <h2 className="text-sm font-semibold text-slate-900">Send P2P activity report</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Send RMC P2P Report</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Total PRs, total POs, approved POs, Mounesh signed, Tarkesh signed, and each SCM buyer’s created and approved POs. Sends to sathishkumar.r@refex.co.in. Cancelled POs are excluded.
+              Same main-branch mail design. Total PRs, total POs, approved POs, Mounesh signed, Tarkesh signed, and each SCM buyer’s created and approved POs. Sends to sathishkumar.r@refex.co.in.
             </p>
             <button
               type="button"
@@ -258,7 +258,7 @@ export default function AdminEmailLogsPage() {
               disabled={sendingReport}
               className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm disabled:opacity-60"
             >
-              {sendingReport ? 'Sending…' : 'Send report to sathishkumar.r@refex.co.in'}
+              {sendingReport ? 'Sending…' : 'Send RMC P2P Report'}
             </button>
           </div>
         ) : null}
