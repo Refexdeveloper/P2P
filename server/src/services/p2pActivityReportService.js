@@ -207,6 +207,7 @@ export async function loadP2pActivityReport(now = new Date()) {
          AND ${NOT_DRAFT_PO}
          AND LOWER(po.status) NOT IN ('cancelled','rejected','pending_approval')
        ) AS mugesh_signed,
+       SUM(${NOT_DRAFT_PO} AND LOWER(TRIM(IFNULL(po.status, ''))) <> 'cancelled') AS total_pos,
        SUM(u.role = 'SCM Buyer' AND ${NOT_DRAFT_PO} AND LOWER(po.status) NOT IN ('cancelled','rejected')) AS scm_buyer_pos
      FROM purchase_orders po
      LEFT JOIN users u ON u.id = po.created_by
@@ -251,6 +252,7 @@ export async function loadP2pActivityReport(now = new Date()) {
     rajeevSigned: 0,
     meetSigned: 0,
     mugeshSigned: 0,
+    totalPos: 0,
     scmBuyerPos: 0,
   });
   for (const row of [...prEntityRows, ...taskRows, ...poRows]) {
@@ -262,6 +264,7 @@ export async function loadP2pActivityReport(now = new Date()) {
     if (row.rajeev_signed != null) item.rajeevSigned = num(row.rajeev_signed);
     if (row.meet_signed != null) item.meetSigned = num(row.meet_signed);
     if (row.mugesh_signed != null) item.mugeshSigned = num(row.mugesh_signed);
+    if (row.total_pos != null) item.totalPos = num(row.total_pos);
     if (row.scm_buyer_pos != null) item.scmBuyerPos = num(row.scm_buyer_pos);
   }
   const entities = [...entityMap.values()]
@@ -274,6 +277,7 @@ export async function loadP2pActivityReport(now = new Date()) {
         row.totalPrs ||
         row.pendingPrs ||
         row.approvedPos ||
+        row.totalPos ||
         row.scmBuyerPos
     )
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -351,11 +355,11 @@ export async function loadP2pActivityReport(now = new Date()) {
     totalPrs: num(pr?.total_prs),
     prsToday: num(pr?.prs_today),
     requesters: num(pr?.requesters),
-    totalPos: num(po?.total_pos),
     posToday: num(po?.pos_today),
     totalUsers: num(users?.total_users),
     loggedToday: num(logins?.logged_today),
     pendingPrs: sum('pendingPrs'),
+    totalPos: sum('totalPos'),
     approvedPos: sum('rajeevSigned') + sum('meetSigned') + sum('mugeshSigned'),
     scmBuyerPos: sum('scmBuyerPos'),
     rajeevName: rajeevUser?.name || DEFAULT_SCM_MANAGER_NAME,
@@ -448,10 +452,10 @@ ${countCell(row.pendingPrs, '#9a7a3a')}
 
 function poEntityRows(entities) {
   const rows = entities.filter(
-    (row) => row.approvedPos || row.scmBuyerPos || row.rajeevSigned || row.meetSigned || row.mugeshSigned
+    (row) => row.totalPos || row.approvedPos || row.scmBuyerPos || row.rajeevSigned || row.meetSigned || row.mugeshSigned
   );
   if (!rows.length) {
-    return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">No purchase orders.</td></tr>`;
+    return `<tr><td colspan="7" style="padding:14px; color:#6b6b6b; background:#ffffff;">No purchase orders.</td></tr>`;
   }
   return rows
     .map((row, index) => {
@@ -461,6 +465,7 @@ ${entityNameCell(row)}
 ${countCell(row.rajeevSigned, '#14503a')}
 ${countCell(row.meetSigned, '#14503a')}
 ${countCell(row.mugeshSigned, '#14503a')}
+${countCell(row.totalPos, '#1a1a1a')}
 ${countCell(row.approvedPos, '#14503a')}
 ${countCell(row.scmBuyerPos, '#3468a8')}
 </tr>`;
@@ -561,6 +566,17 @@ ${entityRows(report.entities || [])}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 ${statCard({
   width: '48%',
+  value: report.totalPos,
+  label: 'Total POs',
+  sub: 'Cancelled POs excluded',
+  valueColor: '#1a1a1a',
+  labelColor: '#5b7ba3',
+  background: 'linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%)',
+  border: '#dfe8f2',
+})}
+<td width="4%"></td>
+${statCard({
+  width: '48%',
   value: report.approvedPos,
   label: 'Approved POs',
   sub: 'Rajeev + Meet + Mugesh',
@@ -568,17 +584,6 @@ ${statCard({
   labelColor: '#3f8f63',
   background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
   border: '#c7ead4',
-})}
-<td width="4%"></td>
-${statCard({
-  width: '48%',
-  value: report.scmBuyerPos,
-  label: 'SCM Buyer created',
-  sub: 'Create PO by SCM Buyer',
-  valueColor: '#3468a8',
-  labelColor: '#5b7ba3',
-  background: 'linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%)',
-  border: '#dfe8f2',
 })}
 </tr></table></td></tr>
 
@@ -590,6 +595,7 @@ ${statCard({
 <td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">Rajeev</td>
 <td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">Meet</td>
 <td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">Mugesh</td>
+<td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">Total POs</td>
 <td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">Approved</td>
 <td style="padding:12px 6px; color:#ffffff !important; font-weight:bold;" align="center">SCM Buyer</td>
 </tr>
@@ -663,7 +669,7 @@ ${activityRowsHtml(report.activityUsers || [])}
 </table></td></tr>
 
 <tr><td style="padding:4px 32px 24px 32px; font-size:11px; color:#a0a0a0 !important; line-height:1.6;" bgcolor="#ffffff">
-Approved POs is Rajeev signed plus Meet signed plus Mugesh signed, and the entity table uses the same split. Created today is Asia/Kolkata. Pending on a user is their PRs waiting on L1 Manager, L2 Manager, or RFQ Entry.
+Total POs leaves out draft and cancelled purchase orders. Approved POs is Rajeev signed plus Meet signed plus Mugesh signed. Cancelled POs are not in either count.
 </td></tr>
 
 <tr><td style="background-color:#faf9f7 !important; padding:18px 32px; border-top:1px solid #ececea; font-size:11px; color:#a0a0a0 !important;" bgcolor="#faf9f7">
@@ -690,6 +696,7 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
     '',
     `Total PRs: ${report.totalPrs}`,
     `Pending PRs: ${report.pendingPrs}`,
+    `Total POs: ${report.totalPos}`,
     `Approved POs: ${report.approvedPos}`,
     `SCM Buyer created POs: ${report.scmBuyerPos}`,
     `${report.mugeshName} signed POs: ${report.mugeshSigned}`,
@@ -700,7 +707,7 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
     'Entity-wise',
     ...(report.entities || []).map(
       (row) =>
-        `${row.name}${row.code ? ` (${row.code})` : ''}: PRs ${row.totalPrs}, pending PRs ${row.pendingPrs}, Rajeev ${row.rajeevSigned}, Meet ${row.meetSigned}, Mugesh ${row.mugeshSigned}, approved PO ${row.approvedPos}, SCM Buyer ${row.scmBuyerPos}`
+        `${row.name}${row.code ? ` (${row.code})` : ''}: PRs ${row.totalPrs}, pending PRs ${row.pendingPrs}, total POs ${row.totalPos}, Rajeev ${row.rajeevSigned}, Meet ${row.meetSigned}, Mugesh ${row.mugeshSigned}, approved PO ${row.approvedPos}, SCM Buyer ${row.scmBuyerPos}`
     ),
   ].join('\n');
 

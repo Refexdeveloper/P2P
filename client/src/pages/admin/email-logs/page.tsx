@@ -248,7 +248,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Send P2P activity report</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Today’s new PRs and POs first, then user activity with last sign-in, pending, completed, pending duration, and SLA breached. Sends to sathishkumar.r@refex.co.in.
+              Total POs and approved POs, with cancelled POs left out, plus today’s activity. Sends to sathishkumar.r@refex.co.in.
             </p>
             <button
               type="button"
