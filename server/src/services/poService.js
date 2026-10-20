@@ -3183,7 +3183,12 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     existing = rows[0] || null;
     if (!existing) throw new Error('PO not found');
   }
-  const prId = Number(body.prId || existing?.pr_id || 0) || null;
+  const amendmentSave = Boolean(
+    amendmentPoNumberOrNull(body.poNumber || existing?.po_number) ||
+      String(body.referencePoNumber || '').trim()
+  );
+  // An amendment is a new document. Do not attach the original PR — that PR already has a PO.
+  let prId = amendmentSave ? null : Number(body.prId || existing?.pr_id || 0) || null;
   let prFlag = prId ? await loadPrPoCreation(prId) : null;
   if (prFlag && !(await requesterOwnsPoWork(user, prFlag, existing))) {
     if (

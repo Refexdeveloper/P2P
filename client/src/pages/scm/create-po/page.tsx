@@ -3452,8 +3452,14 @@ export default function CreatePOPage() {
       const rememberedId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
       const existingDraftId = rememberedId && rememberedId !== amendFromId ? rememberedId : null;
       if (existingDraftId) payload.poId = existingDraftId;
-      if (numericPrId) payload.prId = numericPrId;
-      else if (!amendFromId && Number(pr?.id) > 0) payload.prId = Number(pr.id);
+      const amendmentSave =
+        Boolean(amendFromId) ||
+        /\/R\d+$/i.test(poNumber.trim()) ||
+        Boolean(referencePoNumber.trim());
+      if (!amendmentSave) {
+        if (numericPrId) payload.prId = numericPrId;
+        else if (Number(pr?.id) > 0) payload.prId = Number(pr.id);
+      }
 
       await applyMasterVendorToPayload(payload);
 
@@ -3724,8 +3730,17 @@ export default function CreatePOPage() {
 
     if (refNo) {
       appliedPrReferenceRef.current = refNo.toLowerCase();
-      setManualPrDetails((prev) => ({ ...prev, prNumber: refNo }));
+      setManualPrDetails((prev) => ({
+        ...prev,
+        prNumber: refNo,
+        title: String(po.prTitle || po.title || prev.title || ''),
+        department: String(po.department || prev.department || ''),
+        requester: String(po.requester || prev.requester || ''),
+        paymentTerms: String(po.paymentTerms || prev.paymentTerms || ''),
+        justification: String(po.specialInstructions || prev.justification || ''),
+      }));
     }
+    setPr((prev) => (prev && Number(prev.id) > 0 ? { ...prev, id: 0 } : prev));
     if (po.vendorName) setManualVendorName(String(po.vendorName));
     if (po.vendorEmail) setManualVendorEmail(String(po.vendorEmail));
     const sourceEntityId = Number(po.entityId || po.prEntityId || 0);
