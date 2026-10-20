@@ -286,7 +286,7 @@ export async function loadP2pActivityReport(now = new Date()) {
 
   const slaSql = taskSlaBreachedSql('wt');
   const [activityRows] = await pool.query(
-    `SELECT u.id, u.name, u.email,
+    `SELECT u.id, u.name, u.email, u.role,
             login.last_login,
             COUNT(DISTINCT CASE
               WHEN wt.status = 'pending' AND ${PENDING_USER_TASK} THEN pr.id
@@ -298,19 +298,19 @@ export async function loadP2pActivityReport(now = new Date()) {
               WHEN wt.status = 'pending' AND ${PENDING_USER_TASK} AND ${slaSql} THEN pr.id
             END) AS sla_breached
      FROM users u
-     JOIN purchase_requests pr ON pr.requester_id = u.id
-       AND ${LIVE_PR}
-     LEFT JOIN workflow_tasks wt ON wt.pr_id = pr.id
-     LEFT JOIN (
+     JOIN (
        SELECT user_id, MAX(created_at) AS last_login
        FROM user_activity_logs
        WHERE action = 'login' AND user_id IS NOT NULL
        GROUP BY user_id
      ) login ON login.user_id = u.id
-     GROUP BY u.id, u.name, u.email, login.last_login
-     HAVING pending_count > 0 OR completed_count > 0
-     ORDER BY pending_count DESC, completed_count DESC, u.name ASC
-     LIMIT 40`
+     LEFT JOIN purchase_requests pr ON pr.requester_id = u.id
+       AND ${LIVE_PR}
+     LEFT JOIN workflow_tasks wt ON wt.pr_id = pr.id
+     WHERE u.is_active = 1
+     GROUP BY u.id, u.name, u.email, u.role, login.last_login
+     ORDER BY login.last_login DESC
+     LIMIT 25`
   );
 
   const [oldestRows] = await pool.query(
@@ -342,6 +342,75 @@ export async function loadP2pActivityReport(now = new Date()) {
     return {
       name: row.name || row.email || 'User',
       email: row.email || '',
+      role: row.role || '',
+      lastLogin: formatActivityStamp(row.last_login),
+      pending,
+      completed: num(row.completed_count),
+      pendingDuration: pending > 0 && holder ? `${days} days · ${holder}` : '—',
+      slaBreached: num(row.sla_breached),
+    };
+  });
+
+  const [scmRows] = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role,
+            login.last_login,
+            SUM(
+              ${NOT_DRAFT_PO}
+              AND LOWER(po.status) = 'pending_approval'
+            ) AS pending_count,
+            SUM(
+              ${NOT_DRAFT_PO}
+              AND LOWER(po.status) IN (
+                'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+                'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+              )
+            ) AS completed_count,
+            SUM(
+              ${NOT_DRAFT_PO}
+              AND LOWER(po.status) = 'pending_approval'
+              AND DATE_ADD(po.created_at, INTERVAL 24 HOUR) < NOW()
+            ) AS sla_breached
+     FROM users u
+     LEFT JOIN (
+       SELECT user_id, MAX(created_at) AS last_login
+       FROM user_activity_logs
+       WHERE action = 'login' AND user_id IS NOT NULL
+       GROUP BY user_id
+     ) login ON login.user_id = u.id
+     LEFT JOIN purchase_orders po ON po.created_by = u.id
+       AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+     WHERE u.is_active = 1
+       AND u.role IN ('SCM Buyer', 'SCM Manager')
+     GROUP BY u.id, u.name, u.email, u.role, login.last_login
+     ORDER BY login.last_login IS NULL, login.last_login DESC, u.name ASC`
+  );
+
+  const [scmOldestRows] = await pool.query(
+    `SELECT created_by, created_at, holder
+     FROM (
+       SELECT po.created_by,
+              po.created_at,
+              COALESCE(NULLIF(TRIM(mgr.name), ''), 'SCM Manager') AS holder,
+              ROW_NUMBER() OVER (PARTITION BY po.created_by ORDER BY po.created_at ASC, po.id ASC) AS rn
+       FROM purchase_orders po
+       LEFT JOIN users mgr ON mgr.id = po.approval_manager_id
+       WHERE LOWER(po.status) = 'pending_approval'
+         AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+     ) ranked
+     WHERE rn = 1`
+  );
+  const oldestScmPo = new Map(scmOldestRows.map((row) => [Number(row.created_by), row]));
+
+  const scmTeam = scmRows.map((row) => {
+    const oldest = oldestScmPo.get(Number(row.id));
+    const pending = num(row.pending_count);
+    const days = oldest ? getSlaWaitingDays(oldest.created_at, now) : 0;
+    const holder = oldest?.holder || '';
+    return {
+      name: row.name || row.email || 'User',
+      email: row.email || '',
+      role: row.role || '',
       lastLogin: formatActivityStamp(row.last_login),
       pending,
       completed: num(row.completed_count),
@@ -371,6 +440,7 @@ export async function loadP2pActivityReport(now = new Date()) {
     mugeshSigned: sum('mugeshSigned'),
     entities,
     activityUsers,
+    scmTeam,
   };
 }
 
@@ -391,9 +461,9 @@ function formatActivityStamp(value) {
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
-function activityRowsHtml(users) {
+function activityRowsHtml(users, emptyLabel = 'No recent logins.') {
   if (!users.length) {
-    return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">No user activity.</td></tr>`;
+    return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">${escapeHtml(emptyLabel)}</td></tr>`;
   }
   return users
     .map((user, index) => {
@@ -402,7 +472,7 @@ function activityRowsHtml(users) {
       return `<tr style="background:${bg};" bgcolor="${bg}">
 <td style="padding:10px 10px; color:#1a1a1a; border-top:1px solid #ececea;">
 <div style="font-weight:bold;">${escapeHtml(user.name)}</div>
-<div style="font-size:11px; color:#8a8a8a;">${escapeHtml(user.email)}</div>
+<div style="font-size:11px; color:#8a8a8a;">${escapeHtml(user.role || 'User')} · ${escapeHtml(user.email)}</div>
 </td>
 <td style="padding:10px 8px; color:#1a1a1a; border-top:1px solid #ececea; white-space:nowrap;">${escapeHtml(user.lastLogin)}</td>
 <td style="padding:10px 8px; color:#9a7a3a; border-top:1px solid #ececea; font-weight:bold;" align="center">${user.pending}</td>
@@ -654,7 +724,7 @@ ${statCard({
 })}
 </tr></table></td></tr>
 
-<tr><td style="padding:26px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">User activity</td></tr>
+<tr><td style="padding:26px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Recent login</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
 <tr style="background-color:#14503a !important;" bgcolor="#14503a">
@@ -666,6 +736,20 @@ ${statCard({
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">SLA Breached</td>
 </tr>
 ${activityRowsHtml(report.activityUsers || [])}
+</table></td></tr>
+
+<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">SCM team activity</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 10px; color:#ffffff !important; font-weight:bold;">SCM Buyer / Manager</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Last Signed In</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Pending</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Completed</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Pending Duration</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">SLA Breached</td>
+</tr>
+${activityRowsHtml(report.scmTeam || [], 'No SCM team activity.')}
 </table></td></tr>
 
 <tr><td style="padding:4px 32px 24px 32px; font-size:11px; color:#a0a0a0 !important; line-height:1.6;" bgcolor="#ffffff">
@@ -688,10 +772,16 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
     `PRs created today: ${report.prsToday}`,
     `POs created today: ${report.posToday}`,
     '',
-    'User activity',
+    'Recent login',
     ...(report.activityUsers || []).map(
       (user) =>
-        `${user.name} | ${user.lastLogin} | pending ${user.pending} | completed ${user.completed} | ${user.pendingDuration} | SLA ${user.slaBreached}`
+        `${user.name} (${user.role}) | ${user.lastLogin} | pending ${user.pending} | completed ${user.completed} | ${user.pendingDuration} | SLA ${user.slaBreached}`
+    ),
+    '',
+    'SCM team activity',
+    ...(report.scmTeam || []).map(
+      (user) =>
+        `${user.name} (${user.role}) | ${user.lastLogin} | pending ${user.pending} | completed ${user.completed} | ${user.pendingDuration} | SLA ${user.slaBreached}`
     ),
     '',
     `Total PRs: ${report.totalPrs}`,
