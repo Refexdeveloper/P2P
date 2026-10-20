@@ -106,9 +106,33 @@ export async function loadP2pActivityReport(now = new Date()) {
            po.signer_id = ?
            OR LOWER(IFNULL(po.signature_name, '')) LIKE 'tarkesh%'
          )
-       ) AS tarkesh_signed
+       ) AS tarkesh_signed,
+       SUM(
+         ${LIVE_PO}
+         AND LOWER(TRIM(IFNULL(po.status, ''))) = 'pending_approval'
+         AND NOT EXISTS (
+           SELECT 1 FROM users creator
+           WHERE creator.id = po.created_by
+             AND (
+               LOWER(creator.email) = ?
+               OR LOWER(creator.email) LIKE 'mounesh.r@%'
+             )
+         )
+       ) AS mounesh_pending,
+       SUM(
+         ${LIVE_PO}
+         AND LOWER(TRIM(IFNULL(po.status, ''))) = 'pending_approval'
+         AND EXISTS (
+           SELECT 1 FROM users creator
+           WHERE creator.id = po.created_by
+             AND (
+               LOWER(creator.email) = ?
+               OR LOWER(creator.email) LIKE 'mounesh.r@%'
+             )
+         )
+       ) AS tarkesh_pending
      FROM purchase_orders po`,
-    [mounesh.id, tarkesh.id]
+    [mounesh.id, tarkesh.id, DEFAULT_SCM_MANAGER_EMAIL, DEFAULT_SCM_MANAGER_EMAIL]
   );
 
   const [buyers] = await pool.query(
@@ -144,6 +168,8 @@ export async function loadP2pActivityReport(now = new Date()) {
     tarkeshName: tarkesh.name || DEFAULT_PO_APPROVER_NAME,
     mouneshSigned,
     tarkeshSigned,
+    mouneshPending: num(counts?.mounesh_pending),
+    tarkeshPending: num(counts?.tarkesh_pending),
     approvedPos: mouneshSigned + tarkeshSigned,
     buyers: buyers.map((row) => ({
       name: row.name || row.email || 'SCM Buyer',
@@ -224,15 +250,20 @@ export function buildP2pActivityReportEmail(report) {
 </td></tr>
 <tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-${summaryCard('18%', report.totalPrs, 'Total PRs', 'Draft excluded', blue, '#1a1a1a', '#5b7ba3')}
-<td width="1.5%"></td>
-${summaryCard('18%', report.totalPos, 'Total POs', 'Cancelled excluded', amber, '#1a1a1a', '#9a7a3a')}
-<td width="1.5%"></td>
-${summaryCard('18%', report.approvedPos, 'Approved POs', 'Mounesh + Tarkesh', green, '#1a1a1a', '#3f8f63')}
-<td width="1.5%"></td>
-${summaryCard('18%', report.mouneshSigned, 'Mounesh signed', report.mouneshName, green, '#14503a', '#3f8f63')}
-<td width="1.5%"></td>
-${summaryCard('20%', report.tarkeshSigned, 'Tarkesh signed', report.tarkeshName, 'background:linear-gradient(180deg,#f0fbf4 0%,#e0f5e8 100%) !important; border:1px solid #c7ead4; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(26,140,92,0.08);', '#14503a', '#3f8f63')}
+${summaryCard('32%', report.totalPrs, 'Total PRs', '', blue, '#1a1a1a', '#5b7ba3')}
+<td width="2%"></td>
+${summaryCard('32%', report.totalPos, 'Total POs', '', amber, '#1a1a1a', '#9a7a3a')}
+<td width="2%"></td>
+${summaryCard('32%', report.approvedPos, 'Approved POs', '', green, '#1a1a1a', '#3f8f63')}
+</tr></table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;"><tr>
+${summaryCard('23%', report.mouneshSigned, 'Mounesh signed', '', green, '#14503a', '#3f8f63')}
+<td width="2%"></td>
+${summaryCard('23%', report.mouneshPending, 'Mounesh pending', '', amber, '#1a1a1a', '#9a7a3a')}
+<td width="2%"></td>
+${summaryCard('23%', report.tarkeshSigned, 'Tarkesh signed', '', 'background:linear-gradient(180deg,#f0fbf4 0%,#e0f5e8 100%) !important; border:1px solid #c7ead4; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(26,140,92,0.08);', '#14503a', '#3f8f63')}
+<td width="2%"></td>
+${summaryCard('23%', report.tarkeshPending, 'Tarkesh pending', '', 'background:linear-gradient(180deg,#fffaf2 0%,#fef3e2 100%) !important; border:1px solid #f2e2c4; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(180,120,20,0.07);', '#1a1a1a', '#9a7a3a')}
 </tr></table></td></tr>
 
 <tr><td style="padding:22px 32px 6px 32px;" bgcolor="#ffffff">
@@ -261,10 +292,6 @@ ${summaryCard('20%', report.tarkeshSigned, 'Tarkesh signed', report.tarkeshName,
 ${activityRows(report.buyers)}
 </table></td></tr>
 
-<tr><td style="padding:4px 32px 24px 32px; font-size:11px; color:#a0a0a0 !important; line-height:1.6;" bgcolor="#ffffff">
-Cancelled and draft purchase orders are not counted. Approved POs are purchase orders signed by ${escapeHtml(report.mouneshName)} or ${escapeHtml(report.tarkeshName)}. User activity lists ${escapeHtml(report.mouneshName)} and each SCM buyer, with the purchase orders they created and the ones already approved.
-</td></tr>
-
 <tr><td style="background-color:#faf9f7 !important; padding:18px 32px; border-top:1px solid #ececea; font-size:11px; color:#a0a0a0 !important;" bgcolor="#faf9f7">
 RMC P2P Report &middot; Automated &middot; Do not reply to this email
 </td></tr>
@@ -282,7 +309,9 @@ RMC P2P Report &middot; Automated &middot; Do not reply to this email
     `Total POs: ${report.totalPos}`,
     `Approved POs: ${report.approvedPos}`,
     `${report.mouneshName} signed: ${report.mouneshSigned}`,
+    `${report.mouneshName} pending: ${report.mouneshPending}`,
     `${report.tarkeshName} signed: ${report.tarkeshSigned}`,
+    `${report.tarkeshName} pending: ${report.tarkeshPending}`,
     '',
     'User activity',
     ...report.buyers.map(
@@ -306,7 +335,9 @@ export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
       totalPos: report.totalPos,
       approvedPos: report.approvedPos,
       mouneshSigned: report.mouneshSigned,
+      mouneshPending: report.mouneshPending,
       tarkeshSigned: report.tarkeshSigned,
+      tarkeshPending: report.tarkeshPending,
     },
   });
   return { to: recipient, subject: built.subject, report };
