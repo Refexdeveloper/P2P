@@ -21,6 +21,7 @@ type TrackRow = {
   poId: number | null;
   prNumber: string;
   poNumber: string | null;
+  referencePoNumber?: string;
   title: string;
   department: string;
   requester: string;
@@ -505,6 +506,15 @@ export default function TrackPoPage() {
     navigate(`/scm/create-po?poId=${poId}&from=track-po`);
   };
 
+  const openAmendment = (poId: number, poNumber?: string | null) => {
+    const label = String(poNumber || '').trim() || `PO #${poId}`;
+    const ok = window.confirm(
+      `Create an amendment of ${label}?\n\nThe new document is numbered /R1 or /R2 and this PO’s details are copied into the form. Click OK, then Save as Draft.`
+    );
+    if (!ok) return;
+    navigate(`/scm/create-po?manual=1&amendFrom=${poId}`);
+  };
+
   const openSendBack = (row: TrackRow, mode: 'pending_sign' | 'buyer_verify' = 'pending_sign') => {
     if (!row.poId) return;
     setSendBackModal({
@@ -872,9 +882,14 @@ export default function TrackPoPage() {
                     ) : (
                       rows.map((row) => {
                         const open = expandedKey === row.key;
+                        const isAmendment =
+                          /\/R\d+$/i.test(String(row.poNumber || '')) ||
+                          Boolean(String(row.referencePoNumber || '').trim());
                         const rowBorder = open
                           ? 'border-[#a9dbe2]'
-                          : 'border-transparent group-hover:border-[#a9dbe2]';
+                          : isAmendment
+                            ? 'border-amber-300'
+                            : 'border-transparent group-hover:border-[#a9dbe2]';
                         const rowShadow = open
                           ? 'shadow-[0_14px_32px_-14px_rgba(15,23,42,0.18)]'
                           : 'shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] group-hover:shadow-[0_14px_32px_-14px_rgba(15,23,42,0.16)]';
@@ -886,7 +901,7 @@ export default function TrackPoPage() {
                             >
                               <td className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]">
                                 <div
-                                  className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 bg-white py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}
+                                  className={`relative z-[1] flex h-full items-center gap-2.5 whitespace-nowrap rounded-l-2xl border border-r-0 py-4 pl-3 pr-3 transition-[border-color,box-shadow] sm:rounded-l-[18px] sm:py-5 ${isAmendment ? 'bg-amber-50' : 'bg-white'} ${rowBorder} ${rowShadow}`}
                                 >
                                   <button
                                     type="button"
@@ -909,6 +924,11 @@ export default function TrackPoPage() {
                                     </p>
                                     <p className="mt-0.5 whitespace-nowrap text-xs font-semibold text-[#2C3E50]">
                                       {row.poNumber || '—'}
+                                      {isAmendment ? (
+                                        <span className="ml-2 inline-flex rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
+                                          Amendment
+                                        </span>
+                                      ) : null}
                                     </p>
                                   </div>
                                 </div>
@@ -987,6 +1007,16 @@ export default function TrackPoPage() {
                                         Import
                                       </button>
                                     </>
+                                  )}
+                                  {row.poId && row.status !== 'cancelled' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openAmendment(row.poId!, row.poNumber)}
+                                      className="cursor-pointer whitespace-nowrap rounded-xl border border-[#0f6b7a] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#0f6b7a] hover:bg-[#f0fdfa]"
+                                      title="Copy this PO into a new amendment numbered /R1, /R2"
+                                    >
+                                      Amendment
+                                    </button>
                                   )}
                                   {row.status === 'draft' && row.poId && (
                                     <button

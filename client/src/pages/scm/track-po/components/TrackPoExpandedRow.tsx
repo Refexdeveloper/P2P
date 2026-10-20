@@ -48,6 +48,7 @@ type DocRow = {
   extra?: string;
   fileName: string;
   url: string;
+  sourcePoId?: number;
 };
 
 type Props = {
@@ -334,10 +335,12 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
     const blob = new Blob([await res.arrayBuffer()], { type: type || 'application/pdf' });
     return { url: URL.createObjectURL(blob), fileName: doc.fileName, kind: 'pdf' };
   }
-  if ((doc.kind === 'PO PDF' || doc.kind === 'PO Template') && poId) {
+  const pdfSourceId = Number(doc.sourcePoId || 0) || null;
+  if ((doc.kind === 'PO PDF' || doc.kind === 'Amendment PDF' || doc.kind === 'Original PO PDF' || doc.kind === 'PO Template') && (pdfSourceId || poId)) {
+    const filePoId = Number(pdfSourceId || poId || 0);
     if (doc.kind === 'PO Template') {
       const token = localStorage.getItem('p2p_token');
-      const res = await fetch(poApi.getDocumentUrl(poId), {
+      const res = await fetch(poApi.getDocumentUrl(filePoId), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error('Could not open PO template');
@@ -345,7 +348,7 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       return { url: URL.createObjectURL(blob), fileName: doc.fileName, kind: 'html' };
     }
-    const { blob, isHtml } = await poApi.fetchPreviewBlob(poId);
+    const { blob, isHtml } = await poApi.fetchPreviewBlob(filePoId);
     return {
       url: URL.createObjectURL(blob),
       fileName: doc.fileName,
@@ -382,7 +385,7 @@ export default function TrackPoExpandedRow({
   const expandWrapRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [tab, setTab] = useState<
-    'details' | 'documents' | 'history' | 'acceptance' | 'grn' | 'invoice'
+    'details' | 'original' | 'documents' | 'history' | 'acceptance' | 'grn' | 'invoice'
   >('details');
   const acceptanceTabAutoOpened = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -393,6 +396,8 @@ export default function TrackPoExpandedRow({
   const [history, setHistory] = useState<ApprovalHistoryEntry[]>([]);
   const [grn, setGrn] = useState<FulfillmentGrn | null>(null);
   const [invoice, setInvoice] = useState<FulfillmentInvoice | null>(null);
+  const [referencePo, setReferencePo] = useState<Record<string, unknown> | null>(null);
+  const [originalPdfUrl, setOriginalPdfUrl] = useState('');
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [fileError, setFileError] = useState('');
   const [openingKey, setOpeningKey] = useState('');
@@ -496,6 +501,21 @@ export default function TrackPoExpandedRow({
         const prHist = normalizeHistory(prData?.approvalHistory);
         setHistory(poHist.length ? poHist : prHist);
 
+        const currentNo = String(poData?.poNumber || row.poNumber || '').trim();
+        const savedRef = String(poData?.referencePoNumber || '').trim();
+        const stripped = currentNo.replace(/\/R\d+$/i, '');
+        const referenceNo = savedRef || (stripped && stripped !== currentNo ? stripped : '');
+        if (referenceNo) {
+          try {
+            const refRes = await poApi.getByNumber(referenceNo);
+            if (!cancelled) setReferencePo((refRes.data || null) as Record<string, unknown> | null);
+          } catch {
+            if (!cancelled) setReferencePo({ poNumber: referenceNo });
+          }
+        } else if (!cancelled) {
+          setReferencePo(null);
+        }
+
         if (!prData && !poData) {
           setError('Could not load PR / PO details');
         }
@@ -527,14 +547,33 @@ export default function TrackPoExpandedRow({
     const docs: DocRow[] = [];
     if (row.poId) {
       const poNumber = String(po?.poNumber || row.poNumber || `PO-${row.poId}`);
+      const stripped = poNumber.replace(/\/R\d+$/i, '');
+      const referenceNo =
+        String(po?.referencePoNumber || '').trim() ||
+        (stripped && stripped !== poNumber ? stripped : '') ||
+        String(referencePo?.poNumber || '').trim();
+      const isAmendment = Boolean(referenceNo) || /\/R\d+$/i.test(poNumber);
       docs.push({
         key: `po-pdf-${row.poId}`,
-        kind: 'PO PDF',
-        name: `${poNumber} PDF`,
-        extra: String(po?.signedPdfPath || po?.pdfPath || ''),
+        kind: isAmendment ? 'Amendment PDF' : 'PO PDF',
+        name: isAmendment ? `${poNumber} amendment PDF` : `${poNumber} PDF`,
+        extra: isAmendment ? 'Amendment file' : String(po?.signedPdfPath || po?.pdfPath || ''),
         fileName: `${poNumber}.pdf`,
         url: publicInsights ? poApi.publicInsightPdfUrl(row.poId) : poApi.getPdfUrl(row.poId),
+        sourcePoId: row.poId,
       });
+      const originalId = Number(referencePo?.id || 0);
+      if (originalId) {
+        docs.push({
+          key: `orig-pdf-${originalId}`,
+          kind: 'Original PO PDF',
+          name: `${referenceNo} PDF`,
+          extra: 'Original PO reference',
+          fileName: `${referenceNo}.pdf`,
+          url: poApi.getPdfUrl(originalId),
+          sourcePoId: originalId,
+        });
+      }
       docs.push({
         key: `po-html-${row.poId}`,
         kind: 'PO Template',
@@ -615,7 +654,7 @@ export default function TrackPoExpandedRow({
     }
 
     return docs;
-  }, [row.poId, row.poNumber, po, comparison, invoice, publicInsights]);
+  }, [row.poId, row.poNumber, po, referencePo, comparison, invoice, publicInsights]);
 
   const detailFields = [
     ['PR Number', String(pr?.prNumber || row.prNumber || '—')],
@@ -672,8 +711,17 @@ export default function TrackPoExpandedRow({
   const showGrnTab = showFulfillmentTabs && Boolean(grn);
   const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
 
+  const currentPoNo = String(po?.poNumber || row.poNumber || '').trim();
+  const strippedBase = currentPoNo.replace(/\/R\d+$/i, '');
+  const referenceNo =
+    String(po?.referencePoNumber || '').trim() ||
+    (strippedBase && strippedBase !== currentPoNo ? strippedBase : '') ||
+    String(referencePo?.poNumber || '').trim();
   const tabs = [
     { key: 'details' as const, label: 'PO Details', icon: 'ri-information-line' },
+    ...(referenceNo
+      ? [{ key: 'original' as const, label: `Original PO (${referenceNo})`, icon: 'ri-links-line' }]
+      : []),
     {
       key: 'documents' as const,
       label: `Documents${documents.length ? ` (${documents.length})` : ''}`,
@@ -697,6 +745,28 @@ export default function TrackPoExpandedRow({
     const keys = new Set(tabs.map((t) => t.key));
     if (!keys.has(tab)) setTab('details');
   }, [tab, showAcceptanceTab, showGrnTab, showInvoiceTab]);
+
+  useEffect(() => {
+    const originalId = Number(referencePo?.id || 0);
+    if (!originalId || tab !== 'original') return;
+    let cancelled = false;
+    let objectUrl = '';
+    void poApi
+      .fetchPreviewBlob(originalId)
+      .then(({ blob }) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setOriginalPdfUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setOriginalPdfUrl('');
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setOriginalPdfUrl('');
+    };
+  }, [referencePo, tab]);
 
   // When vendor acceptance is completed, open that tab once after load
   useEffect(() => {
@@ -935,6 +1005,42 @@ export default function TrackPoExpandedRow({
                   </h4>
                   <ManagerL2CommentsHighlight history={history} />
                 </div>
+              </div>
+            )}
+
+            {!loading && !error && tab === 'original' && (
+              <div className="space-y-4">
+                {!referenceNo ? (
+                  <p className="py-8 text-center text-sm text-slate-500">No original PO reference on this amendment.</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ['Original PO No', String(referencePo?.poNumber || referenceNo)],
+                        ['Vendor', String(referencePo?.vendorName || '—')],
+                        ['Vendor Email', String(referencePo?.vendorEmail || '—')],
+                        ['Entity', String(referencePo?.entity || '—')],
+                        ['Status', String(referencePo?.status || '—')],
+                        ['Amount', formatCurrency(Number(referencePo?.grandTotal || 0))],
+                        ['Delivery Date', String(referencePo?.expectedDeliveryDate || '—')],
+                        ['Subject', String((referencePo?.poTermsDetails as { subject?: string } | undefined)?.subject || '—')],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-xl border border-slate-100 bg-white px-3 py-2.5">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                          <p className="mt-1 text-sm font-semibold text-[#2C3E50] break-words">{value || '—'}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Original PO PDF</p>
+                      {originalPdfUrl ? (
+                        <iframe title="Original PO PDF" src={originalPdfUrl} className="h-[640px] w-full bg-white" />
+                      ) : (
+                        <p className="text-sm text-slate-500">Loading original PO PDF…</p>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

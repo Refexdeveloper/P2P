@@ -1239,6 +1239,10 @@ export const poApi = {
     }),
   getByNumber: (poNumber: string) =>
     request<{ data: Record<string, unknown> }>(`/api/po/by-number/${encodeURIComponent(poNumber)}`),
+  amendmentPreview: (poId: number) =>
+    request<{ data: { po: Record<string, unknown>; amendmentNumber: string } }>(
+      `/api/po/${poId}/amendment`
+    ),
   get: (poId: number) => request<{ data: Record<string, unknown> }>(`/api/po/${poId}`),
   getComparison: (poId: number) =>
     request<{ data: VendorComparisonData & { source?: string } }>(`/api/po/${poId}/comparison`),

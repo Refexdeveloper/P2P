@@ -14,6 +14,7 @@ import {
   listVendorAcceptancePOs,
   getPurchaseOrderById,
   getPurchaseOrderByNumber,
+  nextAmendmentPoNumber,
   getPurchaseOrderVendorComparison,
   signPurchaseOrder,
   rejectPurchaseOrder,
@@ -717,6 +718,17 @@ router.get('/by-number/:poNumber', canReadPo, async (req, res) => {
     const data = await getPurchaseOrderByNumber(req.params.poNumber);
     if (!data) return res.status(404).json({ message: 'PO not found' });
     res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/amendment', canReadPo, async (req, res) => {
+  try {
+    const po = await getPurchaseOrderById(Number(req.params.id));
+    if (!po) return res.status(404).json({ message: 'PO not found' });
+    const amendmentNumber = await nextAmendmentPoNumber(po.poNumber);
+    res.json({ data: { po, amendmentNumber } });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

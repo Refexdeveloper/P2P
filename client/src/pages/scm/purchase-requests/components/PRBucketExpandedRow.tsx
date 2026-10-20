@@ -288,6 +288,14 @@ function addressFromPo(po: Record<string, unknown>, fallback: AddressContactInfo
   };
 }
 
+function originalReferenceNumber(poNumber?: string | null, reference?: string | null) {
+  const ref = String(reference || '').trim();
+  if (ref) return ref;
+  const current = String(poNumber || '').trim();
+  const base = current.replace(/\/R\d+$/i, '');
+  return base && base !== current ? base : '';
+}
+
 export default function PRBucketExpandedRow({
   prId,
   poId = null,
@@ -466,7 +474,7 @@ export default function PRBucketExpandedRow({
       purchaseTypeLabel: String(po.purchaseTypeLabel || (po.purchaseType === 'work_order' ? 'Work Order' : 'Purchase Order')),
       poType: String(po.poType || ''),
       createdBy: String(po.createdBy || ''),
-      referencePoNumber: String(po.referencePoNumber || '').trim(),
+      referencePoNumber: originalReferenceNumber(poNo, String(po.referencePoNumber || '')),
     });
     setAddressInfo(addressFromPo(po));
     setPr({
@@ -594,7 +602,10 @@ export default function PRBucketExpandedRow({
               ),
               poType: String(po.poType || ''),
               createdBy: String(po.createdBy || ''),
-              referencePoNumber: String(po.referencePoNumber || '').trim(),
+              referencePoNumber: originalReferenceNumber(
+                String(po.poNumber || poNumber || ''),
+                String(po.referencePoNumber || '')
+              ),
             });
             setAddressInfo((prev) => addressFromPo(po, prev));
             // Fill payment terms / scope of work from PO when PR fields are empty
@@ -612,10 +623,11 @@ export default function PRBucketExpandedRow({
             setCancellation(null);
           }
           if (poId) {
-            const refNo =
-              poRes.status === 'fulfilled'
-                ? String((poRes.value.data as Record<string, unknown>).referencePoNumber || '')
-                : '';
+            const loaded = poRes.status === 'fulfilled' ? (poRes.value.data as Record<string, unknown>) : null;
+            const refNo = originalReferenceNumber(
+              String(loaded?.poNumber || poNumber || ''),
+              String(loaded?.referencePoNumber || '')
+            );
             await loadRelatedDocs(poId, refNo, () => cancelled);
           }
         } else if (poId) {
@@ -635,7 +647,10 @@ export default function PRBucketExpandedRow({
             }
             await loadRelatedDocs(
               poId,
-              String((poRes.value.data as Record<string, unknown>).referencePoNumber || ''),
+              originalReferenceNumber(
+                String((poRes.value.data as Record<string, unknown>).poNumber || poNumber || ''),
+                String((poRes.value.data as Record<string, unknown>).referencePoNumber || '')
+              ),
               () => cancelled
             );
           } catch (poErr) {
@@ -673,7 +688,7 @@ export default function PRBucketExpandedRow({
       ? [{ key: 'pdf' as const, label: 'PDF', icon: 'ri-file-pdf-line' }]
       : []),
     ...(poSummary?.referencePoNumber
-      ? [{ key: 'reference' as const, label: `Reference PO (${poSummary.referencePoNumber})`, icon: 'ri-links-line' }]
+      ? [{ key: 'reference' as const, label: `Original PO (${poSummary.referencePoNumber})`, icon: 'ri-links-line' }]
       : []),
     ...(cancellation || statusLabel === 'Cancelled'
       ? [{ key: 'cancellation' as const, label: 'Cancellation', icon: 'ri-close-circle-line' }]

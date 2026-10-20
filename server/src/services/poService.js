@@ -798,6 +798,37 @@ function normalizeRequestedPoNumber(value) {
   return n || null;
 }
 
+function amendmentPoNumberOrNull(value) {
+  const n = normalizeRequestedPoNumber(value);
+  if (!n || !/\/R\d+$/i.test(n)) return null;
+  return n;
+}
+
+function basePoNumber(poNumber) {
+  return String(poNumber || '')
+    .trim()
+    .replace(/\/R\d+$/i, '');
+}
+
+/** Next revision of a PO/WO: WO-…-0008 → WO-…-0008/R1, then /R2. */
+export async function nextAmendmentPoNumber(poNumber, connection = pool) {
+  const base = basePoNumber(poNumber);
+  if (!base) throw new Error('PO number is required');
+  const likeBase = base.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  const [rows] = await connection.query(
+    `SELECT po_number FROM purchase_orders
+     WHERE po_number = ?
+        OR po_number LIKE ? ESCAPE '\\\\'`,
+    [base, `${likeBase}/R%`]
+  );
+  let maxRev = 0;
+  for (const row of rows) {
+    const match = String(row.po_number || '').match(/\/R(\d+)$/i);
+    if (match) maxRev = Math.max(maxRev, Number(match[1]) || 0);
+  }
+  return `${base}/R${maxRev + 1}`.slice(0, PO_NUMBER_MAX_LEN);
+}
+
 async function assertPoNumberAvailable(poNumber, excludeId, connection = pool, docLabel = 'Purchase Order') {
   const sql = excludeId
     ? `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) AND id <> ? LIMIT 1`
@@ -3240,10 +3271,20 @@ export async function savePurchaseOrderDraft(user, body = {}) {
   const purchaseType = normalizePurchaseType(
     body.purchaseType || existing?.purchase_type || 'purchase_order'
   );
-  const referencePoNumber =
+  let referencePoNumber =
     body.referencePoNumber !== undefined
       ? body.referencePoNumber?.trim() || null
       : existing?.reference_po_number || null;
+  if (!referencePoNumber && amendmentPoNumberOrNull(body.poNumber || existing?.po_number)) {
+    const base = basePoNumber(body.poNumber || existing?.po_number);
+    if (base) {
+      const [found] = await pool.query(
+        `SELECT id FROM purchase_orders WHERE LOWER(po_number) = LOWER(?) LIMIT 1`,
+        [base]
+      );
+      if (found.length) referencePoNumber = base;
+    }
+  }
 
   const conn = await pool.getConnection();
   let savedPoId = existing?.id || null;
@@ -3257,9 +3298,22 @@ export async function savePurchaseOrderDraft(user, body = {}) {
 
     if (existing) {
       const existingNo = String(existing.po_number || '').trim();
+      const requestedAmendment = !existing.pr_id ? amendmentPoNumberOrNull(body.poNumber) : null;
       const keepOfficialManualNumber =
         !existing.pr_id && existingNo && !isDraftPlaceholderPoNumber(existingNo);
-      poNumber = keepOfficialManualNumber ? existingNo : stableDraftPoNumber(existing.id);
+      if (requestedAmendment) {
+        if (requestedAmendment.toLowerCase() !== existingNo.toLowerCase()) {
+          await assertPoNumberAvailable(
+            requestedAmendment,
+            existing.id,
+            conn,
+            purchaseTypeLabel(purchaseType)
+          );
+        }
+        poNumber = requestedAmendment;
+      } else {
+        poNumber = keepOfficialManualNumber ? existingNo : stableDraftPoNumber(existing.id);
+      }
       savedPoId = existing.id;
       await conn.query(
         `UPDATE purchase_orders SET
@@ -3359,7 +3413,18 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       if (!entityIdForNumber) {
         throw new Error('Select an entity before saving a manual PO draft');
       }
-      poNumber = tempDraftPoNumber(user.id);
+      const requestedAmendment = amendmentPoNumberOrNull(body.poNumber);
+      if (requestedAmendment) {
+        await assertPoNumberAvailable(
+          requestedAmendment,
+          null,
+          conn,
+          purchaseTypeLabel(purchaseType)
+        );
+        poNumber = requestedAmendment;
+      } else {
+        poNumber = tempDraftPoNumber(user.id);
+      }
       const [result] = await conn.query(
         `INSERT INTO purchase_orders
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
@@ -3399,8 +3464,10 @@ export async function savePurchaseOrderDraft(user, body = {}) {
         ]
       );
       savedPoId = result.insertId;
-      poNumber = stableDraftPoNumber(savedPoId);
-      await conn.query(`UPDATE purchase_orders SET po_number = ? WHERE id = ?`, [poNumber, savedPoId]);
+      if (!amendmentPoNumberOrNull(poNumber)) {
+        poNumber = stableDraftPoNumber(savedPoId);
+        await conn.query(`UPDATE purchase_orders SET po_number = ? WHERE id = ?`, [poNumber, savedPoId]);
+      }
       await persistDraftLineItems(conn, savedPoId, lineItems);
     }
 
@@ -3832,6 +3899,7 @@ export async function listTrackPurchaseOrders(
       CAST(NULL AS SIGNED) AS po_id,
       pr.pr_number COLLATE utf8mb4_unicode_ci AS pr_number,
       CAST('' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS po_number,
+      CAST('' AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS reference_po_number,
       pr.title COLLATE utf8mb4_unicode_ci AS title,
       d.name COLLATE utf8mb4_unicode_ci AS department,
       u.name COLLATE utf8mb4_unicode_ci AS requester,
@@ -3891,6 +3959,7 @@ export async function listTrackPurchaseOrders(
       po.id AS po_id,
       COALESCE(pr.pr_number, '') COLLATE utf8mb4_unicode_ci AS pr_number,
       po.po_number COLLATE utf8mb4_unicode_ci AS po_number,
+      COALESCE(po.reference_po_number, '') COLLATE utf8mb4_unicode_ci AS reference_po_number,
       COALESCE(NULLIF(pr.title, ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(po.po_terms_details, '$.subject')), ''), CASE WHEN po.pr_id IS NULL THEN 'Manual PO' ELSE '' END) COLLATE utf8mb4_unicode_ci AS title,
       COALESCE(d.name, '') COLLATE utf8mb4_unicode_ci AS department,
       COALESCE(u.name, '') COLLATE utf8mb4_unicode_ci AS requester,
@@ -4050,6 +4119,7 @@ export async function listTrackPurchaseOrders(
       poId: r.po_id != null ? Number(r.po_id) : null,
       prNumber: r.pr_number || '',
       poNumber: r.po_number || null,
+      referencePoNumber: r.reference_po_number || '',
       title: r.title || '',
       department: r.department || '',
       requester: r.requester || '',

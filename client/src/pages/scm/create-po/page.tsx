@@ -1129,6 +1129,8 @@ export default function CreatePOPage() {
   const workspacePanelRef = useRef<PurchaseRequestsPanelHandle>(null);
   const prIdParam = searchParams.get('prId');
   const poIdParam = searchParams.get('poId');
+  const amendFromParam = searchParams.get('amendFrom');
+  const amendFromId = amendFromParam ? Number(amendFromParam) : null;
   const refPoParam = searchParams.get('refPo');
   const fromCsvParam = searchParams.get('from');
   const numericPrId = prIdParam ? Number(prIdParam) : null;
@@ -1321,6 +1323,7 @@ export default function CreatePOPage() {
     message: string;
   }>({ state: 'idle', message: '' });
   const appliedPrReferenceRef = useRef('');
+  const amendAppliedRef = useRef(false);
   const [masterVendors, setMasterVendors] = useState<VendorRecord[]>([]);
   const csvAppliedRef = useRef(false);
   const letterheadAutoKeyRef = useRef('');
@@ -3446,10 +3449,11 @@ export default function CreatePOPage() {
         );
       }
 
-      const existingDraftId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
+      const rememberedId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
+      const existingDraftId = rememberedId && rememberedId !== amendFromId ? rememberedId : null;
       if (existingDraftId) payload.poId = existingDraftId;
       if (numericPrId) payload.prId = numericPrId;
-      else if (Number(pr?.id) > 0) payload.prId = Number(pr.id);
+      else if (!amendFromId && Number(pr?.id) > 0) payload.prId = Number(pr.id);
 
       await applyMasterVendorToPayload(payload);
 
@@ -3718,10 +3722,22 @@ export default function CreatePOPage() {
       setLineItems(refLineItems);
     }
 
+    if (refNo) {
+      appliedPrReferenceRef.current = refNo.toLowerCase();
+      setManualPrDetails((prev) => ({ ...prev, prNumber: refNo }));
+    }
+    if (po.vendorName) setManualVendorName(String(po.vendorName));
+    if (po.vendorEmail) setManualVendorEmail(String(po.vendorEmail));
+    const sourceEntityId = Number(po.entityId || po.prEntityId || 0);
+    if (sourceEntityId > 0) setManualEntityId(sourceEntityId);
+    if (po.entity || po.prEntityName) setEntity(String(po.entity || po.prEntityName));
+    if (po.currency) setCurrency(normalizeCurrency(String(po.currency)));
+    if (po.poDate) setPoDate(String(po.poDate));
+
     setReferencePoLoaded({
       poNumber: refNo,
       vendorName: String(po.vendorName || ''),
-      prNumber: String(po.prNumber || ''),
+      prNumber: refNo,
       grandTotal: Number(po.grandTotal) || 0,
     });
   }, [documentType]);
@@ -3753,6 +3769,42 @@ export default function CreatePOPage() {
     },
     [referencePoNumber, applyReferencePoDetails]
   );
+
+  const applyAmendmentNumber = useCallback((amendmentNumber: string) => {
+    const next = String(amendmentNumber || '').trim();
+    if (!next) return;
+    setImportedPoNumber(next);
+    setPoNumber(next);
+    setPoNumberTouched(true);
+  }, []);
+
+  const startAmendmentFromPo = useCallback(
+    async (poId: number) => {
+      const res = await poApi.amendmentPreview(poId);
+      const po = (res.data?.po || {}) as Record<string, unknown>;
+      if (!po.poNumber) throw new Error('PO not found');
+      applyReferencePoDetails(po);
+      applyAmendmentNumber(String(res.data?.amendmentNumber || ''));
+      setReferencePoError('');
+    },
+    [applyReferencePoDetails, applyAmendmentNumber]
+  );
+
+  useEffect(() => {
+    if (!isManualMode || loading || !amendFromId || Number.isNaN(amendFromId) || amendAppliedRef.current) {
+      return;
+    }
+    amendAppliedRef.current = true;
+    setCreatedPoId(null);
+    createdPoIdRef.current = null;
+    setReferencePoLoading(true);
+    void startAmendmentFromPo(amendFromId)
+      .catch((err) => {
+        amendAppliedRef.current = false;
+        setReferencePoError(err instanceof Error ? err.message : 'Could not load amendment');
+      })
+      .finally(() => setReferencePoLoading(false));
+  }, [isManualMode, loading, amendFromId, startAmendmentFromPo]);
 
   const applyCsvImportPayload = useCallback((payload: PoCsvImportPayload) => {
     if (payload.lineItems?.length) {
@@ -4108,7 +4160,7 @@ export default function CreatePOPage() {
       }
 
       // After Save Draft, send must promote that draft and only then assign official PO number
-      if (createdPoId) payload.poId = createdPoId;
+      if (createdPoId && createdPoId !== amendFromId) payload.poId = createdPoId;
       // Always ask server to route Send for Approval to SCM Manager (Rajeev)
       payload.resubmitForApproval = true;
       payload.saveAsDraft = false;
@@ -4494,6 +4546,25 @@ export default function CreatePOPage() {
                     Send Back
                   </button>
                 )}
+                {editPoId ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const label = String(poNumber || '').trim() || `PO #${editPoId}`;
+                      const ok = window.confirm(
+                        `Create an amendment of ${label}?\n\nThe new document is numbered /R1 or /R2 and this PO’s details are copied into the form. Click OK, then Save as Draft.`
+                      );
+                      if (!ok) return;
+                      navigate(`/scm/create-po?manual=1&amendFrom=${editPoId}`);
+                    }}
+                    disabled={submitting}
+                    className="px-3.5 py-1.5 border border-[#1E88E5] bg-white text-[#1565C0] rounded-md hover:bg-[#E3F2FD] transition-colors cursor-pointer whitespace-nowrap text-sm font-semibold disabled:opacity-50"
+                    title="Copy this PO into a new amendment numbered /R1, /R2"
+                  >
+                    <i className="ri-file-copy-2-line mr-1"></i>
+                    Amendment
+                  </button>
+                ) : null}
                 {canSaveDraft && (
                   <button
                     type="button"
@@ -4835,7 +4906,7 @@ export default function CreatePOPage() {
                           Load {docLabel} Details by Number
                         </h4>
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Enter an existing {docNoLabel} to auto-fill delivery, terms, letterhead, line items and POD fields
+                          Enter a PO reference to copy that PO into the form. PR reference shows the same PO number. Amendment numbers the new document /R1, /R2.
                         </p>
                       </div>
                     </div>
@@ -4872,6 +4943,34 @@ export default function CreatePOPage() {
                             <i className="ri-download-cloud-2-line"></i> Auto Fill
                           </>
                         )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const num = referencePoNumber.trim();
+                          if (!num) return;
+                          const ok = window.confirm(
+                            `Create an amendment of ${num}?\n\nThe new document is numbered /R1 or /R2 and this PO’s details are copied into the form. Click OK, then Save as Draft.`
+                          );
+                          if (!ok) return;
+                          setReferencePoLoading(true);
+                          setReferencePoError('');
+                          void poApi
+                            .getByNumber(num)
+                            .then(async (res) => {
+                              const id = Number((res.data as { id?: number })?.id || 0);
+                              if (!id) throw new Error('PO not found');
+                              await startAmendmentFromPo(id);
+                            })
+                            .catch((err) => {
+                              setReferencePoError(err instanceof Error ? err.message : 'PO not found');
+                            })
+                            .finally(() => setReferencePoLoading(false));
+                        }}
+                        disabled={referencePoLoading || !referencePoNumber.trim()}
+                        className="px-4 py-2.5 border border-[#1E88E5] bg-white text-[#1565C0] rounded-lg hover:bg-[#E3F2FD] transition-colors cursor-pointer text-sm font-semibold whitespace-nowrap disabled:opacity-60"
+                      >
+                        Amendment
                       </button>
                     </div>
                     {referencePoError && (

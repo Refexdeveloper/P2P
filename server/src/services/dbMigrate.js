@@ -41,6 +41,7 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests ADD COLUMN vendor_selection ENUM('own', 'scm') NOT NULL DEFAULT 'scm'`,
   `ALTER TABLE rfq_configs ADD COLUMN requester_submitted_at TIMESTAMP NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN reference_po_number VARCHAR(30) NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN reference_po_number VARCHAR(40) NULL`,
   `ALTER TABLE po_letterhead_masters ADD COLUMN entity VARCHAR(255) NULL`,
   `ALTER TABLE po_letterhead_masters ADD COLUMN header_logo LONGTEXT NULL`,
   `ALTER TABLE po_letterhead_masters ADD COLUMN footer_logo LONGTEXT NULL`,

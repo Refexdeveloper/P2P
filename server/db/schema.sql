@@ -197,7 +197,7 @@ CREATE TABLE IF NOT EXISTS rfq_configs (
 CREATE TABLE IF NOT EXISTS purchase_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_number VARCHAR(40) NOT NULL UNIQUE,
-  reference_po_number VARCHAR(30) NULL,
+  reference_po_number VARCHAR(40) NULL,
   pr_id INT NULL,
   vendor_name VARCHAR(150) NOT NULL,
   vendor_email VARCHAR(150) NOT NULL,
