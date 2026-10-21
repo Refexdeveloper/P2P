@@ -98,10 +98,11 @@ router.post('/reset-data', async (req, res) => {
 router.post('/p2p-report/send', async (req, res) => {
   try {
     const to = String(req.body?.to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
-    const data = await sendP2pActivityReport(to);
+    const data = await sendP2pActivityReport({ to, slot: 'manual' });
+    const ccNote = data.cc?.length ? ` (cc: ${data.cc.join(', ')})` : '';
     res.json({
       data,
-      message: `P2P report sent to ${data.to}`,
+      message: `P2P report sent to ${data.to}${ccNote}`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

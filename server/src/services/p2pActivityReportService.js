@@ -1,14 +1,34 @@
 import pool from '../config/db.js';
 import { ensureUserActivityLogsTable } from './userActivityLogService.js';
 import { sendMailToRecipients } from './emailService.js';
+import { ensureEmailLogsTable } from './emailLogService.js';
 import {
   DEFAULT_PO_APPROVER_EMAIL,
   DEFAULT_PO_APPROVER_NAME,
   DEFAULT_SCM_MANAGER_EMAIL,
   DEFAULT_SCM_MANAGER_NAME,
+  getScmBuyerNotifyEmails,
 } from '../utils/scmAssignee.js';
 
-export const P2P_REPORT_TO = 'sathishkumar.r@refex.co.in';
+export const P2P_REPORT_TO = String(process.env.P2P_REPORT_TO || 'anil.kulkarni@refex.co.in')
+  .trim()
+  .toLowerCase();
+
+/** Named copy list. Active SCM Buyer and SCM Manager logins are added at send time. */
+export const P2P_REPORT_CC = [
+  'lalitha.u@refex.co.in',
+  'srivaths.varadharajan@refex.co.in',
+  'sudharshan.nc@refex.co.in',
+];
+
+const REPORT_TZ = String(process.env.P2P_REPORT_TZ || process.env.TZ || 'Asia/Kolkata').trim();
+const REPORT_MORNING_HOUR = Number(process.env.P2P_REPORT_MORNING_HOUR ?? 11);
+const REPORT_EVENING_HOUR = Number(process.env.P2P_REPORT_EVENING_HOUR ?? 18);
+const REPORT_CHECK_MS = Number(process.env.P2P_REPORT_CHECK_MS) || 5 * 60 * 1000;
+
+const lastReportSlotDate = { morning: null, evening: null };
+let reportSchedulerStarted = false;
+let reportSlotRunning = false;
 
 const SIGNED_PO = `LOWER(TRIM(IFNULL(po.status, ''))) IN (
   'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
@@ -211,7 +231,8 @@ function activityRows(users) {
 }
 
 export function buildP2pActivityReportEmail(report) {
-  const subject = `RMC P2P Report — ${report.generatedAt}`;
+  const slot = report.slotLabel ? ` — ${report.slotLabel}` : '';
+  const subject = `RMC P2P Report${slot} — ${report.generatedAt}`;
   const blue = 'background:linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%) !important; border:1px solid #dfe8f2; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(30,80,160,0.06);';
   const amber = 'background:linear-gradient(180deg,#fffaf2 0%,#fef3e2 100%) !important; border:1px solid #f2e2c4; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(180,120,20,0.07);';
   const green = 'background:linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%) !important; border:1px solid #c7ead4; border-radius:8px; padding:14px 4px; box-shadow:0 2px 6px rgba(26,140,92,0.08);';
@@ -323,14 +344,84 @@ RMC P2P Report &middot; Automated &middot; Do not reply to this email
   return { subject, html, text };
 }
 
-export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
-  const recipient = String(to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function calendarDateInTz(date = new Date(), timeZone = REPORT_TZ) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function hourInTz(date = new Date(), timeZone = REPORT_TZ) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    return Number(parts.find((part) => part.type === 'hour')?.value);
+  } catch {
+    return date.getHours();
+  }
+}
+
+export function shouldRunReportSlot(slot, now = new Date()) {
+  const key = slot === 'evening' ? 'evening' : 'morning';
+  const today = calendarDateInTz(now);
+  if (lastReportSlotDate[key] === today) return false;
+  if (String(process.env.P2P_REPORT_FORCE || '').trim() === '1') return true;
+  const hour = hourInTz(now);
+  const start = key === 'evening' ? REPORT_EVENING_HOUR : REPORT_MORNING_HOUR;
+  return hour === start;
+}
+
+export async function resolveP2pReportCc(to = P2P_REPORT_TO) {
+  const toEmail = normalizeEmail(to);
+  const emails = new Set(P2P_REPORT_CC.map(normalizeEmail).filter(Boolean));
+  try {
+    const buyers = await getScmBuyerNotifyEmails();
+    for (const email of buyers) emails.add(normalizeEmail(email));
+  } catch (err) {
+    console.warn('P2P report SCM buyer copy list skipped:', err.message);
+  }
+  try {
+    const [managers] = await pool.query(
+      `SELECT email FROM users
+       WHERE is_active = 1 AND role = 'SCM Manager' AND IFNULL(email, '') <> ''`
+    );
+    for (const row of managers) emails.add(normalizeEmail(row.email));
+  } catch (err) {
+    console.warn('P2P report SCM manager copy list skipped:', err.message);
+  }
+  emails.delete('');
+  emails.delete(toEmail);
+  return [...emails];
+}
+
+export async function sendP2pActivityReport(toOrOptions = P2P_REPORT_TO) {
+  const options = typeof toOrOptions === 'string' ? { to: toOrOptions } : toOrOptions || {};
+  const recipient = normalizeEmail(options.to || P2P_REPORT_TO) || P2P_REPORT_TO;
+  const cc = Array.isArray(options.cc) ? options.cc.map(normalizeEmail) : await resolveP2pReportCc(recipient);
+  const slot = options.slot === 'morning' || options.slot === 'evening' ? options.slot : 'manual';
+  const slotLabel = slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : '';
   const report = await loadP2pActivityReport();
+  report.slotLabel = slotLabel;
   const built = buildP2pActivityReportEmail(report);
   await sendMailToRecipients([recipient], built.subject, built.html, built.text, [], {
     emailType: 'p2p_activity_report',
     skipLogo: true,
+    cc,
     meta: {
+      slot,
       totalPrs: report.totalPrs,
       totalPos: report.totalPos,
       approvedPos: report.approvedPos,
@@ -340,5 +431,103 @@ export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
       tarkeshPending: report.tarkeshPending,
     },
   });
-  return { to: recipient, subject: built.subject, report };
+  return { to: recipient, cc, subject: built.subject, report };
+}
+
+async function reportSlotAlreadySent(conn, slot, today) {
+  const [rows] = await conn.query(
+    `SELECT meta_json, created_at
+     FROM email_logs
+     WHERE email_type = 'p2p_activity_report'
+       AND status IN ('queued', 'sent')
+       AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 36 HOUR)
+     ORDER BY id DESC
+     LIMIT 40`
+  );
+  for (const row of rows) {
+    let meta = row.meta_json;
+    if (typeof meta === 'string') {
+      try {
+        meta = JSON.parse(meta);
+      } catch {
+        meta = null;
+      }
+    }
+    if (String(meta?.slot || '') !== slot) continue;
+    const sentAt = row.created_at instanceof Date ? row.created_at : new Date(row.created_at);
+    if (calendarDateInTz(sentAt) === today) return true;
+  }
+  return false;
+}
+
+async function runReportSlot(slot) {
+  await ensureEmailLogsTable();
+  const today = calendarDateInTz();
+  const conn = await pool.getConnection();
+  const lockName = `p2p_report_${slot}_${today}`;
+  let locked = false;
+  try {
+    const [lockRows] = await conn.query(`SELECT GET_LOCK(?, 8) AS locked`, [lockName]);
+    locked = Number(lockRows[0]?.locked) === 1;
+    if (!locked) return { skipped: true, reason: 'lock', slot };
+    if (await reportSlotAlreadySent(conn, slot, today)) {
+      lastReportSlotDate[slot] = today;
+      return { skipped: true, reason: 'already_sent', slot };
+    }
+    const data = await sendP2pActivityReport({ slot });
+    lastReportSlotDate[slot] = today;
+    console.log(
+      `RMC P2P report ${slot} sent to ${data.to} (cc: ${data.cc.join(', ')})`
+    );
+    return data;
+  } finally {
+    if (locked) {
+      try {
+        await conn.query(`SELECT RELEASE_LOCK(?)`, [lockName]);
+      } catch {
+        /* connection may already be closing */
+      }
+    }
+    conn.release();
+  }
+}
+
+export async function processDueP2pReportSlots(now = new Date()) {
+  if (String(process.env.P2P_REPORT_ENABLED ?? 'true').trim().toLowerCase() === 'false') {
+    return { skipped: true, reason: 'disabled' };
+  }
+  const results = {};
+  for (const slot of ['morning', 'evening']) {
+    if (!shouldRunReportSlot(slot, now)) {
+      results[slot] = { skipped: true, reason: 'outside_slot' };
+      continue;
+    }
+    results[slot] = await runReportSlot(slot);
+  }
+  return results;
+}
+
+export function startP2pReportScheduler() {
+  if (reportSchedulerStarted) return;
+  if (String(process.env.P2P_REPORT_ENABLED ?? 'true').trim().toLowerCase() === 'false') {
+    console.log('RMC P2P report scheduler disabled (P2P_REPORT_ENABLED=false)');
+    return;
+  }
+  reportSchedulerStarted = true;
+  const runOnce = () => {
+    if (reportSlotRunning) return;
+    reportSlotRunning = true;
+    processDueP2pReportSlots()
+      .catch((err) => {
+        console.error('RMC P2P report scheduler failed:', err.message);
+      })
+      .finally(() => {
+        reportSlotRunning = false;
+      });
+  };
+  setTimeout(runOnce, 25_000);
+  setInterval(runOnce, REPORT_CHECK_MS);
+  console.log(
+    `RMC P2P report scheduler started (daily ${REPORT_MORNING_HOUR}:00 and ${REPORT_EVENING_HOUR}:00 ${REPORT_TZ}, to ${P2P_REPORT_TO})`
+  );
 }

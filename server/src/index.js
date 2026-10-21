@@ -18,6 +18,7 @@ import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail, flushOutboundMail, resumeStuckQueuedEmails } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
 import { startSlaBreachScheduler } from './services/slaBreachService.js';
+import { startP2pReportScheduler } from './services/p2pActivityReportService.js';
 import { startCloudSubscriptionScheduler } from './services/cloudSubscriptionService.js';
 import { pingDatabase } from './config/db.js';
 import { pingGcs } from './services/gcsStorage.js';
@@ -249,6 +250,12 @@ async function start() {
       startCloudSubscriptionScheduler();
     } catch (err) {
       console.error('Cloud subscription scheduler failed to start:', err.message);
+    }
+
+    try {
+      startP2pReportScheduler();
+    } catch (err) {
+      console.error('RMC P2P report scheduler failed to start:', err.message);
     }
 
     console.log(`P2P API server running on http://localhost:${PORT}`);
