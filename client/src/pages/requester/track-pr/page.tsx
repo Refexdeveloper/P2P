@@ -299,8 +299,24 @@ function normalizeTimelineStageName(stageName: string): string {
   return raw;
 }
 
-function currentStageLabel(rawStatus: string, statusUI: string): string | null {
-  if (rawStatus === 'PENDING_HOD_APPROVAL') return 'L1 Manager Approval';
+function isFunctionalFlow(pr: Record<string, unknown>): boolean {
+  return asText(pr.prFlow || pr.pr_flow).toLowerCase() === 'functional';
+}
+
+function prHasPurchaseOrder(pr: Record<string, unknown>): boolean {
+  return Boolean(pr.hasPurchaseOrder || pr.poId || pr.poNumber);
+}
+
+function currentStageLabel(
+  rawStatus: string,
+  statusUI: string,
+  pr: Record<string, unknown> = {}
+): string | null {
+  const functional = isFunctionalFlow(pr);
+  const vendor = asText(pr.vendorSelection || pr.vendor_selection, 'scm').toLowerCase();
+  if (rawStatus === 'PENDING_HOD_APPROVAL') {
+    return functional ? 'User Approval' : 'L1 Manager Approval';
+  }
   if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'L2 Manager Approval';
   if (rawStatus === 'PENDING_CFO_APPROVAL') return 'Mugesh Approval';
   if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'L1 Vendor Final';
@@ -311,7 +327,12 @@ function currentStageLabel(rawStatus: string, statusUI: string): string | null {
   if (rawStatus === 'PENDING_BUSINESS_APPROVAL') return 'SCM Manager Approval';
   if (rawStatus === 'RETURNED') return 'Returned for Rework';
   if (rawStatus === 'REJECTED') return 'Rejected';
-  if (rawStatus === 'APPROVED') return 'PO Create';
+  if (rawStatus === 'APPROVED') {
+    if (functional && !prHasPurchaseOrder(pr)) {
+      return vendor === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry';
+    }
+    return 'PO Create';
+  }
   if (rawStatus === 'DRAFT') return null;
   return statusUI ? normalizeTimelineStageName(statusUI) : null;
 }
@@ -328,7 +349,7 @@ function approverForCurrentStage(pr: Record<string, unknown>, rawStatus: string)
   if (rawStatus === 'PENDING_BUSINESS_APPROVAL') {
     return personName(pr.scmManager, 'SCM Manager');
   }
-  if (rawStatus === 'PENDING_SCM_PO') {
+  if (rawStatus === 'PENDING_SCM_PO' || rawStatus === 'APPROVED') {
     return personName(pr.scmBuyer, 'SCM Buyer');
   }
   return '—';
@@ -366,6 +387,10 @@ function ensureScmPipelineStages(
     );
   const terminal = ['REJECTED', 'RETURNED', 'DRAFT'].includes(rawStatus);
   if (terminal) return stages;
+  // Functional approval is done, but SCM Final RFQ / RFQ Entry is still the open step.
+  if (isFunctionalFlow(pr) && rawStatus === 'APPROVED' && !prHasPurchaseOrder(pr)) {
+    return stages;
+  }
 
   const inScmStatuses =
     rawStatus === 'PENDING_BUSINESS_APPROVAL' || rawStatus === 'PENDING_SCM_PO';
@@ -573,20 +598,24 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
     prevDate = dateOnly || prevDate;
   }
 
-  const currentLabel = currentStageLabel(rawStatus, asText(pr.statusUI));
+  const currentLabel = currentStageLabel(rawStatus, asText(pr.statusUI), pr);
   const terminal = ['APPROVED', 'REJECTED', 'RETURNED', 'DRAFT'].includes(rawStatus);
+  const functionalStillOpen =
+    rawStatus === 'APPROVED' && isFunctionalFlow(pr) && !prHasPurchaseOrder(pr);
   const scmCurrent =
     rawStatus === 'PENDING_BUSINESS_APPROVAL' ||
     rawStatus === 'PENDING_SCM_PO';
 
-  if (currentLabel && !terminal && !scmCurrent) {
-    const already = stages.some(
-      (s) =>
-        s.stage.toLowerCase() === currentLabel.toLowerCase() &&
-        (s.status === 'current' || s.status === 'completed')
-    );
+  if (currentLabel && ((!terminal && !scmCurrent) || functionalStillOpen)) {
+    const sameName = (s: TimelineStage) => s.stage.toLowerCase() === currentLabel.toLowerCase();
+    const alreadyCurrent = stages.some((s) => sameName(s) && s.status === 'current');
+    const alreadyCompleted = stages.some((s) => sameName(s) && s.status === 'completed');
+    const nextApproverSameStage =
+      alreadyCompleted &&
+      rawStatus === 'PENDING_HOD_APPROVAL' &&
+      isFunctionalFlow(pr);
     const currentApprover = approverForCurrentStage(pr, rawStatus);
-    if (!already) {
+    if (!alreadyCurrent && (!alreadyCompleted || nextApproverSameStage)) {
       stages.push({
         stage: currentLabel,
         date: '',
@@ -594,10 +623,8 @@ function buildTimeline(pr: Record<string, unknown>): TimelineStage[] {
         status: 'current',
         sla: computeSla(prevDate || submittedDate, null, 'current'),
       });
-    } else {
-      const match = [...stages].reverse().find(
-        (s) => s.stage.toLowerCase() === currentLabel.toLowerCase() && s.status !== 'completed'
-      );
+    } else if (!alreadyCurrent) {
+      const match = [...stages].reverse().find((s) => sameName(s) && s.status !== 'completed');
       if (match && match.status !== 'current') {
         match.status = 'current';
         match.approver = currentApprover || match.approver;
