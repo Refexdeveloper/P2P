@@ -624,7 +624,7 @@ export default function TrackPoPage() {
         </div>
       ) : null}
       <div className="tasks-fx min-h-full font-sans text-[#0F172A]">
-        <section className="tfx-hero">
+        <section className="tfx-hero tfx-hero--plain">
           <div className="tfx-bubbles" aria-hidden="true">
             <i /><i /><i /><i /><i /><i /><i />
           </div>
@@ -701,8 +701,18 @@ export default function TrackPoPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search PR, PO/WO, vendor, title, entity..."
-                    className="tfx-input box-border h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm outline-none"
+                    className={`tfx-input box-border h-11 w-full rounded-xl border bg-white pl-10 text-sm outline-none ${search ? 'pr-10' : 'pr-4'}`}
                   />
+                  {search ? (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setSearch('')}
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      <i className="ri-close-line text-lg" aria-hidden />
+                    </button>
+                  ) : null}
                 </div>
                 <EntitySearchSelect
                   entities={entities}

@@ -4228,7 +4228,7 @@ export default function CreatePOPage() {
     return (
       <DashboardLayout>
         <div className="tasks-fx po-fx min-h-full font-sans text-[#0F172A]">
-          <section className="tfx-hero">
+          <section className="tfx-hero tfx-hero--plain">
             <div className="tfx-bubbles" aria-hidden="true">
               <i /><i /><i /><i /><i /><i /><i />
             </div>

@@ -548,6 +548,7 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
       <section id="po-workspace-table" className="po-panel tfx-panel relative scroll-mt-24 rounded-[20px]">
         <div className="po-filter">
           <div className="po-search">
+            <i className="ri-search-line" aria-hidden />
             <input
               type="text"
               placeholder="Search by PR number, PO number, title..."
@@ -555,6 +556,16 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
               onChange={(e) => setSearchQuery(e.target.value)}
               className="tfx-input"
             />
+            {searchQuery ? (
+              <button
+                type="button"
+                className="po-search-clear"
+                aria-label="Clear search"
+                onClick={() => setSearchQuery('')}
+              >
+                <i className="ri-close-line" aria-hidden />
+              </button>
+            ) : null}
           </div>
           <div className="po-tabs">
             {(

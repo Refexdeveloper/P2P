@@ -94,7 +94,15 @@
 .po-panel { background-color: #fff !important; overflow: hidden; animation: tfx-fadeUp .8s cubic-bezier(.2,.8,.2,1) .45s both; }
 .po-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 16px 10px; }
 .po-search { position: relative; flex: 1 1 320px; min-width: 240px; }
-.po-search input { width: 100%; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #e3eaef; font-size: 14px; outline: none; background: #fff; }
+.po-search > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #6b7684; font-size: 17px; pointer-events: none; }
+.po-search input { width: 100%; height: 44px; padding: 0 40px 0 40px; border-radius: 12px; border: 1px solid #e3eaef; font-size: 14px; outline: none; background: #fff; }
+.po-search-clear {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 28px; height: 28px; border: 0; border-radius: 8px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: #6b7684; cursor: pointer; font-size: 18px;
+}
+.po-search-clear:hover { background: #eef3f5; color: #0f172a; }
 .po-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .po-tab {
   --t: #0f6b7a; --tb: #e6f6f8;
