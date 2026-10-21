@@ -2057,7 +2057,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
   const total = Number(countRow?.total || 0);
 
   const [rows] = await pool.query(
-    `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.priority, pr.status,
+    `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.priority, pr.status, pr.requester_id,
             pr.total_amount, pr.justification, pr.required_date, pr.vendor_selection,
             pr.pr_flow, pr.current_stage, pr.submitted_at, pr.created_at, pr.entity_id,
             d.name AS department_name, u.name AS requester_name,
@@ -2095,6 +2095,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       lineItems: [],
       approvalHistory: [],
       requester: row.requester_name,
+      requesterId: row.requester_id,
       vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
       prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
       poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
@@ -5818,6 +5819,7 @@ export function toRequesterDashboardFormat(pr) {
     lineItems: pr.lineItems,
     approvalHistory: pr.approvalHistory,
     requester: pr.requester,
+    requesterId: pr.requesterId || null,
     vendorSelection: pr.vendorSelection,
     prFlow: pr.prFlow,
     currentStage: pr.currentStage,

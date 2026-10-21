@@ -200,8 +200,6 @@ export default function CreatePRPage() {
   const wantFreshStart = !editPrId && searchParams.get('new') === '1';
   const freshHandledRef = useRef(false);
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
-  /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
-  const isAdminEditFlow = isEditMode && isAdminEditor;
   const [activeTab, setActiveTab] = useState<CreatePrTab>('basic');
 
   const [prNumber, setPrNumber] = useState(isEditMode ? '' : 'Auto on save');
@@ -296,6 +294,7 @@ export default function CreatePRPage() {
   const [isLoadingPr, setIsLoadingPr] = useState(isEditMode);
   const [loadError, setLoadError] = useState('');
   const [prStatus, setPrStatus] = useState('');
+  const [prRequesterId, setPrRequesterId] = useState<number | null>(null);
   const displayPrNumber = useMemo(
     () => formatPrNumberDisplay(prNumber, prStatus),
     [prNumber, prStatus]
@@ -379,6 +378,14 @@ export default function CreatePRPage() {
   };
 
   const isReturned = prStatus === 'RETURNED';
+  /** L1 editing a draft they raised — same Save Draft / Submit PR actions as a requester. */
+  const isOwnDraftEdit =
+    isEditMode &&
+    String(prStatus).toUpperCase() === 'DRAFT' &&
+    Number(prRequesterId) > 0 &&
+    Number(prRequesterId) === Number(user?.id);
+  /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
+  const isAdminEditFlow = isEditMode && isAdminEditor && !isOwnDraftEdit;
   const isPendingEditFlow =
     isEditMode &&
     !isAdminEditFlow &&
@@ -646,6 +653,8 @@ export default function CreatePRPage() {
           vendorName?: string;
           vendorEmail?: string;
           status: string;
+          requesterId?: number;
+          requesterId?: number;
           lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string; gstPercentage?: number }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
           attachments?: PrAttachmentRecord[];
@@ -750,6 +759,7 @@ export default function CreatePRPage() {
         setExpectedDeliveryTimeline(pr.expectedDeliveryTimeline || '');
         setPaymentTerms(pr.paymentTerms || '');
         setPrStatus(pr.status);
+        setPrRequesterId(Number(pr.requesterId) || null);
         setApprovalHistory(Array.isArray(pr.approvalHistory) ? pr.approvalHistory : []);
 
         const latestReturn = [...(pr.approvalHistory || [])]
@@ -904,6 +914,7 @@ export default function CreatePRPage() {
             if (isReusableDraftStatus(data.status)) {
               bindSavedDraftId(backendId);
               setPrStatus(String(data.status || '').toUpperCase());
+              setPrRequesterId(Number((data as { requesterId?: number }).requesterId) || null);
               if (data.prNumber) setPrNumber(data.prNumber);
               setAttachedFiles((prev) => mergeAttachedFiles(prev, mapServerAttachments(data.attachments)));
               const localCount = draft.lineItems?.length || 0;

@@ -76,6 +76,7 @@ interface TrackPR {
   poSentBack?: boolean;
   purchaseType?: string;
   attachments: PrAttachmentRecord[];
+  requesterId?: number;
   sassInvoice?: {
     id: number;
     invoiceNumber?: string | null;
@@ -235,6 +236,12 @@ function mapTrackStatus(rawStatus: string, statusFrontend: string): string {
   if (rawStatus === 'APPROVED') return 'po_issued';
   if (statusFrontend === 'approved') return 'approved';
   return 'pending_approval';
+}
+
+/** Submitted PR still waiting on L1 — Send moves it to the next step. */
+function l1CanSend(pr: { statusRaw?: string }) {
+  const raw = asText(pr.statusRaw).toUpperCase();
+  return raw === 'PENDING_HOD_APPROVAL' || raw === 'PENDING_RFQ_MANAGER_APPROVAL';
 }
 
 function personName(person: unknown, fallback = ''): string {
@@ -660,6 +667,7 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     status: mapTrackStatus(rawStatus, statusFrontend),
     statusRaw: rawStatus,
     statusUI: asText(pr.statusUI, statusFrontend),
+    requesterId: Number(pr.requesterId || pr.requester_id) || undefined,
     submittedDate,
     priority: asText(pr.priorityLower || pr.priority, 'medium').toLowerCase(),
     requiredDate: asText(pr.requiredDate, '—'),
@@ -793,8 +801,10 @@ const softInput =
 export default function TrackPRPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  const isL1Manager = user?.role === 'HOD Approver';
+  const isAdminEditor = Boolean(user?.role && !isL1Manager && ADMIN_EDIT_ROLES.includes(user.role));
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
+  const [sendingId, setSendingId] = useState<number | null>(null);
   const [rows, setRows] = useState<TrackPR[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -910,6 +920,22 @@ export default function TrackPRPage() {
 
   const isDraftTrackPr = (pr: TrackPR) =>
     pr.status === 'draft' || asText(pr.statusRaw).toUpperCase() === 'DRAFT';
+
+  const handleL1Send = async (pr: TrackPR) => {
+    if (!pr.prId || sendingId) return;
+    setSendingId(pr.prId);
+    setError('');
+    try {
+      const res = await prApi.approve(pr.prId, 'approve', 'Sent from Track PR');
+      setToast(res.message || `${pr.id} sent to the next step`);
+      setTimeout(() => setToast(''), 3500);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send this PR');
+    } finally {
+      setSendingId(null);
+    }
+  };
 
   const handleDeleteDraft = async (pr: TrackPR) => {
     if (user?.role !== 'Requester' || !pr.prId || !isDraftTrackPr(pr)) return;
@@ -1252,7 +1278,33 @@ export default function TrackPRPage() {
                                 >
                                   <i className="ri-eye-line"></i>
                                 </button>
-                                {(isAdminEditor ||
+                                {isL1Manager &&
+                                  isDraftTrackPr(pr) &&
+                                  Number(pr.requesterId) === Number(user?.id) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                    title="Edit this draft and submit it"
+                                  >
+                                    <i className="ri-edit-line"></i>
+                                    Edit
+                                  </button>
+                                )}
+                                {isL1Manager && l1CanSend(pr) && (
+                                  <button
+                                    type="button"
+                                    disabled={sendingId === pr.prId}
+                                    onClick={() => void handleL1Send(pr)}
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
+                                    title="Approve and send this submitted PR to the next step"
+                                  >
+                                    <i className={sendingId === pr.prId ? 'ri-loader-4-line animate-spin' : 'ri-send-plane-line'} />
+                                    {sendingId === pr.prId ? 'Sending…' : 'Send'}
+                                  </button>
+                                )}
+                                {!isL1Manager &&
+                                  (isAdminEditor ||
                                   pr.status === 'draft' ||
                                   pr.status === 'returned' ||
                                   ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
