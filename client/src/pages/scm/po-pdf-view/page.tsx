@@ -97,7 +97,11 @@ export default function POPDFViewPage() {
       navigate('/scm/track-po');
       return;
     }
-    if (from === 'create-po' || from === 'purchase-requests') {
+    if (from === 'create-po') {
+      navigate('/scm/create-po');
+      return;
+    }
+    if (from === 'purchase-requests') {
       navigate('/scm/purchase-requests');
       return;
     }

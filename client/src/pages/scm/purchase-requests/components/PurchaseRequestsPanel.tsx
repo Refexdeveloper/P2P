@@ -24,6 +24,31 @@ export type PurchaseRequestsPanelHandle = {
   openImport: () => void;
 };
 
+type WorkspaceFilter = 'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled';
+
+const WORKSPACE_FILTERS: WorkspaceFilter[] = ['all', 'ready', 'created', 'approved', 'rejected', 'draft', 'cancelled'];
+const WORKSPACE_LIST_KEY = 'po-workspace-list';
+
+function readWorkspaceList(): { search: string; status: WorkspaceFilter; page: number } {
+  const empty = { search: '', status: 'all' as WorkspaceFilter, page: 1 };
+  try {
+    const raw = sessionStorage.getItem(WORKSPACE_LIST_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as { search?: string; status?: string; page?: number };
+    const status = WORKSPACE_FILTERS.includes(parsed.status as WorkspaceFilter)
+      ? (parsed.status as WorkspaceFilter)
+      : 'all';
+    const page = Number(parsed.page);
+    return {
+      search: String(parsed.search || ''),
+      status,
+      page: Number.isFinite(page) && page > 0 ? page : 1,
+    };
+  } catch {
+    return empty;
+  }
+}
+
 type RowStatus = 'Ready for PO' | 'Pending Approval' | 'PO Approved' | 'PO Rejected' | 'Draft' | 'Cancelled';
 
 interface BucketRow {
@@ -185,10 +210,12 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
   const [rows, setRows] = useState<BucketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'>('all');
-  const [page, setPage] = useState(1);
+  const savedList = useRef(readWorkspaceList()).current;
+  const keepRestoredPage = useRef(true);
+  const [searchQuery, setSearchQuery] = useState(savedList.search);
+  const [debouncedSearch, setDebouncedSearch] = useState(savedList.search.trim());
+  const [statusFilter, setStatusFilter] = useState<WorkspaceFilter>(savedList.status);
+  const [page, setPage] = useState(savedList.page);
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
     page: 1,
@@ -228,10 +255,25 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
+      if (keepRestoredPage.current) {
+        keepRestoredPage.current = false;
+        return;
+      }
       setPage(1);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        WORKSPACE_LIST_KEY,
+        JSON.stringify({ search: searchQuery, status: statusFilter, page })
+      );
+    } catch {
+      /* workspace restore is optional */
+    }
+  }, [searchQuery, statusFilter, page]);
 
   const mapTrackRows = (data: Array<Record<string, unknown>>): BucketRow[] =>
     data.map((r) => ({
@@ -506,7 +548,6 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
       <section id="po-workspace-table" className="po-panel tfx-panel relative scroll-mt-24 rounded-[20px]">
         <div className="po-filter">
           <div className="po-search">
-            <i className="ri-search-line" aria-hidden />
             <input
               type="text"
               placeholder="Search by PR number, PO number, title..."
@@ -698,7 +739,7 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               {pr.poId && (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}&from=purchase-requests`)}
+                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}&from=create-po`)}
                                   className="po-act"
                                 >
                                   <i className="ri-file-pdf-2-line mr-1.5" aria-hidden />

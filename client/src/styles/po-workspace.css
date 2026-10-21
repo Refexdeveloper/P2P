@@ -94,8 +94,7 @@
 .po-panel { background-color: #fff !important; overflow: hidden; animation: tfx-fadeUp .8s cubic-bezier(.2,.8,.2,1) .45s both; }
 .po-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 16px 10px; }
 .po-search { position: relative; flex: 1 1 320px; min-width: 240px; }
-.po-search i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #6b7684; font-size: 17px; }
-.po-search input { width: 100%; height: 44px; padding: 0 14px 0 40px; border-radius: 12px; border: 1px solid #e3eaef; font-size: 14px; outline: none; background: #fff; }
+.po-search input { width: 100%; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #e3eaef; font-size: 14px; outline: none; background: #fff; }
 .po-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .po-tab {
   --t: #0f6b7a; --tb: #e6f6f8;
