@@ -10,6 +10,7 @@ const SKIP_AUDIT_PATHS = [
   '/api/health/db',
   '/api/health/smtp',
   '/api/health/whatsapp',
+  '/api/docs',
 ];
 
 function shouldSkipAudit(path) {

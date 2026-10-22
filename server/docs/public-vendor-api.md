@@ -4,6 +4,9 @@ No login token. These three URLs are separate from the login-protected `/api/ven
 
 Base URL: `https://p2p-backend-645830234926.asia-south1.run.app`
 
+Swagger UI: `https://p2p-backend-645830234926.asia-south1.run.app/api/docs`  
+Local Swagger UI: `http://localhost:5000/api/docs`
+
 | Method | URL | Purpose |
 |--------|-----|---------|
 | GET | `/api/vendors/public` | List active vendors |
