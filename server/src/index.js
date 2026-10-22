@@ -24,7 +24,7 @@ import { pingGcs } from './services/gcsStorage.js';
 import { authenticate } from './middleware/auth.js';
 import { attachUserFromToken, auditUserActivity } from './middleware/activityAudit.js';
 import swaggerUi from 'swagger-ui-express';
-import { publicVendorOpenapi } from './docs/publicVendorOpenapi.js';
+import { buildOpenapi } from './docs/buildOpenapi.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -185,7 +185,7 @@ app.post('/api/health/whatsapp/send-test', authenticate, async (req, res) => {
 app.use(
   '/api/docs',
   swaggerUi.serve,
-  swaggerUi.setup(publicVendorOpenapi, { customSiteTitle: 'P2P Public Vendor API' })
+  swaggerUi.setup(buildOpenapi(), { customSiteTitle: 'P2P API' })
 );
 
 app.use('/api', attachUserFromToken, auditUserActivity);

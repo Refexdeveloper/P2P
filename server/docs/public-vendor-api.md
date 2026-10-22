@@ -7,6 +7,8 @@ Base URL: `https://p2p-backend-645830234926.asia-south1.run.app`
 Swagger UI: `https://p2p-backend-645830234926.asia-south1.run.app/api/docs`  
 Local Swagger UI: `http://localhost:5000/api/docs`
 
+The Swagger page lists every P2P API. These three public vendor calls include request and response fields.
+
 | Method | URL | Purpose |
 |--------|-----|---------|
 | GET | `/api/vendors/public` | List active vendors |
