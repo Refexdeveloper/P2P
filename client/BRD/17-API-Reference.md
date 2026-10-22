@@ -83,6 +83,9 @@ Auth: Bearer JWT token in `Authorization` header (except public RFQ quote endpoi
 | POST | `/vendors` | SCM Buyer | Create vendor |
 | PUT | `/vendors/:id` | SCM Buyer | Update vendor |
 | GET | `/vendors/:id/documents/:docType/file` | SCM Buyer/Manager | Download document |
+| GET | `/vendors/public` | Public | List active vendors. No login. See `server/docs/public-vendor-api.md` |
+| GET | `/vendors/public/:id` | Public | One active vendor. No login |
+| POST | `/vendors/public` | Public | Create a vendor. No login |
 
 ---
 

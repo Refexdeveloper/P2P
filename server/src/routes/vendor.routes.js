@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { authenticate, requirePermissions, requireRolesOrPermissions, CREATE_PR_ROLES } from '../middleware/auth.js';
 import {
   listVendors,
+  listPublicVendors,
+  getPublicVendorById,
   createVendor,
   updateVendor,
   deleteVendor,
@@ -14,6 +16,43 @@ import {
 } from '../services/vendorService.js';
 
 const router = Router();
+
+router.get('/public', async (req, res) => {
+  try {
+    const result = await listPublicVendors({
+      search: req.query.search,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/public/:id', async (req, res) => {
+  try {
+    const data = await getPublicVendorById(Number(req.params.id));
+    if (!data) return res.status(404).json({ message: 'Vendor not found' });
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/public', async (req, res) => {
+  try {
+    const created = await createVendor(null, req.body || {});
+    const data = await getPublicVendorById(created.id);
+    res.status(201).json({
+      data: data || { id: created.id, vendorCode: created.vendorCode, name: created.name, email: created.email },
+      message: `Vendor ${created.vendorCode} created successfully`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.use(authenticate);
 
 const canManageVendors = requirePermissions('nav.vendor_master');

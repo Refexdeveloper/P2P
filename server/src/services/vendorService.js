@@ -320,6 +320,60 @@ export async function uploadVendorDocument(vendorId, body = {}) {
   return { ...vendor, _uploadMeta: { reused: Boolean(saved?.reused), filePath: saved?.filePath } };
 }
 
+function mapPublicVendor(row) {
+  return {
+    id: row.id,
+    vendorCode: row.vendor_code,
+    name: row.name,
+    vendorType: row.vendor_type,
+    gstNumber: row.gst_number || '',
+    email: row.email,
+    phone: row.phone || '',
+    address: row.address || '',
+    category: row.category || '',
+    contactName: row.contact_name || '',
+    status: row.status,
+  };
+}
+
+/** Public vendor directory. No bank, PAN, or documents. */
+export async function listPublicVendors({ search, page, limit } = {}) {
+  let where = `WHERE status = 'active'`;
+  const params = [];
+  if (search?.trim()) {
+    where += ` AND (name LIKE ? OR email LIKE ? OR vendor_code LIKE ? OR category LIKE ? OR contact_name LIKE ?)`;
+    const q = `%${search.trim()}%`;
+    params.push(q, q, q, q, q);
+  }
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 50));
+  const [countRows] = await pool.query(`SELECT COUNT(*) AS total FROM vendors ${where}`, params);
+  const total = Number(countRows[0]?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(pageNum, totalPages);
+  const offset = (safePage - 1) * pageSize;
+  const [rows] = await pool.query(
+    `SELECT id, vendor_code, name, vendor_type, gst_number, email, phone, address, category, contact_name, status
+     FROM vendors ${where}
+     ORDER BY name ASC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return {
+    data: rows.map(mapPublicVendor),
+    pagination: { page: safePage, limit: pageSize, total, totalPages },
+  };
+}
+
+export async function getPublicVendorById(id) {
+  const [rows] = await pool.query(
+    `SELECT id, vendor_code, name, vendor_type, gst_number, email, phone, address, category, contact_name, status
+     FROM vendors WHERE id = ? AND status = 'active' LIMIT 1`,
+    [Number(id)]
+  );
+  return rows[0] ? mapPublicVendor(rows[0]) : null;
+}
+
 export async function listVendors({ search, includeInactive = false, page, limit } = {}) {
   let where = includeInactive ? `WHERE 1=1` : `WHERE status = 'active'`;
   const params = [];
