@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import TrackPoExpandedRow from './components/TrackPoExpandedRow';
@@ -215,6 +215,7 @@ function StatusBadge({ label, status }: { label: string; status?: string }) {
 
 export default function TrackPoPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
   const isAdminEditor = Boolean(
@@ -230,8 +231,8 @@ export default function TrackPoPage() {
   const [rows, setRows] = useState<TrackRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get('q') || '');
   const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<PurchaseTypeFilter>('all');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [department, setDepartment] = useState('');
@@ -241,7 +242,7 @@ export default function TrackPoPage() {
   const [entities, setEntities] = useState<EntityRecord[]>([]);
   const [departments, setDepartments] = useState<DepartmentRecord[]>([]);
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
     page: 1,
@@ -1009,7 +1010,16 @@ export default function TrackPoPage() {
                                   {row.poId && (
                                     <button
                                       type="button"
-                                      onClick={() => navigate(`/scm/po-pdf-view?poId=${row.poId}`)}
+                                      onClick={() => {
+                                        const params = new URLSearchParams({
+                                          poId: String(row.poId),
+                                          from: 'track-po',
+                                        });
+                                        const q = search.trim();
+                                        if (q) params.set('q', q);
+                                        if (page > 1) params.set('page', String(page));
+                                        navigate(`/scm/po-pdf-view?${params.toString()}`);
+                                      }}
                                       className="cursor-pointer whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9]"
                                     >
                                       View PDF

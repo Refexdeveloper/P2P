@@ -4830,13 +4830,19 @@ export async function listTasks(user) {
          AND wt.task_type = 'PO_APPROVAL' AND wt.status = 'pending'
        WHERE po.status = 'pending_approval'
          AND (
-           (? = 1 AND EXISTS (
-             SELECT 1 FROM users creator
-             WHERE creator.id = po.created_by
-               AND (
-                 LOWER(creator.email) = ?
-                 OR LOWER(creator.email) LIKE 'mounesh.r@%'
+           (? = 1 AND (
+             wt.assigned_user_id = ?
+             OR (
+               (wt.assigned_user_id IS NULL OR wt.assigned_user_id = 0)
+               AND EXISTS (
+                 SELECT 1 FROM users creator
+                 WHERE creator.id = po.created_by
+                   AND (
+                     LOWER(creator.email) = ?
+                     OR LOWER(creator.email) LIKE 'mounesh.r@%'
+                   )
                )
+             )
            ))
            OR (? = 1 AND NOT EXISTS (
              SELECT 1 FROM users creator
@@ -4851,6 +4857,7 @@ export async function listTasks(user) {
        ORDER BY po.updated_at DESC`,
       [
         viewerIsPoApprover ? 1 : 0,
+        user.id,
         mouneshEmail,
         viewerIsMounesh && !viewerIsPoApprover ? 1 : 0,
         mouneshEmail,

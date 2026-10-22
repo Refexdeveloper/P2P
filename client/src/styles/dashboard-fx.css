@@ -392,8 +392,8 @@
 .rfx-dept { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; font-size: 13.5px; color: #1b2533; }
 .rfx-dept i { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; background: linear-gradient(135deg, #17a2b4, #0b5361); transform: rotate(45deg); transition: transform .4s; }
 .rfx-row:hover .rfx-dept i { transform: rotate(225deg) scale(1.2); }
-.rfx-status { transition: transform .3s; }
-.rfx-row:hover .rfx-status { transform: scale(1.05); }
+.rfx-status { display: inline-flex; align-items: center; max-width: 100%; vertical-align: middle; }
+.rfx-row:hover .rfx-status { transform: none; }
 
 .rfx-act {
   width: 34px; height: 34px; border-radius: 10px; display: inline-grid; place-items: center; font-size: 16px; cursor: pointer;

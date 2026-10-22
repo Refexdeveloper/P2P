@@ -606,14 +606,17 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
       Boolean(po.pdfPath) &&
       !String(po.pdfPath).includes(poNumber) &&
       !String(po.pdfPath).startsWith(safePoNumber);
+    const statusKey = String(po.statusRaw || po.status || '').toLowerCase().replace(/\s+/g, '_');
     const { fullPath, fileName, buffer } = await ensurePoPdf(po, {
       fileName: preferredName,
       signed: isSigned,
       signature: signatureOpts,
-      // Always refresh when draft, signed, or stored PDF was built under an old DRAFT number
+      // Rebuild approval / draft views so vendor name and master details are current
       forceRegenerate:
         isSigned ||
-        String(po.statusRaw || po.status || '').toLowerCase() === 'draft' ||
+        statusKey === 'draft' ||
+        statusKey === 'pending_approval' ||
+        statusKey === 'pendingapproval' ||
         storedLooksStale,
     });
     // Persist regenerated PDF path when previous value was HTML-only or mismatched

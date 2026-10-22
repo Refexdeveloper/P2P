@@ -900,6 +900,13 @@ async function enrichPO(row) {
   const lineItems = await getLineItems(row.id);
 
   const vendor = await lookupVendorMaster(row.vendor_email, row.vendor_name);
+  const vendorView = mergeVendorOntoPo(
+    {
+      vendorName: row.vendor_name,
+      vendorEmail: row.vendor_email,
+    },
+    vendor
+  );
   const [creatorRows] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
   const creator = creatorRows[0] || {};
   const [cancelledByRows] = row.cancelled_by
@@ -926,12 +933,12 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
-    vendorName: vendor.name || row.vendor_name,
-    vendorEmail: vendor.email || row.vendor_email,
-    vendorAddress: vendor.address || '',
-    vendorGst: vendor.gst_number || '',
-    vendorPan: vendor.pan_number || '',
-    vendorPhone: vendor.phone || '',
+    vendorName: vendorView.vendorName,
+    vendorEmail: vendorView.vendorEmail,
+    vendorAddress: vendorView.vendorAddress,
+    vendorGst: vendorView.vendorGst,
+    vendorPan: vendorView.vendorPan,
+    vendorPhone: vendorView.vendorPhone,
     deliveryAddress: row.delivery_address,
     expectedDeliveryDate: formatDate(row.expected_delivery_date),
     poDate: formatDate(row.po_date) || formatDate(row.created_at),
@@ -1250,42 +1257,94 @@ export async function getPoCreateContext(user, prId) {
   };
 }
 
+function vendorNameKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isPlaceholderVendorName(value) {
+  const key = vendorNameKey(value);
+  return (
+    !key ||
+    ['vendor', 'vendor name', 'imported vendor', 'na', 'n a', 'nil', 'none', 'tbd', 'name'].includes(key)
+  );
+}
+
+/** Same company, not a short token such as "vendor" inside another name. */
+function vendorNamesMatch(a, b) {
+  const ka = vendorNameKey(a);
+  const kb = vendorNameKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  const shorter = ka.length <= kb.length ? ka : kb;
+  const longer = ka.length <= kb.length ? kb : ka;
+  return shorter.length >= 8 && longer.includes(shorter);
+}
+
+function mergeVendorOntoPo(po, master) {
+  const base = {
+    vendorName: String(po?.vendorName || '').trim(),
+    vendorEmail: String(po?.vendorEmail || '').trim(),
+    vendorAddress: String(po?.vendorAddress || '').trim(),
+    vendorGst: String(po?.vendorGst || '').trim(),
+    vendorPan: String(po?.vendorPan || '').trim(),
+    vendorPhone: String(po?.vendorPhone || '').trim(),
+  };
+  if (
+    !master ||
+    (!master.name && !master.email && !master.address && !master.gst_number && !master.pan_number && !master.phone)
+  ) {
+    return base;
+  }
+  const placeholder = isPlaceholderVendorName(base.vendorName);
+  const same = vendorNamesMatch(base.vendorName, master.name);
+  const useMaster = placeholder || same || !base.vendorName;
+  return {
+    vendorName: useMaster ? String(master.name || base.vendorName).trim() : base.vendorName,
+    vendorEmail: String(master.email || base.vendorEmail).trim(),
+    vendorAddress: String((useMaster ? master.address : '') || base.vendorAddress || '').trim(),
+    vendorGst: String((useMaster ? master.gst_number : '') || base.vendorGst || '').trim(),
+    vendorPan: String((useMaster ? master.pan_number : '') || base.vendorPan || '').trim(),
+    vendorPhone: String((useMaster ? master.phone : '') || base.vendorPhone || '').trim(),
+  };
+}
+
 async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   const email = String(vendorEmail || '').trim();
   const name = String(vendorName || '').trim();
   const gst = String(extras.gst || extras.gstNumber || extras.gst_number || '').trim();
-  const select = `SELECT name, email, address, gst_number, pan_number, phone FROM vendors`;
+  const vendorId = Number(extras.vendorId || extras.vendor_id || 0);
+  const select = `SELECT id, name, email, address, gst_number, pan_number, phone FROM vendors`;
 
-  const nameKey = (value) =>
-    String(value || '')
-      .toLowerCase()
-      .replace(/&/g, ' and ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company)\b/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  if (vendorId) {
+    const [byId] = await pool.query(`${select} WHERE id = ? AND status = 'active' LIMIT 1`, [vendorId]);
+    if (byId[0]) return byId[0];
+    const [byIdAny] = await pool.query(`${select} WHERE id = ? LIMIT 1`, [vendorId]);
+    if (byIdAny[0]) return byIdAny[0];
+  }
 
   // Name first — email on the PO is often stale after Vendor Master updates.
-  if (name) {
+  // Skip placeholders ("Vendor") and short tokens so a different company is not substituted.
+  if (name && !isPlaceholderVendorName(name)) {
     const [byName] = await pool.query(
       `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
       [name]
     );
     if (byName[0]) return byName[0];
 
-    const token = nameKey(name).split(' ').find((t) => t.length >= 4) || '';
-    if (token) {
+    const key = vendorNameKey(name);
+    const token = key.split(' ').find((t) => t.length >= 5) || '';
+    if (token && key.length >= 8) {
       const [fuzzy] = await pool.query(
         `${select} WHERE LOWER(name) LIKE ? LIMIT 25`,
         [`%${token}%`]
       );
-      const key = nameKey(name);
-      const hit =
-        fuzzy.find((row) => nameKey(row.name) === key) ||
-        fuzzy.find((row) => {
-          const k = nameKey(row.name);
-          return k && key && (k.includes(key) || key.includes(k));
-        });
+      const hit = fuzzy.find((row) => vendorNamesMatch(name, row.name));
       if (hit) return hit;
     }
   }
@@ -1306,21 +1365,14 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   return {};
 }
 
-async function overlayVendorMasterOnPo(po) {
+export async function overlayVendorMasterOnPo(po) {
   if (!po) return po;
   const master = await lookupVendorMaster(po.vendorEmail, po.vendorName, {
     gst: po.vendorGst,
+    vendorId: po.vendorId,
   });
-  if (!master?.email && !master?.name && !master?.address) return po;
-  return {
-    ...po,
-    vendorName: master.name || po.vendorName,
-    vendorEmail: master.email || po.vendorEmail,
-    vendorAddress: master.address || po.vendorAddress || '',
-    vendorGst: master.gst_number || po.vendorGst || '',
-    vendorPan: master.pan_number || po.vendorPan || '',
-    vendorPhone: master.phone || po.vendorPhone || '',
-  };
+  const merged = mergeVendorOntoPo(po, master);
+  return { ...po, ...merged };
 }
 
 async function resolvePoDraftContent(prId, body) {
@@ -1346,7 +1398,21 @@ async function resolvePoDraftContent(prId, body) {
       vendor_email: String(body.vendorEmail || '').trim() || vendor.vendor_email,
     };
   }
-  const vendorMaster = await lookupVendorMaster(vendor.vendor_email, vendor.vendor_name);
+  const vendorMaster = await lookupVendorMaster(vendor.vendor_email, vendor.vendor_name, {
+    vendorId: body?.vendorId,
+    gst: body?.vendorGst || body?.gstNumber,
+  });
+  const mergedVendor = mergeVendorOntoPo(
+    {
+      vendorName: vendor.vendor_name,
+      vendorEmail: vendor.vendor_email,
+      vendorAddress: body?.vendorAddress,
+      vendorGst: body?.vendorGst,
+      vendorPan: body?.vendorPan,
+      vendorPhone: body?.vendorPhone,
+    },
+    vendorMaster
+  );
 
   const {
     lineItems = [],
@@ -1477,12 +1543,12 @@ async function resolvePoDraftContent(prId, body) {
     prTitle: pr.title,
     department: pr.department,
     requester: pr.requester,
-    vendorName: vendorMaster.name || vendor.vendor_name,
-    vendorEmail: vendorMaster.email || vendor.vendor_email,
-    vendorAddress: vendorMaster.address || '',
-    vendorGst: vendorMaster.gst_number || '',
-    vendorPan: vendorMaster.pan_number || '',
-    vendorPhone: vendorMaster.phone || '',
+    vendorName: mergedVendor.vendorName,
+    vendorEmail: mergedVendor.vendorEmail,
+    vendorAddress: mergedVendor.vendorAddress,
+    vendorGst: mergedVendor.vendorGst,
+    vendorPan: mergedVendor.vendorPan,
+    vendorPhone: mergedVendor.vendorPhone,
     deliveryAddress,
     expectedDeliveryDate,
     poDate,
@@ -1529,9 +1595,23 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     else throw new Error('Vendor email is required');
   }
 
-  const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName);
-  if (vendorMaster.email) vendorEmail = vendorMaster.email;
-  if (vendorMaster.name) vendorName = vendorMaster.name;
+  const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName, {
+    vendorId: body.vendorId,
+    gst: body.vendorGst || body.gstNumber,
+  });
+  const mergedVendor = mergeVendorOntoPo(
+    {
+      vendorName,
+      vendorEmail,
+      vendorAddress: body.vendorAddress,
+      vendorGst: body.vendorGst,
+      vendorPan: body.vendorPan,
+      vendorPhone: body.vendorPhone,
+    },
+    vendorMaster
+  );
+  vendorName = mergedVendor.vendorName;
+  vendorEmail = mergedVendor.vendorEmail;
   const {
     lineItems = [],
     deliveryAddress = '',
@@ -1666,10 +1746,10 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     requester: String(requester || '').trim() || 'SCM Buyer',
     vendorName,
     vendorEmail,
-    vendorAddress: vendorMaster.address || '',
-    vendorGst: vendorMaster.gst_number || '',
-    vendorPan: vendorMaster.pan_number || '',
-    vendorPhone: vendorMaster.phone || '',
+    vendorAddress: mergedVendor.vendorAddress,
+    vendorGst: mergedVendor.vendorGst,
+    vendorPan: mergedVendor.vendorPan,
+    vendorPhone: mergedVendor.vendorPhone,
     deliveryAddress,
     expectedDeliveryDate,
     poDate,
@@ -2920,17 +3000,55 @@ export async function listPurchaseOrders(
         'paid'
       )`;
     }
-    // Tarkeshwar signs only POs Mounesh created. Mounesh signs buyer-created POs.
+    // Tarkeshwar: pending = assigned to him; approved/rejected = he signed or rejected them.
     if (isPreferredPoApproverUser(user)) {
-      sql += ` AND EXISTS (
-          SELECT 1 FROM users creator
-          WHERE creator.id = po.created_by
-            AND (
-              LOWER(creator.email) = ?
-              OR LOWER(creator.email) LIKE 'mounesh.r@%'
+      const mouneshEmail = getPreferredScmManagerEmail();
+      sql += ` AND (
+        (
+          po.status = 'pending_approval'
+          AND (
+            EXISTS (
+              SELECT 1 FROM workflow_tasks wt
+              WHERE wt.pr_id = po.pr_id
+                AND wt.task_type = 'PO_APPROVAL'
+                AND wt.status = 'pending'
+                AND wt.assigned_user_id = ?
             )
-        )`;
-      params.push(getPreferredScmManagerEmail());
+            OR (
+              NOT EXISTS (
+                SELECT 1 FROM workflow_tasks wt
+                WHERE wt.pr_id = po.pr_id
+                  AND wt.task_type = 'PO_APPROVAL'
+                  AND wt.status = 'pending'
+                  AND wt.assigned_user_id IS NOT NULL
+                  AND wt.assigned_user_id <> 0
+              )
+              AND EXISTS (
+                SELECT 1 FROM users creator
+                WHERE creator.id = po.created_by
+                  AND (
+                    LOWER(creator.email) = ?
+                    OR LOWER(creator.email) LIKE 'mounesh.r@%'
+                  )
+              )
+            )
+          )
+        )
+        OR (
+          po.status <> 'pending_approval'
+          AND (
+            po.signer_id = ?
+            OR EXISTS (
+              SELECT 1 FROM pr_approvals pa
+              WHERE pa.pr_id = po.pr_id
+                AND pa.approver_id = ?
+                AND pa.stage = 'PO_REJECTED'
+                AND pa.action = 'reject'
+            )
+          )
+        )
+      )`;
+      params.push(user.id, mouneshEmail, user.id, user.id);
     } else if (isPreferredScmManagerUser(user)) {
       sql += ` AND (
         po.status <> 'pending_approval'
@@ -3734,26 +3852,22 @@ export async function signPurchaseOrder(user, poId, {
 
   const po = await enrichPO(rows[0]);
   const signedFileName = `${po.poNumber}_signed.pdf`;
-  const { fileName } = await generatePoPdf(po, {
-    fileName: signedFileName,
-    signed: true,
-    signature: {
-      name: signName,
-      designation: resolveSignerDesignation(user),
-      date: formatDateTime(new Date()),
-      comments: remarks.trim(),
-      imageDataUrl,
-      dsc: dscDetails || undefined,
-    },
-  });
+  const pdfSignature = {
+    name: signName,
+    designation: resolveSignerDesignation(user),
+    date: formatDateTime(new Date()),
+    comments: remarks.trim(),
+    imageDataUrl,
+    dsc: dscDetails || undefined,
+  };
 
+  // Commit the signature first. PDF rendering is slow and must not hold the approval screen.
   await pool.query(
-    `UPDATE purchase_orders SET status = 'pending_buyer_verify', signed_pdf_path = ?, signer_id = ?,
+    `UPDATE purchase_orders SET status = 'pending_buyer_verify', signer_id = ?,
      signature_name = ?, signature_image_path = ?, signature_image_data = ?, signer_comments = ?, signed_at = NOW(),
      signature_dsc_json = ?, updated_at = NOW()
      WHERE id = ?`,
     [
-      fileName,
       user.id,
       signName,
       signatureImagePath,
@@ -3793,7 +3907,65 @@ export async function signPurchaseOrder(user, poId, {
   if (verifyAssignee?.email) {
     buyerEmails.add(String(verifyAssignee.email).trim().toLowerCase());
   }
-  const attachments = await signedPoPdfMailAttachment(updated);
+
+  void completeSignedPoAfterApproval({
+    po,
+    poId,
+    signedFileName,
+    pdfSignature,
+    updated,
+    user,
+    signName,
+    remarks: remarks.trim(),
+    verifyAssignee,
+    buyerEmails,
+  }).catch((err) => {
+    console.warn('Signed PO follow-up failed:', err?.message || err);
+  });
+
+  return {
+    id: updated.id,
+    poNumber: updated.poNumber,
+    status: updated.status,
+    statusRaw: updated.statusRaw,
+  };
+}
+
+async function completeSignedPoAfterApproval({
+  po,
+  poId,
+  signedFileName,
+  pdfSignature,
+  updated,
+  user,
+  signName,
+  remarks,
+  verifyAssignee,
+  buyerEmails,
+}) {
+  let attachments = [];
+  try {
+    const { fileName, filePath } = await generatePoPdf(po, {
+      fileName: signedFileName,
+      signed: true,
+      signature: pdfSignature,
+    });
+    if (fileName) {
+      await pool.query(`UPDATE purchase_orders SET signed_pdf_path = ? WHERE id = ?`, [fileName, poId]);
+    }
+    if (filePath && fs.existsSync(filePath)) {
+      attachments = [
+        {
+          filename: `${po.poNumber || 'PO'}_signed.pdf`,
+          path: filePath,
+          contentType: 'application/pdf',
+        },
+      ];
+    }
+  } catch (err) {
+    console.warn('Signed PDF generation failed after approval:', err.message);
+  }
+
   if (buyerEmails.size) {
     queuePoWorkflowNotification(updated, {
       action: 'assign',
@@ -3802,7 +3974,7 @@ export async function signPurchaseOrder(user, poId, {
       recipientName: verifyAssignee?.name || 'SCM Buyer',
       actorName: signName || user.name,
       actorRole: user.role,
-      remarks: remarks.trim(),
+      remarks,
       portalUrl: poPortalUrl('/scm/buyer-final-verify'),
       ctaLabel: 'Open Buyer Final Verify',
       bccOps: false,
@@ -3814,11 +3986,9 @@ export async function signPurchaseOrder(user, poId, {
   }
 
   queueApproverActionConfirmationForUser(updated, user, 'approve', {
-    remarks: remarks.trim() || 'Signed — sent to SCM Buyer for final verify',
+    remarks: remarks || 'Signed — sent to SCM Buyer for final verify',
     approverRole: user.role,
   });
-
-  return updated;
 }
 
 export async function finalVerifyPurchaseOrder(user, poId, remarks) {

@@ -125,11 +125,35 @@ export default function POPDFViewPage() {
       navigate('/requester/track-pr');
       return;
     }
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/scm/purchase-requests');
+    const from = searchParams.get('from');
+    const returnPath: Record<string, string> = {
+      'po-approval': '/scm/po-approval',
+      'purchase-requests': '/scm/create-po',
+      'create-po': '/scm/create-po',
+      'track-po': '/scm/track-po',
+      'buyer-verify': '/scm/buyer-final-verify',
+      tasks: '/tasks',
+    };
+    const base = from ? returnPath[from] : '';
+    if (base) {
+      const next = new URLSearchParams();
+      for (const key of ['q', 'tab', 'status', 'page']) {
+        const value = searchParams.get(key);
+        if (value) next.set(key, value);
+      }
+      const qs = next.toString();
+      navigate(qs ? `${base}?${qs}` : base);
+      return;
     }
+    if (user?.role === 'SCM Manager') {
+      navigate('/scm/po-approval');
+      return;
+    }
+    if (user?.role === 'SCM Buyer') {
+      navigate('/scm/track-po');
+      return;
+    }
+    navigate('/scm/create-po');
   };
 
   if (error || !po) {

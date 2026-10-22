@@ -8,7 +8,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { poApi, prApi } from '../../../../services/api';
 import { useAuth } from '../../../../contexts/AuthContext';
 import PRBucketExpandedRow from './PRBucketExpandedRow';
@@ -180,15 +180,29 @@ function shortStatusLabel(label: string, statusRaw?: string) {
 
 const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function PurchaseRequestsPanel(_props, ref) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const isSuperAdmin = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
   const [rows, setRows] = useState<BucketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'>('all');
-  const [page, setPage] = useState(1);
+  const initialQuery = searchParams.get('q') || '';
+  const initialStatus = searchParams.get('status');
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialQuery);
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'
+  >(
+    initialStatus === 'ready' ||
+      initialStatus === 'created' ||
+      initialStatus === 'approved' ||
+      initialStatus === 'rejected' ||
+      initialStatus === 'draft' ||
+      initialStatus === 'cancelled'
+      ? initialStatus
+      : 'all'
+  );
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get('page')) || 1));
   const [pageSize, setPageSize] = useState(10);
   const [pagination, setPagination] = useState<TrackPagination>({
     page: 1,
@@ -698,7 +712,17 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               {pr.poId && (
                                 <button
                                   type="button"
-                                  onClick={() => navigate(`/scm/po-pdf-view?poId=${pr.poId}&from=purchase-requests`)}
+                                  onClick={() => {
+                                    const params = new URLSearchParams({
+                                      poId: String(pr.poId),
+                                      from: 'purchase-requests',
+                                    });
+                                    const q = (searchQuery || debouncedSearch).trim();
+                                    if (q) params.set('q', q);
+                                    if (statusFilter !== 'all') params.set('status', statusFilter);
+                                    if (page > 1) params.set('page', String(page));
+                                    navigate(`/scm/po-pdf-view?${params.toString()}`);
+                                  }}
                                   className="po-act"
                                 >
                                   <i className="ri-file-pdf-2-line mr-1.5" aria-hidden />

@@ -38,7 +38,7 @@ export default function PODetailDrawer({ isOpen, onClose, poNumber }: PODetailDr
   };
 
   const handleViewPDF = () => {
-    window.REACT_APP_NAVIGATE(`/scm/po-pdf-view?poNumber=${poNumber}`);
+    window.REACT_APP_NAVIGATE(`/scm/po-pdf-view?poNumber=${encodeURIComponent(poNumber)}&from=purchase-requests`);
   };
 
   return (

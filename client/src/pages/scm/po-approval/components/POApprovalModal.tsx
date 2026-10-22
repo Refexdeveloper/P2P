@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import SignatureCapture, { SignaturePayload } from './SignatureCapture';
 
 interface POApprovalModalProps {
@@ -33,6 +33,7 @@ export default function POApprovalModal({
   const [signature, setSignature] = useState<SignaturePayload | null>(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const submitSeq = useRef(0);
 
   const isApprove = type === 'approve';
   const isSendBack = type === 'sendback';
@@ -62,21 +63,28 @@ export default function POApprovalModal({
       setError('Please provide send-back remarks (minimum 10 characters)');
       return;
     }
+    const seq = ++submitSeq.current;
     setSubmitting(true);
+    setError('');
     try {
       await onConfirm(remarks.trim(), isApprove ? signature || undefined : undefined);
+      if (submitSeq.current !== seq) return;
       setRemarks('');
       setSignature(null);
       setError('');
       onClose();
-    } catch {
-      // parent shows toast
+    } catch (err) {
+      if (submitSeq.current !== seq) return;
+      const message = err instanceof Error ? err.message : 'Could not complete this action. Please try again.';
+      setError(message);
     } finally {
-      setSubmitting(false);
+      if (submitSeq.current === seq) setSubmitting(false);
     }
   };
 
   const handleClose = () => {
+    submitSeq.current += 1;
+    setSubmitting(false);
     setRemarks('');
     setSignature(null);
     setError('');

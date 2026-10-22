@@ -22,6 +22,21 @@ const softWash = {
     'radial-gradient(120% 90% at 100% 0%, rgba(15, 107, 122, 0.10) 0%, rgba(255,255,255,0) 55%)',
 } as const;
 
+function plainItemText(value: string) {
+  return String(value || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function poaGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -81,7 +96,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     'WO Rejected': 'ri-close-circle-line',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${map[status] || 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold leading-none ${map[status] || 'bg-gray-100 text-gray-600'}`}>
       <i className={icon[status] || 'ri-question-line'}></i>
       {status}
     </span>
@@ -443,7 +458,7 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                       {po.lineItems.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 text-sm text-gray-500 text-center">{idx + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.description}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{plainItemText(item.description)}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 text-center">{item.quantity}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 text-right">{formatCurrency(item.unitPrice)}</td>
                           <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">{formatCurrency(item.total)}</td>
@@ -574,8 +589,8 @@ export default function POApprovalPage() {
   const [poIdMap, setPoIdMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [filter, setFilter] = useState(() => searchParams.get('tab') || 'all');
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [retrievingPo, setRetrievingPo] = useState<string | null>(null);
   const [modal, setModal] = useState<{
@@ -610,7 +625,7 @@ export default function POApprovalPage() {
     createdBy: String(raw.createdBy || 'SCM Buyer'),
     lineItems: ((raw.lineItems as Array<Record<string, unknown>>) || []).map((li) => ({
       id: String(li.id),
-      description: String(li.description || ''),
+      description: plainItemText(String(li.description || li.itemName || '')),
       quantity: Number(li.quantity) || 0,
       unitPrice: Number(li.unitPrice) || 0,
       total: Number(li.total) || 0,
@@ -681,6 +696,13 @@ export default function POApprovalPage() {
     }
   };
 
+  const openPdf = (id: number) => {
+    const params = new URLSearchParams({ poId: String(id), from: 'po-approval' });
+    if (filter && filter !== 'all') params.set('tab', filter);
+    if (searchTerm.trim()) params.set('q', searchTerm.trim());
+    navigate(`/scm/po-pdf-view?${params.toString()}`);
+  };
+
   const openModal = (poNumber: string, type: 'approve' | 'reject' | 'sendback') => {
     const po = poList.find((p) => p.poNumber === poNumber);
     const poId = poIdMap[poNumber];
@@ -701,9 +723,12 @@ export default function POApprovalPage() {
     try {
       if (modal.type === 'approve') {
         const res = await poApi.sign(modal.poId, remarks, signature);
-        showToast(res.message || `${modal.poNumber} signed — SCM Buyer final verify next`, 'success');
+        const signedId = modal.poId;
+        const signedNumber = modal.poNumber;
         setExpandedRow(null);
-        navigate(`/scm/po-pdf-view?poId=${modal.poId}&from=po-approval`);
+        setModal((current) => ({ ...current, isOpen: false }));
+        showToast(res.message || `${signedNumber} signed — SCM Buyer final verify next`, 'success');
+        openPdf(signedId);
         return;
       } else if (modal.type === 'sendback') {
         const res = await poApi.sendBack(modal.poId, remarks);
@@ -991,7 +1016,7 @@ export default function POApprovalPage() {
                               }}
                               onViewPdf={() => {
                                 const id = poIdMap[po.poNumber];
-                                if (id) navigate(`/scm/po-pdf-view?poId=${id}`);
+                                if (id) openPdf(id);
                               }}
                               onRetrieve={() => void handleRetrieveRejected(po.poNumber)}
                               retrieving={retrievingPo === po.poNumber}
@@ -1006,16 +1031,16 @@ export default function POApprovalPage() {
             </div>
 
             <div data-po-approval-scroll className="hidden overflow-x-auto px-4 pb-4 pt-1 md:block">
-              <table className="rfx-table w-full min-w-[980px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2.5 text-sm">
+              <table className="rfx-table w-full min-w-[1360px] table-fixed border-separate border-spacing-x-0 border-spacing-y-2.5 text-sm">
                 <colgroup>
-                  <col className="w-[19%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[15%]" />
                   <col className="w-[14%]" />
                   <col className="w-[11%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[10%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[22%]" />
+                  <col className="w-[12%]" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1094,18 +1119,18 @@ export default function POApprovalPage() {
                           <td className="px-3">
                             <PriorityBadge priority={po.priority} />
                           </td>
-                          <td className="px-3">
-                            <span className="rfx-status inline-block max-w-full">
+                          <td className="px-3 align-middle">
+                            <span className="rfx-status inline-flex max-w-full items-center" title={po.status}>
                               <StatusBadge status={po.status} />
                             </span>
                           </td>
-                          <td className="pl-3 pr-5" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <td className="pl-2 pr-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-nowrap items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => {
                                   const id = poIdMap[po.poNumber];
-                                  if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
+                                  if (id) openPdf(id);
                                 }}
                                 className="rfx-act"
                                 title="View PDF"
@@ -1180,7 +1205,7 @@ export default function POApprovalPage() {
                             }}
                             onViewPdf={() => {
                               const id = poIdMap[po.poNumber];
-                              if (id) navigate(`/scm/po-pdf-view?poId=${id}&from=po-approval`);
+                              if (id) openPdf(id);
                             }}
                             onRetrieve={() => void handleRetrieveRejected(po.poNumber)}
                             retrieving={retrievingPo === po.poNumber}

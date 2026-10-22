@@ -768,9 +768,29 @@ export const PO_STYLES = `
     page-break-inside: avoid;
     break-inside: avoid;
     width: 100%;
+    color: #111;
+    background: #fff;
   }
   .info-box p { margin: 1px 0; line-height: 1.3; }
   .info-box a { color: #1155cc; text-decoration: underline; }
+  /* Letterhead HTML can ship global rules that hide or restyle paragraphs. Keep vendor details visible. */
+  .info-box,
+  .info-box p,
+  .info-box strong,
+  .info-box a {
+    visibility: visible !important;
+    color: #111 !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+  }
+  .info-box p { display: block !important; }
+  .info-box strong { display: inline !important; font-weight: 700 !important; }
+  .info-box a { display: inline !important; color: #1155cc !important; }
   .letterhead-block { margin-bottom: 6px; width: 100%; }
   .letterhead-block p { margin: 1px 0; line-height: 1.3; }
   .letterhead-block p:empty,

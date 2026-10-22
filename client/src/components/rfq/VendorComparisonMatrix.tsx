@@ -20,6 +20,21 @@ const GST_RATE = 0.18;
 const PRICE_PARAM_IDS = new Set(['quotedPrice']);
 const SCORE_PARAM_IDS = new Set(['technicalScore', 'commercialScore', 'overallScore']);
 
+function plainItemText(value: string) {
+  return String(value || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6])>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isMakeLikeParam(p: { id: string; label: string }) {
   return /make|brand/i.test(p.id) || /make|brand/i.test(p.label);
 }
@@ -866,7 +881,7 @@ export default function VendorComparisonMatrix({
                               Item {lineIdx + 1}
                             </p>
                             <p className="text-sm font-bold text-[#12284A] leading-snug mt-0.5 break-words">
-                              {li.description}
+                              {plainItemText(li.description)}
                             </p>
                             {li.category ? (
                               <p className="text-xs text-slate-500 mt-0.5">{li.category}</p>
@@ -1098,7 +1113,7 @@ export default function VendorComparisonMatrix({
                       </td>
                       <td className={`${stDesc} z-10 px-2 md:px-3 py-3 border-b border-[#E5EAF0] bg-white`}>
                         <p className="font-bold text-[#12284A] text-[13px] md:text-[15px] leading-snug break-words">
-                          {li.description}
+                          {plainItemText(li.description)}
                         </p>
                         {li.category ? (
                           <p className="text-[11px] md:text-xs text-[#64748B] mt-0.5 truncate">{li.category}</p>

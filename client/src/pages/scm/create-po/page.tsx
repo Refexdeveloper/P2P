@@ -518,14 +518,18 @@ function matchVendorFromMaster(
   const name = normalizeVendorMatchKey(opts.name || '');
   const email = String(opts.email || '').trim().toLowerCase();
   const gst = String(opts.gst || '').replace(/\s+/g, '').toUpperCase();
-  if (name) {
+  if (name && !['vendor', 'vendor name', 'imported vendor', 'na', 'nil', 'none', 'tbd'].includes(name)) {
     const byName = vendors.find((v) => normalizeVendorMatchKey(v.name) === name);
     if (byName) return byName;
-    const byPartial = vendors.find((v) => {
-      const vn = normalizeVendorMatchKey(v.name);
-      return vn.length > 8 && (vn.includes(name) || name.includes(vn));
-    });
-    if (byPartial) return byPartial;
+    if (name.length >= 8) {
+      const byPartial = vendors.find((v) => {
+        const vn = normalizeVendorMatchKey(v.name);
+        const shorter = vn.length <= name.length ? vn : name;
+        const longer = vn.length <= name.length ? name : vn;
+        return shorter.length >= 8 && longer.includes(shorter);
+      });
+      if (byPartial) return byPartial;
+    }
   }
   if (gst) {
     const byGst = vendors.find(
@@ -2548,8 +2552,13 @@ export default function CreatePOPage() {
     annexureIiHtml: serializeAnnexureIi(liveAnnexureIi.filter((row) => !annexureIiRowIsEmpty(row))),
     poTermsDetails: synced.poTermsDetails,
     purchaseType: documentType,
+    vendorId: masterVendor?.id || (manualVendorId ? Number(manualVendorId) : undefined),
     vendorName: masterVendor?.name || vendorNameForPo,
     vendorEmail: masterVendor?.email || vendorEmailFromForm,
+    vendorAddress: masterVendor?.address || undefined,
+    vendorGst: masterVendor?.gstNumber || undefined,
+    vendorPan: masterVendor?.panNumber || undefined,
+    vendorPhone: masterVendor?.phone || undefined,
     title: isManualPoFlow
       ? manualPrDetails.title || poTermsDetails.subject || undefined
       : poTermsDetails.subject || pr?.title || undefined,
@@ -2582,6 +2591,7 @@ export default function CreatePOPage() {
     isManualPoFlow,
     manualEntityId,
     selectedManualEntity,
+    manualVendorId,
     manualVendorName,
     manualVendorEmail,
     manualPrDetails,
@@ -2614,9 +2624,14 @@ export default function CreatePOPage() {
           /* keep payload email */
         }
       }
-      if (masterHit?.email) {
+      if (masterHit) {
+        payload.vendorId = masterHit.id;
         payload.vendorName = masterHit.name || payload.vendorName;
-        payload.vendorEmail = masterHit.email;
+        if (masterHit.email) payload.vendorEmail = masterHit.email;
+        if (masterHit.address) payload.vendorAddress = masterHit.address;
+        if (masterHit.gstNumber) payload.vendorGst = masterHit.gstNumber;
+        if (masterHit.panNumber) payload.vendorPan = masterHit.panNumber;
+        if (masterHit.phone) payload.vendorPhone = masterHit.phone;
       }
       return payload;
     },

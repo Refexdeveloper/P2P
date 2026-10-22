@@ -1610,7 +1610,25 @@ export async function htmlToPdf(html, filePath) {
   }
 }
 
+const pdfJobs = new Map();
+
+function pdfJobKey(po, options = {}) {
+  const poNumber = String(po?.poNumber || po?.po_number || po?.id || 'PO').trim() || 'PO';
+  return `${poNumber}:${options.signed ? 'signed' : 'draft'}`;
+}
+
 export async function generatePoPdf(po, options = {}) {
+  const key = pdfJobKey(po, options);
+  const existing = pdfJobs.get(key);
+  if (existing) return existing;
+  const job = runGeneratePoPdf(po, options).finally(() => {
+    if (pdfJobs.get(key) === job) pdfJobs.delete(key);
+  });
+  pdfJobs.set(key, job);
+  return job;
+}
+
+async function runGeneratePoPdf(po, options = {}) {
   ensurePoDir();
   let poForPdf = po;
   try {
