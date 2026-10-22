@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
 import { isMugeshActor } from '../templates/emailUtils.js';
 import {
@@ -42,6 +42,7 @@ import {
   sendBackMugeshPoToRequester,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
+import { listPoDocuments, addPoDocument, getPoDocumentFile } from '../services/poDocumentService.js';
 import { getPurchaseRequestById } from '../services/prService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
@@ -757,6 +758,52 @@ router.get('/:id/pdf', canReadPo, async (req, res) => {
     await sendPoPdf(res, po);
   } catch (err) {
     res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/:id/extra-documents', canReadPo, async (req, res) => {
+  try {
+    const data = await listPoDocuments(Number(req.params.id));
+    res.json({ data });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post(
+  '/:id/extra-documents/upload',
+  canReadPo,
+  express.raw({ type: () => true, limit: '30mb' }),
+  async (req, res) => {
+    try {
+      const fileName = decodeURIComponent(
+        String(req.get('x-file-name') || req.query.fileName || 'document').trim()
+      );
+      const notes = decodeURIComponent(String(req.get('x-file-note') || req.query.notes || '').trim());
+      const mimeType = String(req.get('x-file-type') || req.get('content-type') || '').split(';')[0].trim();
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+      const data = await addPoDocument(Number(req.params.id), req.user.id, {
+        fileName,
+        buffer,
+        mimeType,
+        notes,
+      });
+      res.status(201).json({ data, message: 'Document saved' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
+
+router.get('/:id/extra-documents/:documentId/file', canReadPo, async (req, res) => {
+  try {
+    const file = await getPoDocumentFile(Number(req.params.id), Number(req.params.documentId));
+    const safeName = String(file.fileName || 'document').replace(/"/g, '');
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.send(file.buffer);
+  } catch (err) {
+    res.status(404).json({ message: err.message });
   }
 });
 

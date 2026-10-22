@@ -1269,6 +1269,65 @@ export const poApi = {
     return blob;
   },
   getDocumentUrl: (poId: number) => `${PO_API_URL}/api/po/${poId}/document`,
+  listExtraDocuments: (poId: number) =>
+    request<{
+      data: Array<{
+        id: number;
+        poId: number;
+        fileName: string;
+        size: number;
+        mimeType: string;
+        notes: string;
+        uploadedByName: string;
+        uploadedAt: string;
+      }>;
+    }>(`/api/po/${poId}/extra-documents`),
+  extraDocumentFileUrl: (poId: number, documentId: number) =>
+    `${PO_API_URL}/api/po/${poId}/extra-documents/${documentId}/file`,
+  uploadExtraDocument: async (poId: number, file: File, notes = '') => {
+    const token = getToken();
+    const res = await fetch(`${PO_API_URL}/api/po/${poId}/extra-documents/upload`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+        'X-File-Type': file.type || 'application/octet-stream',
+        'X-File-Note': encodeURIComponent(notes),
+      },
+      body: file,
+    });
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    if (text) {
+      try {
+        data = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        if (!res.ok) {
+          throw new ApiError(res.status, errorMessageFromResponse(text, `Upload failed (${res.status})`));
+        }
+      }
+    }
+    if (!res.ok) {
+      throw new ApiError(
+        res.status,
+        errorMessageFromResponse((data.message as string) || text, `Upload failed (${res.status})`)
+      );
+    }
+    return data as {
+      data: {
+        id: number;
+        poId: number;
+        fileName: string;
+        size: number;
+        mimeType: string;
+        notes: string;
+        uploadedByName: string;
+        uploadedAt: string;
+      };
+      message: string;
+    };
+  },
   previewDocumentHtml: async (prId: number, body: Record<string, unknown>) => {
     const token = getToken();
     const res = await fetch(`${PO_API_URL}/api/po/pr/${prId}/preview-document`, {

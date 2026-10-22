@@ -561,6 +561,20 @@ const MIGRATIONS = [
     FOREIGN KEY (original_purchase_request_id) REFERENCES purchase_requests(id),
     FOREIGN KEY (requester_id) REFERENCES users(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS po_documents (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    po_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_size INT NOT NULL DEFAULT 0,
+    mime_type VARCHAR(120) NULL,
+    notes VARCHAR(255) NULL,
+    file_data LONGBLOB NULL,
+    uploaded_by INT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_po_documents_po (po_id),
+    FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
+  )`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

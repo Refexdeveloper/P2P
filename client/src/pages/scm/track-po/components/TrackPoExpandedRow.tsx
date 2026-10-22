@@ -40,6 +40,13 @@ type LineItem = {
   total?: number;
 };
 
+type ExtraPoDocument = {
+  id: number;
+  fileName: string;
+  notes: string;
+  uploadedByName: string;
+};
+
 type DocRow = {
   key: string;
   kind: string;
@@ -401,6 +408,11 @@ export default function TrackPoExpandedRow({
   const [filePreview, setFilePreview] = useState<FilePreview | null>(null);
   const [fileError, setFileError] = useState('');
   const [openingKey, setOpeningKey] = useState('');
+  const [extraDocs, setExtraDocs] = useState<ExtraPoDocument[]>([]);
+  const [docNote, setDocNote] = useState('');
+  const [addingDoc, setAddingDoc] = useState(false);
+  const [docUploadError, setDocUploadError] = useState('');
+  const addDocInputRef = useRef<HTMLInputElement>(null);
 
   /** Keep expand panel pinned to the visible table viewport (no horizontal scroll of details). */
   useEffect(() => {
@@ -518,6 +530,16 @@ export default function TrackPoExpandedRow({
 
         if (!prData && !poData) {
           setError('Could not load PR / PO details');
+        }
+        if (!cancelled && row.poId && !publicInsights) {
+          try {
+            const extra = await poApi.listExtraDocuments(row.poId);
+            if (!cancelled) setExtraDocs(extra.data || []);
+          } catch {
+            if (!cancelled) setExtraDocs([]);
+          }
+        } else if (!cancelled) {
+          setExtraDocs([]);
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load details');
@@ -642,6 +664,17 @@ export default function TrackPoExpandedRow({
       });
     });
 
+    extraDocs.forEach((file) => {
+      docs.push({
+        key: `extra-${file.id}`,
+        kind: 'Added document',
+        name: file.fileName,
+        extra: [file.notes, file.uploadedByName].filter(Boolean).join(' · '),
+        fileName: file.fileName,
+        url: row.poId ? poApi.extraDocumentFileUrl(row.poId, file.id) : '',
+      });
+    });
+
     if (invoice?.hasInvoiceFile && invoice.id) {
       docs.push({
         key: `inv-${invoice.id}`,
@@ -654,7 +687,25 @@ export default function TrackPoExpandedRow({
     }
 
     return docs;
-  }, [row.poId, row.poNumber, po, referencePo, comparison, invoice, publicInsights]);
+  }, [row.poId, row.poNumber, po, referencePo, comparison, invoice, publicInsights, extraDocs]);
+
+  const handleAddDocuments = async (files: FileList | null) => {
+    if (!row.poId || !files?.length || publicInsights) return;
+    setAddingDoc(true);
+    setDocUploadError('');
+    try {
+      for (const file of Array.from(files)) {
+        const res = await poApi.uploadExtraDocument(row.poId, file, docNote.trim());
+        setExtraDocs((prev) => [...prev, res.data]);
+      }
+      setDocNote('');
+    } catch (err) {
+      setDocUploadError(err instanceof Error ? err.message : 'Could not save document');
+    } finally {
+      setAddingDoc(false);
+      if (addDocInputRef.current) addDocInputRef.current.value = '';
+    }
+  };
 
   const detailFields = [
     ['PR Number', String(pr?.prNumber || row.prNumber || '—')],
@@ -1046,6 +1097,39 @@ export default function TrackPoExpandedRow({
 
             {!loading && !error && tab === 'documents' && (
               <div className="space-y-3">
+                {!publicInsights && row.poId ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#d7eef2] bg-[#f7fcfd] px-3 py-2.5">
+                    <input
+                      type="text"
+                      value={docNote}
+                      onChange={(e) => setDocNote(e.target.value)}
+                      placeholder="Note (optional)"
+                      maxLength={255}
+                      className="h-9 min-w-[180px] flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#0f6b7a]"
+                    />
+                    <button
+                      type="button"
+                      disabled={addingDoc}
+                      onClick={() => addDocInputRef.current?.click()}
+                      className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-[#0f6b7a] px-3 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
+                    >
+                      <i className={addingDoc ? 'ri-loader-4-line animate-spin' : 'ri-add-line'} aria-hidden />
+                      {addingDoc ? 'Saving…' : 'Add document'}
+                    </button>
+                    <input
+                      ref={addDocInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf"
+                      className="hidden"
+                      onChange={(e) => void handleAddDocuments(e.target.files)}
+                    />
+                    <span className="text-[11px] text-slate-500">PDF, Word, Excel, or image. Saved on this PO.</span>
+                  </div>
+                ) : null}
+                {docUploadError ? (
+                  <p className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700">{docUploadError}</p>
+                ) : null}
                 {documents.length === 0 ? (
                   <p className="text-sm text-slate-500 py-8 text-center">
                     No documents yet. Vendor quotations appear after RFQ, and PO files appear after the PO is created.
