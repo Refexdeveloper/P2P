@@ -315,6 +315,11 @@ function currentStageLabel(
   const functional = isFunctionalFlow(pr);
   const vendor = asText(pr.vendorSelection || pr.vendor_selection, 'scm').toLowerCase();
   if (rawStatus === 'PENDING_HOD_APPROVAL') {
+    const purchaseType = asText(pr.purchaseType || pr.purchase_type).toLowerCase().replace(/[\s-]+/g, '_');
+    if (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription') {
+      const ui = asText(statusUI).replace(/^Pending\s+/i, '').trim();
+      return ui || 'User Approval';
+    }
     return functional ? 'User Approval' : 'L1 Manager Approval';
   }
   if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'L2 Manager Approval';

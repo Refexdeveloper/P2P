@@ -3505,10 +3505,10 @@ export default function CreatePRPage() {
                       </>
                     ) : (
                       <>
-                        Add vendors &amp; quotes below, pick one recommended vendor, select L1 →
-                        Mugesh approves → Srivaths (L2) → Mugesh Invoice Upload → Accounts. If
-                        Srivaths is selected as L1, L2 is skipped (same person already approved
-                        once). SCM RFQ is skipped.
+                        Add vendors and quotes below, pick one recommended vendor, then user
+                        approvals: your selected user, then Mugesh, then Srivaths. After that,
+                        Mugesh uploads the invoice. This does not go to CFO approval. SCM RFQ is
+                        skipped.
                       </>
                     )}
                   </p>
@@ -3533,7 +3533,7 @@ export default function CreatePRPage() {
                       .trim()
                       .toLowerCase() === 'mugesh.m@refex.co.in'
                       ? 'After L1 approves, you get an assigned My Task to upload the invoice. Do not select yourself as L1.'
-                      : 'After L1: Mugesh (mugesh.m@refex.co.in) approves, then Srivaths (L2), then Mugesh Invoice Upload. If you select Srivaths as L1, L2 is skipped automatically.'}
+                      : 'User approvals run in order: the person you select, then Mugesh, then Srivaths. Then Mugesh uploads the invoice. CFO approval is not part of this flow.'}
                   </p>
                 </div>
               </>

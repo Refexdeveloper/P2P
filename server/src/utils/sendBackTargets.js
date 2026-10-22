@@ -173,6 +173,36 @@ export const SEND_BACK_TARGET_DEFS = {
     poStatus: 'pending_buyer_verify',
     poSignStep: 'signed',
   },
+  SASS_MUGESH: {
+    key: 'SASS_MUGESH',
+    label: 'Mugesh Approval',
+    status: PR_STATUS.PENDING_HOD_APPROVAL,
+    stage: STAGE.HOD_REVIEW,
+    taskType: 'PR_APPROVAL',
+    assignedRole: 'HOD Approver',
+    resetRfqSubmit: true,
+    resetRfqFinalize: true,
+  },
+  SASS_SRIVATHS: {
+    key: 'SASS_SRIVATHS',
+    label: 'Srivaths Approval',
+    status: PR_STATUS.PENDING_HOD_APPROVAL,
+    stage: STAGE.HOD_REVIEW,
+    taskType: 'PR_APPROVAL',
+    assignedRole: 'HOD Approver',
+    resetRfqSubmit: true,
+    resetRfqFinalize: true,
+  },
+  SASS_INVOICE: {
+    key: 'SASS_INVOICE',
+    label: 'Mugesh Invoice Upload',
+    status: PR_STATUS.AWAITING_INVOICE,
+    stage: STAGE.SASS_INVOICE_UPLOAD,
+    taskType: null,
+    assignedRole: null,
+    resetRfqSubmit: false,
+    resetRfqFinalize: false,
+  },
 };
 
 const FUNCTIONAL_PREVIOUS_BY_STATUS = {
@@ -238,6 +268,23 @@ const ADMIN_ANY_STEP_KEYS = [
 ];
 
 /** Requester-created PO: same early steps, then requester PO steps. No SCM Buyer / SCM Manager. */
+/** Cloud Subscription admin move: user approvals, then Mugesh invoice. No CFO or SCM steps. */
+const ADMIN_CLOUD_STEP_KEYS = [
+  'REQUESTER',
+  'HOD_PRE',
+  'SASS_MUGESH',
+  'SASS_SRIVATHS',
+  'SASS_INVOICE',
+];
+
+function isCloudPurchaseType(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return raw === 'sass' || raw === 'saas' || raw === 'cloud_subscription';
+}
+
 const ADMIN_REQUESTER_PO_STEP_KEYS = [
   'REQUESTER',
   'REQUESTER_RFQ',
@@ -293,13 +340,25 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
  * Admin: every workflow step (Edit PR + RFQ Entry steps + all approval stages).
  * Not limited by current status or own/SCM path — admin may reopen any step.
  */
-export function listAdminSendBackTargets(_status, _vendorSelection = 'scm', prFlow = 'standard', poCreationBy = 'scm') {
+export function listAdminSendBackTargets(
+  _status,
+  _vendorSelection = 'scm',
+  prFlow = 'standard',
+  poCreationBy = 'scm',
+  purchaseType = 'purchase_order'
+) {
   const functional = prFlow === 'functional';
+  const cloud = isCloudPurchaseType(purchaseType);
   const requesterPo = String(poCreationBy || 'scm') === 'requester';
-  const keys = requesterPo ? ADMIN_REQUESTER_PO_STEP_KEYS : ADMIN_ANY_STEP_KEYS;
+  const keys = cloud
+    ? ADMIN_CLOUD_STEP_KEYS
+    : requesterPo
+      ? ADMIN_REQUESTER_PO_STEP_KEYS
+      : ADMIN_ANY_STEP_KEYS;
   return keys.map((key) => {
     const def = SEND_BACK_TARGET_DEFS[key];
     if (!def) return null;
+    if (cloud && def.key === 'HOD_PRE') return { ...def, label: 'User Approval' };
     return functional ? withFunctionalLabels(def) : def;
   })
     .filter(Boolean)

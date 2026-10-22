@@ -60,8 +60,10 @@ import {
   resolveSassVendorFromBody,
   resolveSassL2Assignment,
   resolveSassMugeshAssignment,
+  appendCloudSubscriptionApproverIds,
   SASS_MUGESH_NAME,
   SASS_MUGESH_EMAIL,
+  SASS_L2_EMAIL,
 } from './sassWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
@@ -112,15 +114,19 @@ function applyRequesterDisplay(pr, poMeta = null) {
     purchaseType
   );
   if (isInvoiceFlow) {
+    let statusUI = mapStatusToManagerUI(
+      pr.status,
+      pr.prFlow === 'functional' ? 'functional' : 'standard',
+      pr.vendorSelection === 'own' ? 'own' : 'scm',
+      purchaseType
+    );
+    if (isSassPurchaseType(purchaseType) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
+      statusUI = cloudSubscriptionPendingLabel(pr.approvalUserEmail, pr.approvalUserName);
+    }
     return {
       ...pr,
       statusFrontend: display.statusFrontend,
-      statusUI: mapStatusToManagerUI(
-        pr.status,
-        pr.prFlow === 'functional' ? 'functional' : 'standard',
-        pr.vendorSelection === 'own' ? 'own' : 'scm',
-        purchaseType
-      ),
+      statusUI,
       poId: null,
       poNumber: '',
       poStatus: '',
@@ -148,6 +154,17 @@ import { getUserPermissionCodes, isSuperAdmin } from './permissionService.js';
 
 function clipText(value, max) {
   return String(value || '').trim().slice(0, max);
+}
+
+function cloudSubscriptionPendingLabel(email, name) {
+  const who = String(email || '').trim().toLowerCase();
+  if (who === SASS_MUGESH_EMAIL.toLowerCase()) return 'Pending Mugesh Approval';
+  if (who === SASS_L2_EMAIL.toLowerCase()) return 'Pending Srivaths Approval';
+  const full = String(name || '').trim();
+  if (!full) return 'Pending User Approval';
+  const label = `Pending ${full} Approval`;
+  if (label.length <= 28) return label;
+  return `Pending ${full.split(' ')[0]} Approval`;
 }
 
 function normalizeRequestCategory(value) {
@@ -1539,8 +1556,8 @@ export async function createPurchaseRequest(user, body) {
       }
     }
   }
-  const selectedApprover = selectedApprovers[0] || null;
-  const selectedApproverIds = selectedApprovers.map((u) => u.id);
+  let selectedApprover = selectedApprovers[0] || null;
+  let selectedApproverIds = selectedApprovers.map((u) => u.id);
   if (prFlow === 'functional' && submit && vendorMode === 'own' && !isInvoiceFlow) {
     const rfqVendors = body.rfqVendors || body.rfq_vendors;
     if (!Array.isArray(rfqVendors) || !rfqVendors.length) {
@@ -1554,6 +1571,19 @@ export async function createPurchaseRequest(user, body) {
   const departmentId = await resolveDepartmentIdForSave(department, user.id, {
     requireNamed: Boolean(submit),
   });
+
+  if (isSass && submit && selectedApproverIds.length) {
+    const extendedIds = await appendCloudSubscriptionApproverIds(
+      selectedApproverIds,
+      departmentId,
+      user
+    );
+    if (extendedIds.length > selectedApproverIds.length) {
+      selectedApprovers = await resolveSelectedApprovalUsers(extendedIds, user.id);
+      selectedApprover = selectedApprovers[0] || null;
+      selectedApproverIds = selectedApprovers.map((u) => u.id);
+    }
+  }
 
   const [entityRows] = await pool.query(
     `SELECT id FROM entity_masters WHERE id = ? AND status = 'active'`,
@@ -1743,8 +1773,8 @@ export async function createPurchaseRequest(user, body) {
         ? `Online Purchase � User Approver: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh L1 ? Srivaths L2 ? Mugesh Invoice Upload ? Completed (SCM skipped)`
         : isSass
         ? isSassMugeshRequester(user)
-          ? `Cloud Subscription � Mugesh requester � L1: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh Invoice Upload ? Accounts (Mugesh approval & Srivaths skipped)`
-          : `Cloud Subscription � Selected approvals: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh ? L2: Srivaths ? Mugesh Invoice Upload ? Accounts (SCM skipped)`
+          ? `Cloud Subscription — Mugesh requester — user approver: ${selectedApprover?.name || selectedApprover?.email || '—'} → Mugesh Invoice Upload → Accounts`
+          : `Cloud Subscription — user approvals: ${selectedApprovers.map((u) => u.name || u.email).join(' → ')} → Mugesh Invoice Upload → Accounts (no CFO approval)`
         : prFlow === 'functional'
           ? `Functional Flow � User Approval (${selectedApprovers.length}): ${selectedApprovers.map((u) => u.name || u.email).join(' ? ')} � then SCM Final RFQ / RFQ Entry ? Buyer Final Verify ? Create PO ? SCM Manager approval � Vendor path: ${vendorMode === 'own' ? 'Own Vendor (quotes on Create PR)' : 'SCM Vendor Selection'}`
           : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
@@ -1823,7 +1853,10 @@ export async function createPurchaseRequest(user, body) {
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
       const nextStep = isSass
-        ? 'L1 Manager Approval'
+        ? cloudSubscriptionPendingLabel(selectedApprover?.email, selectedApprover?.name).replace(
+            /^Pending /,
+            ''
+          )
         : prFlow === 'functional'
           ? selectedApprovers.length > 1
             ? `User Approval 1 of ${selectedApprovers.length}`
@@ -2049,6 +2082,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     FROM purchase_requests pr
     JOIN departments d ON d.id = pr.department_id
     JOIN users u ON u.id = pr.requester_id
+    LEFT JOIN users au ON au.id = pr.approval_user_id
     LEFT JOIN entity_masters e ON e.id = pr.entity_id
     ${where}
   `;
@@ -2057,10 +2091,11 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
   const total = Number(countRow?.total || 0);
 
   const [rows] = await pool.query(
-    `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.priority, pr.status, pr.requester_id,
+    `SELECT pr.id, pr.pr_number, pr.title, pr.request_type, pr.purchase_type, pr.priority, pr.status, pr.requester_id,
             pr.total_amount, pr.justification, pr.required_date, pr.vendor_selection,
             pr.pr_flow, pr.current_stage, pr.submitted_at, pr.created_at, pr.entity_id,
             d.name AS department_name, u.name AS requester_name,
+            au.name AS approval_user_name, au.email AS approval_user_email,
             e.name AS entity_name, e.code AS entity_code, e.cost_center AS entity_cost_center,
             (SELECT COUNT(*) FROM pr_line_items pli WHERE pli.pr_id = pr.id) AS item_count
      ${fromSql}
@@ -2096,6 +2131,9 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       approvalHistory: [],
       requester: row.requester_name,
       requesterId: row.requester_id,
+      purchaseType: row.purchase_type || 'purchase_order',
+      approvalUserEmail: row.approval_user_email || '',
+      approvalUserName: row.approval_user_name || '',
       vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
       prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
       poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
@@ -2957,11 +2995,35 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
             skipToScmRfq = false;
             remarks = `${remarks.trim()} [Cloud Subscription � Mugesh requester � routed to Mugesh Invoice Upload]`;
           } else {
-            // SASS L1 (requester-selected) ? Mugesh approval
-            newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
-            newStage = STAGE.CFO_REVIEW;
-            nextRole = 'CFO';
-            skipToScmRfq = false;
+            // User approvals only: next person in Mugesh → Srivaths, then invoice. Never CFO.
+            let nextApproverId = await nextIdInApprovalChain(pr, user);
+            const actorEmail = String(user.email || '').trim().toLowerCase();
+            if (!nextApproverId && actorEmail !== SASS_L2_EMAIL.toLowerCase()) {
+              if (actorEmail === SASS_MUGESH_EMAIL.toLowerCase()) {
+                const skipL2 = await sassL1WasSrivaths(prId, conn);
+                if (!skipL2) nextApproverId = Number(preL2Assignee?.userId) || null;
+              } else {
+                nextApproverId = Number(preMugeshAssignee?.userId) || null;
+                if (!nextApproverId || nextApproverId === Number(user.id)) {
+                  nextApproverId = Number(preL2Assignee?.userId) || null;
+                }
+              }
+            }
+            if (nextApproverId && nextApproverId === Number(user.id)) nextApproverId = null;
+            if (nextApproverId) {
+              nextFunctionalApprover = await resolveSelectedApprovalUser(nextApproverId);
+              newStatus = PR_STATUS.PENDING_HOD_APPROVAL;
+              newStage = STAGE.HOD_REVIEW;
+              nextRole = null;
+              skipToScmRfq = false;
+              remarks = `${remarks.trim()} [Cloud Subscription user approval → ${nextFunctionalApprover.name || nextFunctionalApprover.email}]`;
+            } else {
+              newStatus = PR_STATUS.AWAITING_INVOICE;
+              newStage = STAGE.SASS_INVOICE_UPLOAD;
+              nextRole = null;
+              skipToScmRfq = false;
+              remarks = `${remarks.trim()} [Cloud Subscription user approvals complete → Mugesh Invoice Upload]`;
+            }
           }
         } else if (isFunctional) {
           const nextApproverId = await nextIdInApprovalChain(pr, user);
@@ -3035,10 +3097,27 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
           }
         }
       } else if (actingRole === 'CFO') {
-        if (isInvoiceFlow) {
-          // Mugesh L1 approve ? Srivaths L2, unless L2 already done or L1 was Srivaths (SASS only)
+        if (isSass) {
+          const l1WasSrivaths = await sassL1WasSrivaths(prId, conn);
+          const l2Id = Number(preL2Assignee?.userId) || null;
+          if (l1WasSrivaths || !l2Id) {
+            newStatus = PR_STATUS.AWAITING_INVOICE;
+            newStage = STAGE.SASS_INVOICE_UPLOAD;
+            nextRole = null;
+            skipToScmRfq = false;
+            remarks = `${remarks.trim()} [Cloud Subscription → Mugesh Invoice Upload]`;
+          } else {
+            nextFunctionalApprover = await resolveSelectedApprovalUser(l2Id);
+            newStatus = PR_STATUS.PENDING_HOD_APPROVAL;
+            newStage = STAGE.HOD_REVIEW;
+            nextRole = null;
+            skipToScmRfq = false;
+            remarks = `${remarks.trim()} [Cloud Subscription user approval → ${nextFunctionalApprover.name || nextFunctionalApprover.email}]`;
+          }
+        } else if (isInvoiceFlow) {
+          // Online Purchase: Mugesh L1 approve → Srivaths L2, unless L2 already done
           const l2AlreadyDone = await hasApprovedStage(prId, STAGE.PR_MANAGER_REVIEW, conn);
-          const l1WasSrivaths = isSass ? await sassL1WasSrivaths(prId, conn) : false;
+          const l1WasSrivaths = false;
           if (l2AlreadyDone || l1WasSrivaths) {
             newStatus = PR_STATUS.AWAITING_INVOICE;
             newStage = STAGE.SASS_INVOICE_UPLOAD;
@@ -3166,6 +3245,7 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
       newStatus === PR_STATUS.AWAITING_INVOICE &&
       ((actingRole === 'PR Manager') ||
         (actingAsHod && sassRequesterIsMugesh) ||
+        (actingAsHod && isSass) ||
         (actingRole === 'CFO') ||
         (actingAsHod && isOnline && newStatus === PR_STATUS.AWAITING_INVOICE));
     if (openSassInvoice) {
@@ -4591,7 +4671,21 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     const current = freshRows[0] || pr;
     const isFunctional = current.pr_flow === 'functional';
     const isSass = isSassPurchaseType(current.purchase_type);
-    const chain = functionalApprovalChainFromPr(current);
+    let chain = functionalApprovalChainFromPr(current);
+    if (isSass) {
+      const extended = await appendCloudSubscriptionApproverIds(
+        chain.length ? chain : [current.approval_user_id],
+        current.department_id,
+        user
+      );
+      if (extended.length) {
+        chain = extended;
+        await conn.query(
+          `UPDATE purchase_requests SET approval_user_ids = ?, approval_user_id = ? WHERE id = ?`,
+          [JSON.stringify(extended), extended[0], prId]
+        );
+      }
+    }
     const firstApproverId = chain[0] || current.approval_user_id;
     if ((isFunctional || isSass) && firstApproverId && Number(firstApproverId) !== Number(current.approval_user_id)) {
       await conn.query(`UPDATE purchase_requests SET approval_user_id = ? WHERE id = ?`, [

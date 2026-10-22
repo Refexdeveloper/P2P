@@ -312,8 +312,8 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
 
   if (isSass) {
     const sassMap = {
-      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending L1 Manager Approval',
-      [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending L2 Manager Approval (Srivaths)',
+      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending User Approval',
+      [PR_STATUS.PENDING_PR_MANAGER_APPROVAL]: 'Pending Srivaths Approval',
       [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
       [PR_STATUS.AWAITING_INVOICE]: 'Pending Mugesh Invoice Upload',
       [PR_STATUS.APPROVED]: 'Completed — With Accounts',

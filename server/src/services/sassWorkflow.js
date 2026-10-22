@@ -1,6 +1,7 @@
 /**
  * SASS / Online Purchase workflow helpers.
- * Cloud Subscription: Requester → selected L1 → Mugesh → Srivaths → Mugesh invoice → Accounts.
+ * Cloud Subscription: Requester → user approvals (selected user, then Mugesh, then Srivaths) → Mugesh invoice → Accounts.
+ * Mugesh and Srivaths are user approvals. This path never uses CFO approval.
  * Online Purchase: Requester (User Approval) → Mugesh L1 → Srivaths L2 → Mugesh invoice → Completed.
  * SCM is never involved for either path.
  */
@@ -243,6 +244,32 @@ export async function resolveSassMugeshAssignment(departmentId = null) {
     departmentId
   );
   return { userId, email: SASS_MUGESH_EMAIL, name: SASS_MUGESH_NAME };
+}
+
+/**
+ * Cloud Subscription user-approval chain: the requester's selected user, then Mugesh, then Srivaths.
+ * Mugesh as requester keeps only the selected user (invoice follows that approval).
+ */
+export async function appendCloudSubscriptionApproverIds(selectedIds, departmentId, requester = {}) {
+  const ids = [];
+  const seen = new Set();
+  for (const raw of selectedIds || []) {
+    const id = Number(raw);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  if (isSassMugeshRequester(requester)) return ids;
+  const mugesh = await resolveSassMugeshAssignment(departmentId);
+  const l2 = await resolveSassL2Assignment(departmentId);
+  for (const id of [mugesh?.userId, l2?.userId]) {
+    const n = Number(id);
+    if (!n || seen.has(n)) continue;
+    if (requester?.id && n === Number(requester.id)) continue;
+    seen.add(n);
+    ids.push(n);
+  }
+  return ids;
 }
 
 export async function createSassL2ApprovalTask(conn, prId, departmentId = null, preAssignee = null) {
@@ -867,6 +894,67 @@ export async function rerouteMugeshRequesterSassToInvoiceUpload(connection = poo
   }
 
   return { scanned: rows.length, rerouted, tasksEnsured };
+}
+
+/**
+ * Cloud Subscription must not sit in CFO approval or the L2 manager queue.
+ * Pending Mugesh / Srivaths steps become user approvals assigned to that person.
+ */
+export async function moveCloudSubscriptionOffCfoQueue(connection = pool) {
+  const mugesh = await resolveSassMugeshAssignment(null);
+  const l2 = await resolveSassL2Assignment(null);
+  const [rows] = await connection.query(
+    `SELECT id, status, approval_user_id, approval_user_ids
+     FROM purchase_requests
+     WHERE purchase_type IN ('sass', 'saas', 'cloud_subscription')
+       AND status IN ('PENDING_CFO_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL')`
+  );
+  let moved = 0;
+  for (const row of rows) {
+    const toSrivaths = row.status === 'PENDING_PR_MANAGER_APPROVAL';
+    const assigneeId = Number(toSrivaths ? l2.userId : mugesh.userId);
+    if (!assigneeId) continue;
+    let ids = [];
+    try {
+      const raw = row.approval_user_ids;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) ids = parsed.map((id) => Number(id)).filter(Boolean);
+    } catch {
+      ids = [];
+    }
+    const currentId = Number(row.approval_user_id);
+    if (currentId && !ids.includes(currentId)) ids.push(currentId);
+    if (!toSrivaths && !ids.includes(Number(mugesh.userId))) ids.push(Number(mugesh.userId));
+    if (!ids.includes(Number(l2.userId))) ids.push(Number(l2.userId));
+    try {
+      await connection.query(
+        `UPDATE purchase_requests
+         SET status = 'PENDING_HOD_APPROVAL', current_stage = 'HOD_REVIEW',
+             approval_user_id = ?, approval_user_ids = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [assigneeId, JSON.stringify(ids), row.id]
+      );
+      const [updated] = await connection.query(
+        `UPDATE workflow_tasks
+         SET assigned_role = 'HOD Approver', assigned_user_id = ?
+         WHERE pr_id = ? AND status = 'pending' AND task_type = 'PR_APPROVAL'`,
+        [assigneeId, row.id]
+      );
+      if (!updated.affectedRows) {
+        const due = new Date();
+        due.setDate(due.getDate() + 1);
+        await connection.query(
+          `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+           VALUES (?, 'PR_APPROVAL', 'HOD Approver', ?, 'pending', ?)`,
+          [row.id, assigneeId, due.toISOString().slice(0, 10)]
+        );
+      }
+      moved += 1;
+    } catch (err) {
+      console.warn(`Cloud Subscription CFO-queue move skipped id=${row.id}:`, err.message);
+    }
+  }
+  return { scanned: rows.length, moved };
 }
 
 /**

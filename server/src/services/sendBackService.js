@@ -6,7 +6,14 @@ import {
   immediatePreviousSendBackKey,
 } from '../utils/sendBackTargets.js';
 import { resolveScmBuyerUser, getPreferredScmManagerEmail } from '../utils/scmAssignee.js';
-import { SASS_MUGESH_EMAIL } from './sassWorkflow.js';
+import {
+  SASS_MUGESH_EMAIL,
+  SASS_L2_EMAIL,
+  isSassPurchaseType,
+  resolveSassMugeshAssignment,
+  resolveSassL2Assignment,
+  openSassInvoiceStage,
+} from './sassWorkflow.js';
 import {
   getL1ManagerForEmail,
   getL2ManagerForEmail,
@@ -56,7 +63,7 @@ async function resolveRoleUser(role, conn = null) {
 
 export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
   const [rows] = await pool.query(
-    `SELECT status, vendor_selection, pr_flow, po_creation_by FROM purchase_requests WHERE id = ?`,
+    `SELECT status, vendor_selection, pr_flow, po_creation_by, purchase_type FROM purchase_requests WHERE id = ?`,
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
@@ -65,7 +72,8 @@ export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
         rows[0].status,
         rows[0].vendor_selection,
         rows[0].pr_flow,
-        rows[0].po_creation_by
+        rows[0].po_creation_by,
+        rows[0].purchase_type
       )
     : listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
   const preferred = immediatePreviousSendBackKey(
@@ -93,7 +101,13 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   const admin = Boolean(options.admin);
   const allowed = (
     admin
-      ? listAdminSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow, pr.po_creation_by)
+      ? listAdminSendBackTargets(
+          pr.status,
+          pr.vendor_selection,
+          pr.pr_flow,
+          pr.po_creation_by,
+          pr.purchase_type
+        )
       : listSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
   ).map((t) => t.key);
   if (!allowed.includes(target.key)) {
@@ -178,8 +192,27 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
         email: requester?.email || null,
         name: requester?.name || null,
       };
+    } else if (target.key === 'SASS_MUGESH' || target.key === 'SASS_SRIVATHS') {
+      const mugesh = await resolveSassMugeshAssignment(pr.department_id);
+      const l2 = await resolveSassL2Assignment(pr.department_id);
+      const picked = target.key === 'SASS_SRIVATHS' ? l2 : mugesh;
+      assignee = {
+        userId: picked?.userId || null,
+        email: picked?.email || (target.key === 'SASS_SRIVATHS' ? SASS_L2_EMAIL : SASS_MUGESH_EMAIL),
+        name: picked?.name || (target.key === 'SASS_SRIVATHS' ? 'Srivaths' : 'Mugesh'),
+      };
+      const chain =
+        target.key === 'SASS_MUGESH'
+          ? [mugesh?.userId, l2?.userId].map(Number).filter((id) => id > 0)
+          : [l2?.userId].map(Number).filter((id) => id > 0);
+      if (assignee.userId) {
+        await db.query(
+          `UPDATE purchase_requests SET approval_user_id = ?, approval_user_ids = ? WHERE id = ?`,
+          [assignee.userId, chain.length ? JSON.stringify(chain) : null, pr.id]
+        );
+      }
     } else if (target.assignedRole === 'HOD Approver') {
-      if (pr.pr_flow === 'functional') {
+      if (pr.pr_flow === 'functional' || isSassPurchaseType(pr.purchase_type)) {
         let chain = [];
         try {
           const raw = pr.approval_user_ids;
@@ -230,6 +263,17 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
        VALUES (?, ?, ?, ?, 'pending', ?)`,
       [pr.id, target.taskType, target.assignedRole, roleQueued ? null : assignee.userId, dueStr]
     );
+    taskCreated = true;
+  }
+
+  if (target.key === 'SASS_INVOICE') {
+    const mugesh = await resolveSassMugeshAssignment(pr.department_id);
+    assignee = {
+      userId: mugesh?.userId || null,
+      email: mugesh?.email || SASS_MUGESH_EMAIL,
+      name: mugesh?.name || 'Mugesh',
+    };
+    await openSassInvoiceStage(db, pr, actor || requester, { createMugeshInvoiceTask: true });
     taskCreated = true;
   }
 
