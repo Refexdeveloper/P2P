@@ -558,6 +558,7 @@ export async function sendMailToRecipients(recipients, subject, html, text, atta
     ccAddresses: mailOptions.cc || [],
     bccAddresses: mailOptions.bcc || [],
     subject,
+    errorMessage: 'sending',
   });
 
   const { host, user, pass } = getSmtpConfig();
@@ -1477,6 +1478,7 @@ export async function sendPoWorkflowNotification(po, {
       portalUrl,
       ctaLabel,
       cc,
+      recipientName: recipientName || '',
     },
   });
 }
@@ -1952,7 +1954,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       po,
       action: meta.action || 'assign',
       stageLabel: meta.stageLabel || 'PO Workflow',
-      recipientName: 'User',
+      recipientName: meta.recipientName || 'User',
       actorName: meta.actorName || '',
       actorRole: meta.actorRole || '',
       remarks: meta.remarks || '',
@@ -2072,7 +2074,8 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
   }
 }
 
-const QUEUE_RETRY_MIN_AGE_SECONDS = 60;
+const QUEUE_RETRY_MIN_AGE_SECONDS = 10 * 60;
+const QUEUE_INFLIGHT_GIVE_UP_SECONDS = 15 * 60;
 const QUEUE_RETRY_MAX_AGE_DAYS = 14;
 const QUEUE_RETRY_BATCH = 6;
 
@@ -2097,11 +2100,29 @@ export async function resumeStuckQueuedEmails() {
       console.log(`Marked ${stale.affectedRows} ancient queued emails as failed`);
     }
 
+    // A live SMTP send keeps error_message = 'sending'. Do not mail that row again.
+    // Only a send that died mid-flight (still 'sending' after 15 min) is released for one retry.
+    await pool.query(
+      `UPDATE email_logs
+       SET error_message = NULL
+       WHERE status = 'queued'
+         AND error_message = 'sending'
+         AND created_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)`,
+      [QUEUE_INFLIGHT_GIVE_UP_SECONDS]
+    );
+
     const [rows] = await pool.query(
       `SELECT id FROM email_logs
        WHERE status = 'queued'
          AND created_at <= DATE_SUB(NOW(), INTERVAL ? SECOND)
-         AND (error_message IS NULL OR error_message = '' OR error_message NOT LIKE 'resending%')
+         AND (
+           error_message IS NULL
+           OR error_message = ''
+           OR (
+             error_message NOT LIKE 'resending%'
+             AND error_message NOT LIKE 'sending%'
+           )
+         )
        ORDER BY id ASC
        LIMIT ?`,
       [QUEUE_RETRY_MIN_AGE_SECONDS, QUEUE_RETRY_BATCH]

@@ -2116,26 +2116,6 @@ export async function createManualPurchaseOrder(user, body = {}) {
       } catch {
         /* non-fatal */
       }
-      if (!skipApproval && po) {
-        try {
-          const signer = await resolvePoSignRecipient(po);
-          const attachments = await poPdfMailAttachment(po);
-          queuePoWorkflowNotification(po, {
-            action: 'assign',
-            stageLabel: 'SCM Manager PO Approval',
-            recipientEmails: signer.emails,
-            recipientName: signer.name,
-            actorName: user.name,
-            actorRole: user.role,
-            remarks: `Manual ${po.poNumber} created and sent to ${signer.name} for sign and approval`,
-            portalUrl: poPortalUrl('/scm/po-approval'),
-            ctaLabel: 'Open PO Approval',
-            attachments,
-          });
-        } catch (err) {
-          console.warn('Manual PO manager notify failed:', err.message);
-        }
-      }
       return po || promoted;
     }
   }
