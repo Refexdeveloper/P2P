@@ -675,6 +675,64 @@ export async function loadP2pActivityReport(now = new Date()) {
     .map(([key, label]) => ({ key, label, count: poStageByKey.get(key) || 0 }))
     .filter((row) => row.count > 0);
 
+  const [signerRows] = await pool.query(
+    `SELECT po.po_number,
+            COALESCE(NULLIF(TRIM(po.signature_name), ''), NULLIF(TRIM(signer.name), ''), 'Not signed yet') AS signer_label,
+            (
+              po.po_number NOT LIKE 'CS-%'
+              AND NOT EXISTS (
+                SELECT 1 FROM purchase_requests pr_hide
+                WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
+              )
+              AND (
+                po.approval_manager_id = ?
+                OR (po.approval_manager_id IS NULL AND ${NOT_RGML})
+              )
+            ) AS is_rajeev,
+            (
+              po.signer_id = ?
+              OR LOWER(IFNULL(po.signature_name, '')) LIKE 'meet%'
+            ) AS is_meet,
+            (
+              po.signer_id = ?
+              OR LOWER(IFNULL(po.signature_name, '')) LIKE 'mugesh%'
+              OR (
+                LOWER(IFNULL(po.po_sign_step, '')) = 'signed'
+                AND LOWER(IFNULL(po.signature_name, '')) NOT LIKE 'meet%'
+              )
+            ) AS is_mugesh
+     FROM purchase_orders po
+     LEFT JOIN users signer ON signer.id = po.signer_id
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (
+         'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+         'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+       )`,
+    [rajeevId, meetId, mugeshId]
+  );
+  const signedBy = {
+    rajeev: 0,
+    mugesh: 0,
+    meet: 0,
+    overlap: 0,
+    remaining: [],
+  };
+  for (const row of signerRows) {
+    const flags = [row.is_rajeev, row.is_mugesh, row.is_meet].filter((flag) => Number(flag) === 1).length;
+    if (Number(row.is_rajeev) === 1) signedBy.rajeev += 1;
+    if (Number(row.is_mugesh) === 1) signedBy.mugesh += 1;
+    if (Number(row.is_meet) === 1) signedBy.meet += 1;
+    if (flags > 1) signedBy.overlap += 1;
+    if (flags === 0) {
+      signedBy.remaining.push({
+        poNumber: row.po_number || '',
+        signer: row.signer_label || 'Not signed yet',
+      });
+    }
+  }
+  signedBy.remaining.sort((a, b) => a.signer.localeCompare(b.signer) || a.poNumber.localeCompare(b.poNumber));
+
   return {
     generatedAt: formatReportDate(now),
     totalPrs: num(pr?.total_prs),
@@ -710,6 +768,7 @@ export async function loadP2pActivityReport(now = new Date()) {
     grnPendingTasks,
     invoiceEntryTasks,
     poStages,
+    signedBy,
   };
 }
 
@@ -1283,6 +1342,9 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
 export function buildP2pPendingTasksEmail(report) {
   const stages = report.poStages || [];
   const stageTotal = stages.reduce((total, row) => total + row.count, 0);
+  const signed = report.signedBy || { rajeev: 0, mugesh: 0, meet: 0, overlap: 0, remaining: [] };
+  const remaining = signed.remaining || [];
+  const signerSum = (signed.rajeev || 0) + (signed.mugesh || 0) + (signed.meet || 0) + remaining.length - (signed.overlap || 0);
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1319,7 +1381,7 @@ export function buildP2pPendingTasksEmail(report) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
 ${statCard({
   width: '32%',
-  value: report.rajeevApproved || 0,
+  value: signed.rajeev || 0,
   label: `${report.rajeevName || 'Rajeev'} signed`,
   sub: 'POs he has signed',
   valueColor: '#14503a',
@@ -1330,7 +1392,7 @@ ${statCard({
 <td width="2%"></td>
 ${statCard({
   width: '32%',
-  value: report.mugeshSigned || 0,
+  value: signed.mugesh || 0,
   label: `${report.mugeshName || 'Mugesh'} signed`,
   sub: 'POs he has signed',
   valueColor: '#14503a',
@@ -1341,7 +1403,7 @@ ${statCard({
 <td width="2%"></td>
 ${statCard({
   width: '32%',
-  value: report.meetSigned || 0,
+  value: signed.meet || 0,
   label: `${report.meetName || 'Meet'} signed`,
   sub: 'POs he has signed',
   valueColor: '#14503a',
@@ -1349,7 +1411,38 @@ ${statCard({
   background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
   border: '#c7ead4',
 })}
-</tr></table></td></tr>
+</tr></table>
+<div style="font-size:12px; color:#5b5b5b; margin-top:8px; line-height:1.5;">
+Rajeev ${signed.rajeev || 0} + Mugesh ${signed.mugesh || 0} + Meet ${signed.meet || 0} + remaining ${remaining.length}${
+    signed.overlap ? ` − counted under more than one signer ${signed.overlap}` : ''
+  } = ${signerSum}. Approved POs are ${stageTotal}.
+</div>
+</td></tr>
+
+<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Remaining ${remaining.length}</td></tr>
+<tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
+These approved orders are not in the Rajeev, Mugesh, or Meet counts above.
+</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">PO</td>
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Signed by</td>
+</tr>
+${
+  remaining.length
+    ? remaining
+        .map((row, index) => {
+          const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+          return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea; font-weight:bold;">${escapeHtml(row.poNumber)}</td>
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.signer)}</td>
+</tr>`;
+        })
+        .join('')
+    : `<tr><td colspan="2" style="padding:14px; color:#6b6b6b; background:#ffffff;">Every approved PO is under Rajeev, Mugesh, or Meet.</td></tr>`
+}
+</table></td></tr>
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Current stage</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
@@ -1396,9 +1489,15 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     report.generatedAt,
     '',
     `Approved POs: ${stageTotal}`,
-    `${report.rajeevName || 'Rajeev'} signed: ${report.rajeevApproved || 0}`,
-    `${report.mugeshName || 'Mugesh'} signed: ${report.mugeshSigned || 0}`,
-    `${report.meetName || 'Meet'} signed: ${report.meetSigned || 0}`,
+    `${report.rajeevName || 'Rajeev'} signed: ${signed.rajeev || 0}`,
+    `${report.mugeshName || 'Mugesh'} signed: ${signed.mugesh || 0}`,
+    `${report.meetName || 'Meet'} signed: ${signed.meet || 0}`,
+    `Remaining: ${remaining.length}`,
+    `Counted under more than one signer: ${signed.overlap || 0}`,
+    `Rajeev + Mugesh + Meet + remaining − overlap = ${signerSum}`,
+    '',
+    'Remaining',
+    ...remaining.map((row) => `${row.poNumber} | ${row.signer}`),
     '',
     'Current stage',
     ...stages.map((row) => `${row.label}: ${row.count}`),
