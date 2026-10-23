@@ -965,6 +965,22 @@ function lineItemTax(total, taxPercentage) {
   return roundMoney(((Number(total) || 0) * (Number(taxPercentage) || 0)) / 100);
 }
 
+/** PO-level discount. 0 when blank; never negative; never above subtotal + GST. */
+function resolvePoDiscountAmount(raw, subtotal, taxAmount) {
+  const cap = roundMoney((Number(subtotal) || 0) + (Number(taxAmount) || 0));
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return roundMoney(Math.min(n, Math.max(0, cap)));
+}
+
+function poTotalsWithDiscount(subtotal, taxAmount, rawDiscount) {
+  const discountAmount = resolvePoDiscountAmount(rawDiscount, subtotal, taxAmount);
+  return {
+    discountAmount,
+    grandTotal: roundMoney(subtotal + taxAmount - discountAmount),
+  };
+}
+
 function plainText(value) {
   return String(value || '')
     .replace(/<[^>]+>/g, ' ')
@@ -1111,6 +1127,7 @@ async function enrichPO(row) {
     currency: normalizeCurrency(row.currency),
     subtotal: Number(row.subtotal),
     taxAmount: Number(row.tax_amount),
+    discountAmount: Number(row.discount_amount) || 0,
     grandTotal: Number(row.grand_total),
     status: mapPoStatusUI(
       row.status,
@@ -1304,6 +1321,7 @@ async function enrichPOListBatch(rows) {
       currency: normalizeCurrency(row.currency),
       subtotal: Number(row.subtotal),
       taxAmount: Number(row.tax_amount),
+      discountAmount: Number(row.discount_amount) || 0,
       grandTotal: Number(row.grand_total),
       status: mapPoStatusUI(row.status, row.vendor_acceptance_status, purchaseType, row.po_sign_step),
       statusRaw: row.status,
@@ -2009,7 +2027,11 @@ async function resolvePoDraftContent(prId, body) {
   const taxAmount = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0));
   const effectiveGst =
     subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
-  const grandTotal = roundMoney(subtotal + taxAmount);
+  const { discountAmount, grandTotal } = poTotalsWithDiscount(
+    subtotal,
+    taxAmount,
+    body?.discountAmount ?? body?.discount_amount
+  );
   const resolvedCurrency = normalizeCurrency(body?.currency || pr.currency);
   const resolvedPurchaseType = normalizePurchaseType(body?.purchaseType || pr.purchaseType);
 
@@ -2064,6 +2086,7 @@ async function resolvePoDraftContent(prId, body) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
     lineItems: mappedLineItems,
   };
@@ -2202,7 +2225,11 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
   const taxAmount = roundMoney(mappedLineItems.reduce((sum, item) => sum + item.taxAmount, 0));
   const effectiveGst =
     subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : Number(gstPercentage) || 0;
-  const grandTotal = roundMoney(subtotal + taxAmount);
+  const { discountAmount, grandTotal } = poTotalsWithDiscount(
+    subtotal,
+    taxAmount,
+    body?.discountAmount ?? body?.discount_amount
+  );
   const resolvedCurrency = normalizeCurrency(body?.currency);
   const resolvedPurchaseType = normalizePurchaseType(body?.purchaseType);
   const subject = String(resolvedPoTermsDetails.subject || title || '').trim();
@@ -2259,6 +2286,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
     lineItems: mappedLineItems,
   };
@@ -2578,6 +2606,7 @@ export async function createPurchaseOrder(user, prId, body) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
   } = draft;
 
@@ -2616,8 +2645,8 @@ export async function createPurchaseOrder(user, prId, body) {
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, discount_amount, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -2649,6 +2678,7 @@ export async function createPurchaseOrder(user, prId, body) {
         subtotal,
         taxAmount,
         grandTotal,
+        discountAmount || 0,
         initialStatus,
       ]
     );
@@ -2828,6 +2858,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
     vendorName,
     vendorEmail,
@@ -2867,8 +2898,8 @@ export async function createManualPurchaseOrder(user, body = {}) {
        (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
         delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
         po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status, manual_context_json)
-       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, discount_amount, status, manual_context_json)
+       VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         poNumber,
         referencePoNumber,
@@ -2898,6 +2929,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
         subtotal,
         taxAmount,
         grandTotal,
+        discountAmount || 0,
         initialStatus,
         null,
       ]
@@ -3132,9 +3164,15 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
     });
     const subtotal = roundMoney(draft.lineItems.reduce((sum, item) => sum + item.total, 0));
     const taxAmount = roundMoney(draft.lineItems.reduce((sum, item) => sum + item.taxAmount, 0));
+    const priced = poTotalsWithDiscount(
+      subtotal,
+      taxAmount,
+      payload.discountAmount ?? payload.discount_amount
+    );
     draft.subtotal = subtotal;
     draft.taxAmount = taxAmount;
-    draft.grandTotal = roundMoney(subtotal + taxAmount);
+    draft.discountAmount = priced.discountAmount;
+    draft.grandTotal = priced.grandTotal;
   }
   if (
     Array.isArray(payload.annexureIiRows) ||
@@ -3267,6 +3305,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
     vendorName,
     vendorEmail,
@@ -3328,7 +3367,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
           special_instructions = ?, po_type = ?, purchase_type = ?, letterhead_header = ?, letterhead_id = ?, entity_id = ?, entity = ?,
           header_logo = ?, footer_logo = ?, terms_clauses = ?, annexure_clauses = ?, annexure_ii_html = ?,
-          po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
+          po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?, discount_amount = ?,
           status = 'draft', updated_at = NOW()
          WHERE id = ?`,
         [
@@ -3359,6 +3398,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           subtotal,
           taxAmount,
           grandTotal,
+          discountAmount || 0,
           savedPoId,
         ]
       );
@@ -3375,8 +3415,8 @@ export async function savePurchaseOrderDraft(user, body = {}) {
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
           delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
           po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, discount_amount, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
         [
           poNumber,
           referencePoNumber,
@@ -3408,6 +3448,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           subtotal,
           taxAmount,
           grandTotal,
+          discountAmount || 0,
         ]
       );
       savedPoId = result.insertId;
@@ -3435,8 +3476,8 @@ export async function savePurchaseOrderDraft(user, body = {}) {
          (po_number, reference_po_number, pr_id, vendor_name, vendor_email, rfq_invitation_id, created_by,
           delivery_address, expected_delivery_date, po_date, payment_terms, incoterms, special_instructions,
           po_type, purchase_type, letterhead_header, letterhead_id, entity_id, entity, header_logo, footer_logo, terms_clauses, annexure_clauses,
-          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, status)
-         VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
+          annexure_ii_html, po_terms_details, gst_percentage, currency, subtotal, tax_amount, grand_total, discount_amount, status)
+         VALUES (?, ?, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')`,
         [
           poNumber,
           referencePoNumber,
@@ -3466,6 +3507,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
           subtotal,
           taxAmount,
           grandTotal,
+          discountAmount || 0,
         ]
       );
       savedPoId = result.insertId;
@@ -5688,6 +5730,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     currency: resolvedCurrency,
     subtotal,
     taxAmount,
+    discountAmount,
     grandTotal,
   } = draft;
 
@@ -5755,7 +5798,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         delivery_address = ?, expected_delivery_date = ?, po_date = ?, payment_terms = ?, incoterms = ?,
         special_instructions = ?, po_type = ?, letterhead_header = ?, letterhead_id = ?, entity_id = ?, entity = ?,
         header_logo = ?, footer_logo = ?, terms_clauses = ?,
-        annexure_clauses = ?, annexure_ii_html = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?,
+        annexure_clauses = ?, annexure_ii_html = ?, po_terms_details = ?, gst_percentage = ?, currency = ?, subtotal = ?, tax_amount = ?, grand_total = ?, discount_amount = ?,
         updated_at = NOW()
        WHERE id = ?`,
       [
@@ -5783,6 +5826,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         subtotal,
         taxAmount,
         grandTotal,
+        discountAmount || 0,
         poId,
       ]
     );
@@ -6413,15 +6457,22 @@ function isWorkOrderPo(row) {
   return String(row?.purchase_type || row?.purchaseType || 'purchase_order') === 'work_order';
 }
 
+const VENDOR_ACCEPTANCE_LATER_STATUSES = [
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+  'paid',
+];
+
 function resolveStatusAfterVendorAcceptance(poRow, acceptanceStatus) {
   if (!['accepted', 'partial'].includes(acceptanceStatus)) return poRow.status;
+  const resume = String(poRow.vendor_acceptance_resume_status || '').trim().toLowerCase();
+  if (VENDOR_ACCEPTANCE_LATER_STATUSES.includes(resume)) return resume;
   // Work Orders skip GRN → invoice entry. Purchase Orders → GRN, then invoice after GRN submit.
   if (isWorkOrderPo(poRow)) return 'invoice_entry';
-  if (
-    ['invoice_entry', 'pending_accounts_approval', 'approved_for_payment', 'paid'].includes(
-      poRow.status
-    )
-  ) {
+  if (VENDOR_ACCEPTANCE_LATER_STATUSES.includes(String(poRow.status || '').toLowerCase())) {
     return poRow.status;
   }
   return 'awaiting_grn';
@@ -6508,6 +6559,86 @@ export async function openVendorAcceptanceStageForPo(poId) {
   }
 
   return getPurchaseOrderById(poId);
+}
+
+const ADMIN_MOVE_TO_ACCEPTANCE_STATUSES = [
+  'awaiting_grn',
+  'grn_completed',
+  'invoice_entry',
+  'pending_accounts_approval',
+  'approved_for_payment',
+];
+
+/**
+ * Super Admin: put approved orders that skipped vendor acceptance onto that screen.
+ * The previous stage is stored and restored when acceptance is recorded.
+ */
+export async function adminMovePurchaseOrdersToVendorAcceptance(user, poNumbers) {
+  if (user?.role !== 'Super Admin') throw new Error('Unauthorized');
+  const numbers = [...new Set(
+    (Array.isArray(poNumbers) ? poNumbers : String(poNumbers || '').split(/[\s,;]+/))
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+  )];
+  if (!numbers.length) throw new Error('Enter at least one PO number');
+
+  const moved = [];
+  const skipped = [];
+  for (const poNumber of numbers) {
+    const [rows] = await pool.query(
+      `SELECT * FROM purchase_orders WHERE po_number = ? LIMIT 1`,
+      [poNumber]
+    );
+    if (!rows.length) {
+      skipped.push({ poNumber, reason: 'PO not found' });
+      continue;
+    }
+    const row = rows[0];
+    const status = String(row.status || '').toLowerCase();
+    const acceptance = String(row.vendor_acceptance_status || '').toLowerCase();
+    if (['accepted', 'rejected', 'partial'].includes(acceptance)) {
+      skipped.push({ poNumber, reason: 'Vendor acceptance is already recorded' });
+      continue;
+    }
+    if (status === 'sent_to_vendor') {
+      skipped.push({ poNumber, reason: 'Already on vendor PO acceptance' });
+      continue;
+    }
+    if (!ADMIN_MOVE_TO_ACCEPTANCE_STATUSES.includes(status)) {
+      skipped.push({ poNumber, reason: `Current stage ${status || 'unknown'} cannot move to vendor acceptance` });
+      continue;
+    }
+
+    const token = row.vendor_acceptance_token || newVendorAcceptanceToken();
+    await pool.query(
+      `UPDATE purchase_orders SET
+         vendor_acceptance_resume_status = ?,
+         status = 'sent_to_vendor',
+         vendor_acceptance_status = 'pending',
+         vendor_acceptance_token = ?,
+         updated_at = NOW()
+       WHERE id = ?`,
+      [status, token, row.id]
+    );
+
+    if (row.pr_id) {
+      const requesterId = await getPoRequesterId(row);
+      if (requesterId) await upsertVendorAcceptanceTask(row.pr_id, requesterId);
+      await pool.query(
+        `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+         VALUES (?, 'PO_VENDOR_ACCEPTANCE', ?, 'reopened', ?)`,
+        [
+          row.pr_id,
+          user.id,
+          `Moved back to vendor PO acceptance from ${status} by ${user.name || 'Super Admin'}. Returns to ${status} after acceptance is recorded.`,
+        ]
+      );
+    }
+
+    moved.push({ poNumber: row.po_number, fromStatus: status });
+  }
+
+  return { moved, skipped };
 }
 
 /** Backfill / reassign pending vendor acceptance tasks to PR requesters. */
@@ -6716,6 +6847,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
+       vendor_acceptance_resume_status = NULL,
        status = ?,
        updated_at = NOW()
      WHERE id = ?`,
@@ -6825,6 +6957,7 @@ export async function submitVendorAcceptanceByToken(token, body = {}) {
        vendor_acceptance_file_path = COALESCE(?, vendor_acceptance_file_path),
        vendor_delivery_confirmed_date = ?,
        vendor_accepted_at = NOW(),
+       vendor_acceptance_resume_status = NULL,
        status = ?,
        updated_at = NOW()
      WHERE id = ?`,

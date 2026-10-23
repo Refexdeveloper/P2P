@@ -68,6 +68,22 @@ export default function AdminEmailLogsPage() {
   const [notifyingPo, setNotifyingPo] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
   const [sendingPending, setSendingPending] = useState(false);
+  const [movePoInput, setMovePoInput] = useState(
+    [
+      'PO-CBGSPVM-2026-27-0001',
+      'PO-RGML-2026-27-0004',
+      'PO-RGML-2026-27-0005',
+      'PO-RHPL-2026-27-0003',
+      'PO-RKCPL-2026-27-0001',
+      'PO-SCORCH-2026-27-0001',
+      'PO-VBEFPL-2026-27-0003/R1',
+      'PO-VBEFPL-2026-27-0005',
+      'PO-RHPL-2026-27-0004',
+      'PO-VBEFPL-2026-27-0001',
+      'PO-VBEFPL-2026-27-0004',
+    ].join('\n')
+  );
+  const [movingAcceptance, setMovingAcceptance] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const limit = 40;
 
@@ -197,6 +213,29 @@ export default function AdminEmailLogsPage() {
     }
   };
 
+  const handleMoveToVendorAcceptance = async () => {
+    const poNumbers = movePoInput
+      .split(/[\s,;]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!poNumbers.length) {
+      showToast('Enter at least one PO number', 'error');
+      return;
+    }
+    setMovingAcceptance(true);
+    try {
+      const res = await adminApi.movePosToVendorAcceptance(poNumbers);
+      const skipped = res.data?.skipped?.length
+        ? ` Skipped ${res.data.skipped.length}: ${res.data.skipped.map((row) => `${row.poNumber} (${row.reason})`).join('; ')}`
+        : '';
+      showToast((res.message || 'Moved to vendor PO acceptance') + skipped, skipped ? 'error' : 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Move failed', 'error');
+    } finally {
+      setMovingAcceptance(false);
+    }
+  };
+
   const handleNotifyScmManager = async () => {
     const key = notifyPoInput.trim();
     if (!key) {
@@ -293,6 +332,29 @@ export default function AdminEmailLogsPage() {
               className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
             >
               {sendingPending ? 'Sending…' : 'Send pending tasks to sathishkumar.r@refex.co.in'}
+            </button>
+          </div>
+        ) : null}
+
+        {channel === 'email' ? (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Move to vendor PO acceptance</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">
+              For approved orders whose vendor acceptance was never recorded. They appear as pending on Vendor PO Acceptance. After acceptance is recorded, each order returns to the stage it left (GRN or invoice entry).
+            </p>
+            <textarea
+              value={movePoInput}
+              onChange={(e) => setMovePoInput(e.target.value)}
+              rows={6}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => void handleMoveToVendorAcceptance()}
+              disabled={movingAcceptance}
+              className="mt-3 rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
+            >
+              {movingAcceptance ? 'Moving…' : 'Move these POs to vendor acceptance'}
             </button>
           </div>
         ) : null}

@@ -194,6 +194,8 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_file_path VARCHAR(500) NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_delivery_confirmed_date DATE NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN vendor_accepted_at TIMESTAMP NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_acceptance_resume_status VARCHAR(40) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN discount_amount DECIMAL(15, 2) NOT NULL DEFAULT 0`,
   `ALTER TABLE purchase_requests ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE purchase_orders ADD COLUMN purchase_type ENUM('purchase_order', 'work_order') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE workflow_tasks ADD COLUMN sla_notified_at TIMESTAMP NULL`,

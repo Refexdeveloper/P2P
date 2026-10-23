@@ -2230,6 +2230,17 @@ export const adminApi = {
         body: JSON.stringify({ extraTo: extraTo || '' }),
       }
     ),
+  movePosToVendorAcceptance: (poNumbers: string[]) =>
+    request<{
+      data: {
+        moved: { poNumber: string; fromStatus: string }[];
+        skipped: { poNumber: string; reason: string }[];
+      };
+      message: string;
+    }>('/api/admin/po/move-to-vendor-acceptance', {
+      method: 'POST',
+      body: JSON.stringify({ poNumbers }),
+    }),
   sendP2pPendingTasksReport: (to?: string) =>
     request<{
       data: {

@@ -447,9 +447,15 @@ function priceScheduleTheadHtml(continued = false) {
 }
 
 function priceTotalsBodyHtml(po) {
+  const discount = Number(po.discountAmount ?? po.discount_amount) || 0;
+  const discountRow =
+    discount > 0
+      ? `<tr class="total"><td colspan="6">Discount</td>${amountCellHtml(-discount, po.currency, 'col-total total-amount-cell')}</tr>`
+      : '';
   return `
     <tr class="total"><td colspan="6">SubTotal</td>${amountCellHtml(po.subtotal, po.currency, 'col-total total-amount-cell')}</tr>
     <tr class="total"><td colspan="6">Add: GST</td>${amountCellHtml(po.taxAmount, po.currency, 'col-total total-amount-cell')}</tr>
+    ${discountRow}
     <tr class="total"><td colspan="6">GrandTotal</td>${amountCellHtml(po.grandTotal, po.currency, 'col-total total-amount-cell')}</tr>
     <tr class="amount-words-row">
       <td colspan="7">

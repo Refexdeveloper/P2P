@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { formatRoleDisplayName } from '../../../utils/roleDisplay';
 
 export type ApprovalUserOption = {
   id: number;
@@ -29,8 +30,12 @@ const AVATAR_TONES = [
   'bg-amber-700',
 ];
 
+function displayRole(u: ApprovalUserOption) {
+  return formatRoleDisplayName(u.role, u);
+}
+
 function haystack(u: ApprovalUserOption) {
-  return `${u.name} ${u.email} ${u.role} ${u.department}`.toLowerCase();
+  return `${u.name} ${u.email} ${u.role} ${displayRole(u)} ${u.department}`.toLowerCase();
 }
 
 function initials(name: string) {
@@ -88,7 +93,7 @@ export default function UserSearchSelect({
   const grouped = useMemo(() => {
     const map = new Map<string, ApprovalUserOption[]>();
     for (const u of matches) {
-      const key = u.role || 'Other';
+      const key = displayRole(u) || u.role || 'Other';
       const bucket = map.get(key) || [];
       bucket.push(u);
       map.set(key, bucket);
@@ -254,11 +259,13 @@ export default function UserSearchSelect({
                           <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-2 min-w-0">
                               <span className="text-sm font-semibold text-slate-900 truncate">{u.name}</span>
-                              <span
-                                className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${roleBadgeClass(u.role)}`}
-                              >
-                                {u.role}
-                              </span>
+                              {displayRole(u) ? (
+                                <span
+                                  className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${roleBadgeClass(displayRole(u))}`}
+                                >
+                                  {displayRole(u)}
+                                </span>
+                              ) : null}
                             </span>
                             <span className="block text-xs text-slate-500 truncate mt-0.5">
                               {u.email}
@@ -305,9 +312,11 @@ export default function UserSearchSelect({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 min-w-0">
                   <p className="text-sm font-semibold text-slate-900 truncate">{u.name}</p>
-                  <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${roleBadgeClass(u.role)}`}>
-                    {u.role}
-                  </span>
+                  {displayRole(u) ? (
+                    <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${roleBadgeClass(displayRole(u))}`}>
+                      {displayRole(u)}
+                    </span>
+                  ) : null}
                 </div>
                 <p className="text-[11px] text-slate-500 truncate">
                   {index === 0 ? 'Approves first' : `Then person ${index + 1}`}

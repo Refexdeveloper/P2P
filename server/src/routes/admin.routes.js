@@ -20,7 +20,7 @@ import {
   processSlaBreaches,
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
-import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval } from '../services/poService.js';
+import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval, adminMovePurchaseOrdersToVendorAcceptance } from '../services/poService.js';
 import { P2P_REPORT_TO, sendP2pActivityReport, sendP2pPendingTasksReport } from '../services/p2pActivityReportService.js';
 
 const router = Router();
@@ -274,6 +274,19 @@ router.post('/sla/process-daily-reminders', async (req, res) => {
       });
     }
     res.json({ data, message: 'SLA morning/evening reminders processed' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Approved POs that skipped vendor acceptance → Vendor PO Acceptance screen. */
+router.post('/po/move-to-vendor-acceptance', async (req, res) => {
+  try {
+    const data = await adminMovePurchaseOrdersToVendorAcceptance(req.user, req.body?.poNumbers);
+    res.json({
+      data,
+      message: `Moved ${data.moved.length} PO(s) to vendor PO acceptance`,
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

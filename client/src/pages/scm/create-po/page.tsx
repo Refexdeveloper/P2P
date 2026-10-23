@@ -1219,6 +1219,7 @@ export default function CreatePOPage() {
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [discountAmount, setDiscountAmount] = useState(0);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState('');
   const [poDate, setPoDate] = useState(todayYmd);
@@ -2411,6 +2412,7 @@ export default function CreatePOPage() {
       });
       lineItemsDraftRef.current = mappedLineItems;
       setLineItems(mappedLineItems);
+      setDiscountAmount(Math.max(0, Number((po as { discountAmount?: number }).discountAmount) || 0));
       prLineItemsHydratedRef.current = true;
       setPr({
         id: prDbId,
@@ -2926,7 +2928,11 @@ export default function CreatePOPage() {
     () => roundMoney(lineItems.reduce((s, i) => s + calcLineTax(i.total, i.taxPercentage), 0)),
     [lineItems]
   );
-  const grandTotal = useMemo(() => roundMoney(subtotal + taxAmount), [subtotal, taxAmount]);
+  const amountBeforeDiscount = useMemo(() => roundMoney(subtotal + taxAmount), [subtotal, taxAmount]);
+  const grandTotal = useMemo(
+    () => roundMoney(amountBeforeDiscount - Math.min(discountAmount, amountBeforeDiscount)),
+    [amountBeforeDiscount, discountAmount]
+  );
   const amountInWords = useMemo(() => numberToIndianWords(grandTotal), [grandTotal]);
   const effectiveGstPercentage = useMemo(
     () => (subtotal > 0 ? Math.round((taxAmount / subtotal) * 10000) / 100 : 0),
@@ -2936,6 +2942,16 @@ export default function CreatePOPage() {
   useEffect(() => {
     setGstPercentage(effectiveGstPercentage);
   }, [effectiveGstPercentage]);
+
+  useEffect(() => {
+    setDiscountAmount((prev) => (prev > amountBeforeDiscount ? amountBeforeDiscount : prev));
+  }, [amountBeforeDiscount]);
+
+  const handleDiscountChange = (raw: string) => {
+    const parsed = raw === '' || raw === '.' ? 0 : parseFloat(raw);
+    const val = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    setDiscountAmount(roundMoney(Math.min(val, amountBeforeDiscount)));
+  };
 
   const buildPreviewPayload = useCallback(() => {
     const liveTerms = termsDraftRef.current.length ? termsDraftRef.current : termsClauses;
@@ -2999,6 +3015,7 @@ export default function CreatePOPage() {
     modeOfShipment: normalizeModeOfShipment(poTermsDetails.modeOfShipment),
     specialInstructions,
     gstPercentage: effectiveGstPercentage,
+    discountAmount,
     poType,
     letterheadHeader,
     letterheadId: letterheadId || undefined,
@@ -3047,6 +3064,7 @@ export default function CreatePOPage() {
     incoterms,
     specialInstructions,
     effectiveGstPercentage,
+    discountAmount,
     poType,
     letterheadHeader,
     letterheadId,
@@ -3379,6 +3397,7 @@ export default function CreatePOPage() {
         modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         specialInstructions,
         gstPercentage: effectiveGstPercentage,
+        discountAmount,
         poType,
         letterheadHeader,
         letterheadId: letterheadId || undefined,
@@ -4048,6 +4067,7 @@ export default function CreatePOPage() {
         modeOfShipment: normalizeModeOfShipment(details.modeOfShipment),
         specialInstructions,
         gstPercentage: effectiveGstPercentage,
+        discountAmount,
         poType,
         letterheadHeader,
         letterheadId: letterheadId || undefined,
@@ -5722,6 +5742,26 @@ export default function CreatePOPage() {
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Tax (per line)</span>
                         <span className="font-semibold text-gray-900">{fmt(taxAmount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm gap-3">
+                        <span className="text-gray-500">Discount</span>
+                        <div className="relative w-36">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-semibold pointer-events-none">
+                            {moneySymbol}
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={amountBeforeDiscount}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={discountAmount}
+                            onChange={(e) => handleDiscountChange(e.target.value)}
+                            className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1E88E5] focus:border-transparent bg-white"
+                            title="Discount"
+                            aria-label="Discount"
+                          />
+                        </div>
                       </div>
                       <div className="flex justify-between items-center pt-2 border-t border-gray-200">
                         <span className="text-sm font-bold text-gray-900">Grand Total</span>
