@@ -3700,8 +3700,13 @@ export async function listPurchaseOrders(
       WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
     )`;
     if (user.role === 'SCM Manager') {
+      const managerEmail = String(user.email || '').trim().toLowerCase();
+      const signatureKey = managerEmail.split('@')[0] || '';
       sql += ` AND (
         po.approval_manager_id = ?
+        OR po.signer_id = ?
+        OR LOWER(TRIM(IFNULL(po.signature_name, ''))) = LOWER(?)
+        OR (? <> '' AND LOWER(TRIM(IFNULL(po.signature_name, ''))) = ?)
         OR (
           po.approval_manager_id IS NULL
           AND (
@@ -3738,8 +3743,7 @@ export async function listPurchaseOrders(
           )
         )
       )`;
-      const managerEmail = String(user.email || '').trim().toLowerCase();
-      params.push(user.id, managerEmail, managerEmail);
+      params.push(user.id, user.id, user.name || '', signatureKey, signatureKey, managerEmail, managerEmail);
     }
   } else if (user.role === 'Requester') {
     sql += ` AND EXISTS (

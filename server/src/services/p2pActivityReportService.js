@@ -677,32 +677,30 @@ export async function loadP2pActivityReport(now = new Date()) {
 
   const [signerRows] = await pool.query(
     `SELECT po.po_number,
+            COALESCE(NULLIF(TRIM(em.name), ''), NULLIF(TRIM(po.entity), ''), '') AS entity_name,
             COALESCE(NULLIF(TRIM(po.signature_name), ''), NULLIF(TRIM(signer.name), ''), 'Not signed yet') AS signer_label,
             (
-              po.po_number NOT LIKE 'CS-%'
-              AND NOT EXISTS (
-                SELECT 1 FROM purchase_requests pr_hide
-                WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
-              )
-              AND (
-                po.approval_manager_id = ?
-                OR (po.approval_manager_id IS NULL AND ${NOT_RGML})
-              )
+              po.signer_id = ?
+              OR LOWER(IFNULL(po.signature_name, '')) LIKE 'rajeev%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'rajeev%'
+              OR LOWER(IFNULL(signer.name, '')) LIKE 'rajeev%'
             ) AS is_rajeev,
             (
               po.signer_id = ?
               OR LOWER(IFNULL(po.signature_name, '')) LIKE 'meet%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'meet.%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'meet@%'
+              OR LOWER(IFNULL(signer.name, '')) LIKE 'meet%'
             ) AS is_meet,
             (
               po.signer_id = ?
               OR LOWER(IFNULL(po.signature_name, '')) LIKE 'mugesh%'
-              OR (
-                LOWER(IFNULL(po.po_sign_step, '')) = 'signed'
-                AND LOWER(IFNULL(po.signature_name, '')) NOT LIKE 'meet%'
-              )
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'mugesh%'
+              OR LOWER(IFNULL(signer.name, '')) LIKE 'mugesh%'
             ) AS is_mugesh
      FROM purchase_orders po
      LEFT JOIN users signer ON signer.id = po.signer_id
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
      WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
        AND ${NOT_DRAFT_PO}
        AND LOWER(po.status) IN (
@@ -728,6 +726,7 @@ export async function loadP2pActivityReport(now = new Date()) {
       signedBy.remaining.push({
         poNumber: row.po_number || '',
         signer: row.signer_label || 'Not signed yet',
+        entity: row.entity_name || '',
       });
     }
   }
@@ -1383,7 +1382,7 @@ ${statCard({
   width: '32%',
   value: signed.rajeev || 0,
   label: `${report.rajeevName || 'Rajeev'} signed`,
-  sub: 'POs he has signed',
+  sub: 'Includes RGML when he signed',
   valueColor: '#14503a',
   labelColor: '#3f8f63',
   background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
@@ -1421,12 +1420,13 @@ Rajeev ${signed.rajeev || 0} + Mugesh ${signed.mugesh || 0} + Meet ${signed.meet
 
 <tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Remaining ${remaining.length}</td></tr>
 <tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
-These approved orders are not in the Rajeev, Mugesh, or Meet counts above.
+These approved orders are not signed by Rajeev, Mugesh, or Meet. RGML orders that Rajeev signed are in his count.
 </td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
 <tr style="background-color:#14503a !important;" bgcolor="#14503a">
 <td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">PO</td>
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Entity</td>
 <td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Signed by</td>
 </tr>
 ${
@@ -1436,11 +1436,12 @@ ${
           const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
           return `<tr style="background:${bg};" bgcolor="${bg}">
 <td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea; font-weight:bold;">${escapeHtml(row.poNumber)}</td>
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.entity || '—')}</td>
 <td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.signer)}</td>
 </tr>`;
         })
         .join('')
-    : `<tr><td colspan="2" style="padding:14px; color:#6b6b6b; background:#ffffff;">Every approved PO is under Rajeev, Mugesh, or Meet.</td></tr>`
+    : `<tr><td colspan="3" style="padding:14px; color:#6b6b6b; background:#ffffff;">Every approved PO is under Rajeev, Mugesh, or Meet.</td></tr>`
 }
 </table></td></tr>
 
@@ -1497,7 +1498,7 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Rajeev + Mugesh + Meet + remaining − overlap = ${signerSum}`,
     '',
     'Remaining',
-    ...remaining.map((row) => `${row.poNumber} | ${row.signer}`),
+    ...remaining.map((row) => `${row.poNumber} | ${row.entity || '—'} | ${row.signer}`),
     '',
     'Current stage',
     ...stages.map((row) => `${row.label}: ${row.count}`),
