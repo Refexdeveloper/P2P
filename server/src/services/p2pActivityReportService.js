@@ -1314,6 +1314,43 @@ export function buildP2pPendingTasksEmail(report) {
 </td>
 </tr></table></td></tr>
 
+<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Signed by</td></tr>
+<tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+${statCard({
+  width: '32%',
+  value: report.rajeevApproved || 0,
+  label: `${report.rajeevName || 'Rajeev'} signed`,
+  sub: 'POs he has signed',
+  valueColor: '#14503a',
+  labelColor: '#3f8f63',
+  background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
+  border: '#c7ead4',
+})}
+<td width="2%"></td>
+${statCard({
+  width: '32%',
+  value: report.mugeshSigned || 0,
+  label: `${report.mugeshName || 'Mugesh'} signed`,
+  sub: 'POs he has signed',
+  valueColor: '#14503a',
+  labelColor: '#3f8f63',
+  background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
+  border: '#c7ead4',
+})}
+<td width="2%"></td>
+${statCard({
+  width: '32%',
+  value: report.meetSigned || 0,
+  label: `${report.meetName || 'Meet'} signed`,
+  sub: 'POs he has signed',
+  valueColor: '#14503a',
+  labelColor: '#3f8f63',
+  background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
+  border: '#c7ead4',
+})}
+</tr></table></td></tr>
+
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Current stage</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
@@ -1359,6 +1396,9 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     report.generatedAt,
     '',
     `Approved POs: ${stageTotal}`,
+    `${report.rajeevName || 'Rajeev'} signed: ${report.rajeevApproved || 0}`,
+    `${report.mugeshName || 'Mugesh'} signed: ${report.mugeshSigned || 0}`,
+    `${report.meetName || 'Meet'} signed: ${report.meetSigned || 0}`,
     '',
     'Current stage',
     ...stages.map((row) => `${row.label}: ${row.count}`),
