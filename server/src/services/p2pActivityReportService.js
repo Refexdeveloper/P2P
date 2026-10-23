@@ -757,6 +757,29 @@ export async function loadP2pActivityReport(now = new Date()) {
          )
      ) buckets`
   );
+  const [vendorOutsideRows] = await pool.query(
+    `SELECT po.po_number,
+       CASE
+         WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'Buyer final verify — not sent to the vendor yet'
+         WHEN LOWER(po.status) = 'approved' THEN 'Approved — waiting for release to the vendor'
+         WHEN LOWER(po.status) = 'awaiting_grn' THEN 'GRN — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) = 'invoice_entry' THEN 'Invoice entry — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
+           THEN 'Accounts / payment — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) = 'paid' THEN 'Paid — vendor acceptance was not recorded'
+         ELSE LOWER(po.status)
+       END AS stage_label
+     FROM purchase_orders po
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (
+         'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+         'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+       )
+       AND COALESCE(po.vendor_acceptance_status, '') NOT IN ('accepted', 'rejected', 'partial')
+       AND LOWER(po.status) <> 'sent_to_vendor'
+     ORDER BY stage_label, po.po_number`
+  );
 
   return {
     generatedAt: formatReportDate(now),
@@ -800,6 +823,10 @@ export async function loadP2pActivityReport(now = new Date()) {
       rejected: num(vendorScreen?.rejected_count),
       partial: num(vendorScreen?.partial_count),
       outside: num(vendorScreen?.outside_count),
+      outsideOrders: vendorOutsideRows.map((row) => ({
+        poNumber: row.po_number || '',
+        stage: row.stage_label || '',
+      })),
     },
   };
 }
@@ -1422,12 +1449,13 @@ export function buildP2pPendingTasksEmail(report) {
   const remaining = signed.remaining || [];
   const signerSum = (signed.rajeev || 0) + (signed.mugesh || 0) + (signed.meet || 0) + remaining.length - (signed.overlap || 0);
   const screen = report.vendorScreen || { pending: 0, accepted: 0, rejected: 0, partial: 0, outside: 0 };
+  const outsideOrders = screen.outsideOrders || [];
   const vendorRows = [
-    { label: 'Pending', count: screen.pending || 0 },
-    { label: 'Accepted', count: screen.accepted || 0 },
-    ...(screen.rejected ? [{ label: 'Rejected', count: screen.rejected }] : []),
-    ...(screen.partial ? [{ label: 'Partial', count: screen.partial }] : []),
-    { label: 'Remaining', count: screen.outside || 0 },
+    { label: 'Pending — on the Vendor PO Acceptance screen', count: screen.pending || 0 },
+    { label: 'Accepted — on the Vendor PO Acceptance screen', count: screen.accepted || 0 },
+    ...(screen.rejected ? [{ label: 'Rejected — on the Vendor PO Acceptance screen', count: screen.rejected }] : []),
+    ...(screen.partial ? [{ label: 'Partial — on the Vendor PO Acceptance screen', count: screen.partial }] : []),
+    { label: 'Not on the Vendor PO Acceptance screen', count: screen.outside || 0 },
   ];
   const grnPending = stageCount(stages, ['grn_pending']);
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
@@ -1535,6 +1563,29 @@ ${remaining
     : ''
 }
 ${namedBalanceHtml('Vendor PO acceptance', vendorRows)}
+${
+  outsideOrders.length
+    ? `<tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important; line-height:1.5;" bgcolor="#ffffff">
+Not on the Vendor PO Acceptance screen means the order is approved, but vendor acceptance has not started, or the order moved ahead without an acceptance record. These orders are the gap between the approved total and the screen total.
+</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">PO</td>
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Where it is now</td>
+</tr>
+${outsideOrders
+  .map((row, index) => {
+    const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+    return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea; font-weight:bold;">${escapeHtml(row.poNumber)}</td>
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.stage)}</td>
+</tr>`;
+  })
+  .join('')}
+</table></td></tr>`
+    : ''
+}
 ${stepBalanceHtml('GRN', grnPending, grnCompleted, stageTotal)}
 ${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
@@ -1577,9 +1628,11 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
     '',
     'Vendor PO acceptance',
-    `Pending: ${screen.pending || 0}`,
-    `Accepted: ${screen.accepted || 0}`,
-    `Remaining: ${screen.outside || 0}`,
+    `Pending — on the Vendor PO Acceptance screen: ${screen.pending || 0}`,
+    `Accepted — on the Vendor PO Acceptance screen: ${screen.accepted || 0}`,
+    `Not on the Vendor PO Acceptance screen: ${screen.outside || 0}`,
+    'These approved orders are not on that screen. Vendor acceptance has not started, or the order moved ahead without an acceptance record.',
+    ...outsideOrders.map((row) => `${row.poNumber} | ${row.stage}`),
     `Total: ${(screen.pending || 0) + (screen.accepted || 0) + (screen.rejected || 0) + (screen.partial || 0) + (screen.outside || 0)}`,
     '',
     'GRN',
