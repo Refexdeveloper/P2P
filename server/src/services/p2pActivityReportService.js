@@ -419,6 +419,77 @@ export async function loadP2pActivityReport(now = new Date()) {
     };
   });
 
+  const [vendorAcceptanceRows] = await pool.query(
+    `SELECT po.po_number, po.vendor_name, po.purchase_type,
+            COALESCE(po.vendor_notified_at, po.updated_at, po.created_at) AS waiting_since,
+            COALESCE(pr.pr_number, '') AS pr_number,
+            COALESCE(req.id, creator.id, 0) AS owner_id,
+            COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), 'Unassigned') AS owner_name,
+            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS owner_email
+     FROM purchase_orders po
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN users req ON req.id = pr.requester_id
+     LEFT JOIN users creator ON creator.id = po.created_by
+     WHERE po.status = 'sent_to_vendor'
+       AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+       AND ${NOT_DRAFT_PO}
+     ORDER BY waiting_since ASC, po.id ASC`
+  );
+
+  const [grnPendingRows] = await pool.query(
+    `SELECT po.po_number, po.vendor_name,
+            COALESCE(po.vendor_accepted_at, po.updated_at, po.created_at) AS waiting_since,
+            COALESCE(pr.pr_number, '') AS pr_number,
+            COALESCE(req.id, creator.id, 0) AS owner_id,
+            COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), 'Unassigned') AS owner_name,
+            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS owner_email
+     FROM purchase_orders po
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN users req ON req.id = pr.requester_id
+     LEFT JOIN users creator ON creator.id = po.created_by
+     LEFT JOIN grn_headers g ON g.po_id = po.id
+     WHERE po.purchase_type = 'purchase_order'
+       AND po.status = 'awaiting_grn'
+       AND g.id IS NULL
+       AND ${NOT_DRAFT_PO}
+     ORDER BY waiting_since ASC, po.id ASC`
+  );
+
+  const mapPendingTask = (row) => ({
+    poNumber: row.po_number || '',
+    prNumber: row.pr_number || '',
+    vendor: row.vendor_name || '',
+    docType: String(row.purchase_type || 'purchase_order') === 'work_order' ? 'WO' : 'PO',
+    ownerName: row.owner_name || 'Unassigned',
+    ownerEmail: row.owner_email || '',
+    waiting: `${getSlaWaitingDays(row.waiting_since, now)} days`,
+  });
+  const vendorAcceptanceTasks = vendorAcceptanceRows.map(mapPendingTask);
+  const grnPendingTasks = grnPendingRows.map((row) => mapPendingTask({ ...row, purchase_type: 'purchase_order' }));
+
+  const ownerMap = new Map();
+  const ownerKey = (row) => {
+    const email = String(row.ownerEmail || '').trim().toLowerCase();
+    return email || row.ownerName || 'Unassigned';
+  };
+  const touchOwner = (task) => {
+    const key = ownerKey(task);
+    if (!ownerMap.has(key)) {
+      ownerMap.set(key, {
+        name: task.ownerName || 'Unassigned',
+        email: task.ownerEmail || '',
+        vendorAcceptance: 0,
+        grnPending: 0,
+      });
+    }
+    return ownerMap.get(key);
+  };
+  for (const task of vendorAcceptanceTasks) touchOwner(task).vendorAcceptance += 1;
+  for (const task of grnPendingTasks) touchOwner(task).grnPending += 1;
+  const requesterPending = [...ownerMap.values()]
+    .map((row) => ({ ...row, total: row.vendorAcceptance + row.grnPending }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+
   return {
     generatedAt: formatReportDate(now),
     totalPrs: num(pr?.total_prs),
@@ -441,6 +512,11 @@ export async function loadP2pActivityReport(now = new Date()) {
     entities,
     activityUsers,
     scmTeam,
+    vendorAcceptancePending: vendorAcceptanceTasks.length,
+    grnPending: grnPendingTasks.length,
+    requesterPending,
+    vendorAcceptanceTasks,
+    grnPendingTasks,
   };
 }
 
@@ -541,6 +617,51 @@ ${countCell(row.scmBuyerPos, '#3468a8')}
 </tr>`;
     })
     .join('');
+}
+
+function pendingOwnerRows(owners) {
+  if (!owners.length) {
+    return `<tr><td colspan="5" style="padding:14px; color:#6b6b6b; background:#ffffff;">No pending vendor acceptance or GRN tasks.</td></tr>`;
+  }
+  return owners
+    .map((row, index) => {
+      const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+      return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 10px; color:#1a1a1a; border-top:1px solid #ececea;">
+<div style="font-weight:bold;">${escapeHtml(row.name)}</div>
+</td>
+<td style="padding:10px 8px; color:#5b5b5b; border-top:1px solid #ececea;">${escapeHtml(row.email || '—')}</td>
+${countCell(row.vendorAcceptance, '#9a7a3a')}
+${countCell(row.grnPending, '#3468a8')}
+${countCell(row.total, '#1a1a1a')}
+</tr>`;
+    })
+    .join('');
+}
+
+function pendingTaskRows(tasks, emptyLabel) {
+  if (!tasks.length) {
+    return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">${escapeHtml(emptyLabel)}</td></tr>`;
+  }
+  const shown = tasks.slice(0, 40);
+  const rows = shown
+    .map((task, index) => {
+      const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+      return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 8px; color:#1a1a1a; border-top:1px solid #ececea; font-weight:bold; white-space:nowrap;">${escapeHtml(task.poNumber)}</td>
+<td style="padding:10px 8px; color:#5b5b5b; border-top:1px solid #ececea;">${escapeHtml(task.prNumber || '—')}</td>
+<td style="padding:10px 8px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(task.vendor || '—')}</td>
+<td style="padding:10px 8px; color:#1a1a1a; border-top:1px solid #ececea;">
+<div style="font-weight:bold;">${escapeHtml(task.ownerName)}</div>
+<div style="font-size:11px; color:#8a8a8a;">${escapeHtml(task.ownerEmail || '—')}</div>
+</td>
+<td style="padding:10px 8px; color:#1a1a1a; border-top:1px solid #ececea;" align="center">${escapeHtml(task.docType || 'PO')}</td>
+<td style="padding:10px 8px; color:#9a7a3a; border-top:1px solid #ececea; font-weight:bold; white-space:nowrap;">${escapeHtml(task.waiting)}</td>
+</tr>`;
+    })
+    .join('');
+  if (tasks.length <= shown.length) return rows;
+  return `${rows}<tr><td colspan="6" style="padding:10px 8px; color:#6b6b6b; background:#ffffff;">Showing ${shown.length} of ${tasks.length}.</td></tr>`;
 }
 
 export function buildP2pActivityReportEmail(report) {
@@ -724,6 +845,75 @@ ${statCard({
 })}
 </tr></table></td></tr>
 
+<tr><td style="padding:26px 32px 6px 32px;" bgcolor="#ffffff">
+<div style="font-size:12px; font-weight:bold; color:#8a8a8a !important; text-transform:uppercase; letter-spacing:0.5px;">Requester pending tasks</div>
+</td></tr>
+<tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+${statCard({
+  width: '48%',
+  value: report.vendorAcceptancePending || 0,
+  label: 'Vendor PO acceptance pending',
+  sub: 'Waiting for the requester',
+  valueColor: '#9a7a3a',
+  labelColor: '#9a7a3a',
+  background: 'linear-gradient(180deg,#fffaf2 0%,#fef3e2 100%)',
+  border: '#f2e2c4',
+})}
+<td width="4%"></td>
+${statCard({
+  width: '48%',
+  value: report.grnPending || 0,
+  label: 'GRN pending',
+  sub: 'Accepted, goods receipt not entered',
+  valueColor: '#3468a8',
+  labelColor: '#3468a8',
+  background: 'linear-gradient(180deg,#f2f6fb 0%,#dfeafa 100%)',
+  border: '#bcd6f0',
+})}
+</tr></table></td></tr>
+
+<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Count by requester</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 10px; color:#ffffff !important; font-weight:bold;">Requester</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Email</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Vendor acceptance</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">GRN pending</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Total</td>
+</tr>
+${pendingOwnerRows(report.requesterPending || [])}
+</table></td></tr>
+
+<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Vendor PO acceptance pending</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">PO / WO</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">PR</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Vendor</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Requester</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Type</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Waiting</td>
+</tr>
+${pendingTaskRows(report.vendorAcceptanceTasks || [], 'No vendor PO acceptance is pending.')}
+</table></td></tr>
+
+<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">GRN pending</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">PO</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">PR</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Vendor</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Requester</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Type</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Waiting</td>
+</tr>
+${pendingTaskRows(report.grnPendingTasks || [], 'No GRN is pending.')}
+</table></td></tr>
+
 <tr><td style="padding:26px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Recent login</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
@@ -794,6 +984,27 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
     `${report.rajeevName} pending POs: ${report.rajeevPending}`,
     `${report.rajeevName} approved POs: ${report.rajeevApproved}`,
     '',
+    `Vendor PO acceptance pending: ${report.vendorAcceptancePending || 0}`,
+    `GRN pending: ${report.grnPending || 0}`,
+    '',
+    'Count by requester',
+    ...(report.requesterPending || []).map(
+      (row) =>
+        `${row.name} <${row.email || 'no email'}>: vendor acceptance ${row.vendorAcceptance}, GRN pending ${row.grnPending}, total ${row.total}`
+    ),
+    '',
+    'Vendor PO acceptance pending list',
+    ...(report.vendorAcceptanceTasks || []).map(
+      (task) =>
+        `${task.poNumber} | ${task.prNumber || '—'} | ${task.vendor || '—'} | ${task.ownerName} <${task.ownerEmail || 'no email'}> | ${task.waiting}`
+    ),
+    '',
+    'GRN pending list',
+    ...(report.grnPendingTasks || []).map(
+      (task) =>
+        `${task.poNumber} | ${task.prNumber || '—'} | ${task.vendor || '—'} | ${task.ownerName} <${task.ownerEmail || 'no email'}> | ${task.waiting}`
+    ),
+    '',
     'Entity-wise',
     ...(report.entities || []).map(
       (row) =>
@@ -820,6 +1031,8 @@ export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
       scmBuyerPos: report.scmBuyerPos,
       rajeevPending: report.rajeevPending,
       rajeevApproved: report.rajeevApproved,
+      vendorAcceptancePending: report.vendorAcceptancePending,
+      grnPending: report.grnPending,
     },
   });
   return { to: recipient, subject: built.subject, report };
