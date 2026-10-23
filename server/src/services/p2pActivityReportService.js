@@ -1338,12 +1338,55 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
   return { subject, html, text };
 }
 
+function stageCount(stages, keys) {
+  const wanted = new Set(keys);
+  return stages.reduce((total, row) => total + (wanted.has(row.key) ? Number(row.count) || 0 : 0), 0);
+}
+
+function balanceRowsHtml(rows) {
+  return rows
+    .map((row, index) => {
+      const bg = row.total ? '#f4fbf5' : index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+      const weight = row.total ? 'font-weight:bold;' : '';
+      const color = row.total ? '#14503a' : '#1a1a1a';
+      return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 12px; color:${color}; border-top:1px solid #ececea; ${weight}">${escapeHtml(row.label)}</td>
+<td style="padding:10px 8px; color:${color}; border-top:1px solid #ececea; ${weight}" align="center">${row.count}</td>
+</tr>`;
+    })
+    .join('');
+}
+
+function stepBalanceHtml(title, pending, completed, total) {
+  const remaining = Math.max(0, total - pending - completed);
+  return `<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">${escapeHtml(title)}</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">${escapeHtml(title)}</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
+</tr>
+${balanceRowsHtml([
+  { label: 'Pending', count: pending },
+  { label: 'Completed', count: completed },
+  { label: 'Remaining', count: remaining },
+  { label: 'Total', count: total, total: true },
+])}
+</table></td></tr>`;
+}
+
 export function buildP2pPendingTasksEmail(report) {
   const stages = report.poStages || [];
   const stageTotal = stages.reduce((total, row) => total + row.count, 0);
   const signed = report.signedBy || { rajeev: 0, mugesh: 0, meet: 0, overlap: 0, remaining: [] };
   const remaining = signed.remaining || [];
   const signerSum = (signed.rajeev || 0) + (signed.mugesh || 0) + (signed.meet || 0) + remaining.length - (signed.overlap || 0);
+  const acceptancePending = stageCount(stages, ['vendor_acceptance']);
+  const acceptanceCompleted = stageCount(stages, ['vendor_recorded', 'grn_pending', 'invoice_entry', 'accounts', 'paid']);
+  const grnPending = stageCount(stages, ['grn_pending']);
+  const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
+  const invoicePending = stageCount(stages, ['invoice_entry']);
+  const invoiceCompleted = stageCount(stages, ['accounts', 'paid']);
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1412,15 +1455,18 @@ ${statCard({
 })}
 </tr></table>
 <div style="font-size:12px; color:#5b5b5b; margin-top:8px; line-height:1.5;">
-Rajeev ${signed.rajeev || 0} + Mugesh ${signed.mugesh || 0} + Meet ${signed.meet || 0} + remaining ${remaining.length}${
+Rajeev ${signed.rajeev || 0} + Mugesh ${signed.mugesh || 0} + Meet ${signed.meet || 0}${
+    remaining.length ? ` + remaining ${remaining.length}` : ''
+  }${
     signed.overlap ? ` − counted under more than one signer ${signed.overlap}` : ''
   } = ${signerSum}. Approved POs are ${stageTotal}.
 </div>
 </td></tr>
-
-<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Remaining ${remaining.length}</td></tr>
+${
+  remaining.length
+    ? `<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Remaining ${remaining.length}</td></tr>
 <tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
-These approved orders are not signed by Rajeev, Mugesh, or Meet. RGML orders that Rajeev signed are in his count.
+These approved orders are not signed by Rajeev, Mugesh, or Meet.
 </td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
@@ -1429,35 +1475,22 @@ These approved orders are not signed by Rajeev, Mugesh, or Meet. RGML orders tha
 <td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Entity</td>
 <td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Signed by</td>
 </tr>
-${
-  remaining.length
-    ? remaining
-        .map((row, index) => {
-          const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
-          return `<tr style="background:${bg};" bgcolor="${bg}">
+${remaining
+  .map((row, index) => {
+    const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+    return `<tr style="background:${bg};" bgcolor="${bg}">
 <td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea; font-weight:bold;">${escapeHtml(row.poNumber)}</td>
 <td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.entity || '—')}</td>
 <td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.signer)}</td>
 </tr>`;
-        })
-        .join('')
-    : `<tr><td colspan="3" style="padding:14px; color:#6b6b6b; background:#ffffff;">Every approved PO is under Rajeev, Mugesh, or Meet.</td></tr>`
+  })
+  .join('')}
+</table></td></tr>`
+    : ''
 }
-</table></td></tr>
-
-<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Current stage</td></tr>
-<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
-<tr style="background-color:#14503a !important;" bgcolor="#14503a">
-<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Stage</td>
-<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
-</tr>
-${approvedStageRowsHtml(stages)}
-<tr style="background:#f4fbf5;" bgcolor="#f4fbf5">
-<td style="padding:10px 12px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;">Approved POs</td>
-<td style="padding:10px 8px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;" align="center">${stageTotal}</td>
-</tr>
-</table></td></tr>
+${stepBalanceHtml('Vendor PO acceptance', acceptancePending, acceptanceCompleted, stageTotal)}
+${stepBalanceHtml('GRN', grnPending, grnCompleted, stageTotal)}
+${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
 <tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
@@ -1493,16 +1526,27 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `${report.rajeevName || 'Rajeev'} signed: ${signed.rajeev || 0}`,
     `${report.mugeshName || 'Mugesh'} signed: ${signed.mugesh || 0}`,
     `${report.meetName || 'Meet'} signed: ${signed.meet || 0}`,
-    `Remaining: ${remaining.length}`,
-    `Counted under more than one signer: ${signed.overlap || 0}`,
-    `Rajeev + Mugesh + Meet + remaining − overlap = ${signerSum}`,
+    ...(remaining.length ? [`Remaining: ${remaining.length}`, ...remaining.map((row) => `${row.poNumber} | ${row.entity || '—'} | ${row.signer}`)] : []),
+    ...(signed.overlap ? [`Counted under more than one signer: ${signed.overlap}`] : []),
+    `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
     '',
-    'Remaining',
-    ...remaining.map((row) => `${row.poNumber} | ${row.entity || '—'} | ${row.signer}`),
+    'Vendor PO acceptance',
+    `Pending: ${acceptancePending}`,
+    `Completed: ${acceptanceCompleted}`,
+    `Remaining: ${Math.max(0, stageTotal - acceptancePending - acceptanceCompleted)}`,
+    `Total: ${stageTotal}`,
     '',
-    'Current stage',
-    ...stages.map((row) => `${row.label}: ${row.count}`),
-    `Approved POs: ${stageTotal}`,
+    'GRN',
+    `Pending: ${grnPending}`,
+    `Completed: ${grnCompleted}`,
+    `Remaining: ${Math.max(0, stageTotal - grnPending - grnCompleted)}`,
+    `Total: ${stageTotal}`,
+    '',
+    'Invoice entry',
+    `Pending: ${invoicePending}`,
+    `Completed: ${invoiceCompleted}`,
+    `Remaining: ${Math.max(0, stageTotal - invoicePending - invoiceCompleted)}`,
+    `Total: ${stageTotal}`,
     '',
     'Requester-wise count',
     ...(report.requesterPending || []).map(
