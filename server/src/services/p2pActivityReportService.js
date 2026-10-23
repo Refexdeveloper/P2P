@@ -732,6 +732,32 @@ export async function loadP2pActivityReport(now = new Date()) {
   }
   signedBy.remaining.sort((a, b) => a.signer.localeCompare(b.signer) || a.poNumber.localeCompare(b.poNumber));
 
+  const [[vendorScreen]] = await pool.query(
+    `SELECT
+       SUM(bucket = 'pending') AS pending_count,
+       SUM(bucket = 'accepted') AS accepted_count,
+       SUM(bucket = 'rejected') AS rejected_count,
+       SUM(bucket = 'partial') AS partial_count,
+       SUM(bucket = 'outside') AS outside_count
+     FROM (
+       SELECT
+         CASE
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'accepted'
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'rejected' THEN 'rejected'
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'partial' THEN 'partial'
+           WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'pending'
+           ELSE 'outside'
+         END AS bucket
+       FROM purchase_orders po
+       WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+         AND LOWER(po.status) IN (
+           'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+           'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+         )
+     ) buckets`
+  );
+
   return {
     generatedAt: formatReportDate(now),
     totalPrs: num(pr?.total_prs),
@@ -768,6 +794,13 @@ export async function loadP2pActivityReport(now = new Date()) {
     invoiceEntryTasks,
     poStages,
     signedBy,
+    vendorScreen: {
+      pending: num(vendorScreen?.pending_count),
+      accepted: num(vendorScreen?.accepted_count),
+      rejected: num(vendorScreen?.rejected_count),
+      partial: num(vendorScreen?.partial_count),
+      outside: num(vendorScreen?.outside_count),
+    },
   };
 }
 
@@ -1357,8 +1390,8 @@ function balanceRowsHtml(rows) {
     .join('');
 }
 
-function stepBalanceHtml(title, pending, completed, total) {
-  const remaining = Math.max(0, total - pending - completed);
+function namedBalanceHtml(title, items) {
+  const total = items.reduce((sum, row) => sum + (Number(row.count) || 0), 0);
   return `<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">${escapeHtml(title)}</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
@@ -1367,12 +1400,19 @@ function stepBalanceHtml(title, pending, completed, total) {
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
 </tr>
 ${balanceRowsHtml([
-  { label: 'Pending', count: pending },
-  { label: 'Completed', count: completed },
-  { label: 'Remaining', count: remaining },
+  ...items,
   { label: 'Total', count: total, total: true },
 ])}
 </table></td></tr>`;
+}
+
+function stepBalanceHtml(title, pending, completed, total) {
+  const left = Math.max(0, total - pending - completed);
+  return namedBalanceHtml(title, [
+    { label: 'Pending', count: pending },
+    { label: 'Completed', count: completed },
+    { label: 'Remaining', count: left },
+  ]);
 }
 
 export function buildP2pPendingTasksEmail(report) {
@@ -1381,8 +1421,14 @@ export function buildP2pPendingTasksEmail(report) {
   const signed = report.signedBy || { rajeev: 0, mugesh: 0, meet: 0, overlap: 0, remaining: [] };
   const remaining = signed.remaining || [];
   const signerSum = (signed.rajeev || 0) + (signed.mugesh || 0) + (signed.meet || 0) + remaining.length - (signed.overlap || 0);
-  const acceptancePending = stageCount(stages, ['vendor_acceptance']);
-  const acceptanceCompleted = stageCount(stages, ['vendor_recorded', 'grn_pending', 'invoice_entry', 'accounts', 'paid']);
+  const screen = report.vendorScreen || { pending: 0, accepted: 0, rejected: 0, partial: 0, outside: 0 };
+  const vendorRows = [
+    { label: 'Pending', count: screen.pending || 0 },
+    { label: 'Accepted', count: screen.accepted || 0 },
+    ...(screen.rejected ? [{ label: 'Rejected', count: screen.rejected }] : []),
+    ...(screen.partial ? [{ label: 'Partial', count: screen.partial }] : []),
+    { label: 'Remaining', count: screen.outside || 0 },
+  ];
   const grnPending = stageCount(stages, ['grn_pending']);
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
   const invoicePending = stageCount(stages, ['invoice_entry']);
@@ -1488,7 +1534,7 @@ ${remaining
 </table></td></tr>`
     : ''
 }
-${stepBalanceHtml('Vendor PO acceptance', acceptancePending, acceptanceCompleted, stageTotal)}
+${namedBalanceHtml('Vendor PO acceptance', vendorRows)}
 ${stepBalanceHtml('GRN', grnPending, grnCompleted, stageTotal)}
 ${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
@@ -1531,10 +1577,10 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
     '',
     'Vendor PO acceptance',
-    `Pending: ${acceptancePending}`,
-    `Completed: ${acceptanceCompleted}`,
-    `Remaining: ${Math.max(0, stageTotal - acceptancePending - acceptanceCompleted)}`,
-    `Total: ${stageTotal}`,
+    `Pending: ${screen.pending || 0}`,
+    `Accepted: ${screen.accepted || 0}`,
+    `Remaining: ${screen.outside || 0}`,
+    `Total: ${(screen.pending || 0) + (screen.accepted || 0) + (screen.rejected || 0) + (screen.partial || 0) + (screen.outside || 0)}`,
     '',
     'GRN',
     `Pending: ${grnPending}`,
