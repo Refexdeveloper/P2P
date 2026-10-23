@@ -19,6 +19,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   po_vendor: 'PO Vendor Acceptance',
   po_workflow: 'PO Assign / Send Back / Reject',
   p2p_activity_report: 'P2P Activity Report',
+  p2p_pending_tasks: 'P2P Pending Tasks',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };
@@ -66,6 +67,7 @@ export default function AdminEmailLogsPage() {
   const [notifyExtraTo, setNotifyExtraTo] = useState('');
   const [notifyingPo, setNotifyingPo] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
+  const [sendingPending, setSendingPending] = useState(false);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const limit = 40;
 
@@ -178,6 +180,23 @@ export default function AdminEmailLogsPage() {
     }
   };
 
+  const handleSendPendingTasks = async () => {
+    setSendingPending(true);
+    try {
+      const res = await adminApi.sendP2pPendingTasksReport('sathishkumar.r@refex.co.in');
+      const report = res.data?.report;
+      const detail = report
+        ? ` — total POs ${report.totalPos ?? 0}, vendor acceptance ${report.vendorAcceptancePending ?? 0}, GRN ${report.grnPending ?? 0}, invoice entry ${report.invoiceEntryPending ?? 0}`
+        : '';
+      showToast((res.message || 'Pending tasks mail sent') + detail, 'success');
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Pending tasks mail failed', 'error');
+    } finally {
+      setSendingPending(false);
+    }
+  };
+
   const handleNotifyScmManager = async () => {
     const key = notifyPoInput.trim();
     if (!key) {
@@ -257,6 +276,23 @@ export default function AdminEmailLogsPage() {
               className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
             >
               {sendingReport ? 'Sending…' : 'Send report to sathishkumar.r@refex.co.in'}
+            </button>
+          </div>
+        ) : null}
+
+        {channel === 'email' ? (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Send pending tasks mail</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">
+              Total POs, then the current stage of those orders, then a count for each requester. Sends to sathishkumar.r@refex.co.in.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSendPendingTasks()}
+              disabled={sendingPending}
+              className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
+            >
+              {sendingPending ? 'Sending…' : 'Send pending tasks to sathishkumar.r@refex.co.in'}
             </button>
           </div>
         ) : null}

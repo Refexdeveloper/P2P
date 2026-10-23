@@ -455,6 +455,23 @@ export async function loadP2pActivityReport(now = new Date()) {
      ORDER BY waiting_since ASC, po.id ASC`
   );
 
+  const [invoiceEntryRows] = await pool.query(
+    `SELECT po.po_number, po.vendor_name, po.purchase_type,
+            COALESCE(po.updated_at, po.created_at) AS waiting_since,
+            COALESCE(pr.pr_number, '') AS pr_number,
+            COALESCE(req.id, creator.id, 0) AS owner_id,
+            COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), 'Unassigned') AS owner_name,
+            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS owner_email
+     FROM purchase_orders po
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN users req ON req.id = pr.requester_id
+     LEFT JOIN users creator ON creator.id = po.created_by
+     WHERE LOWER(po.status) = 'invoice_entry'
+       AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+     ORDER BY waiting_since ASC, po.id ASC`
+  );
+
   const mapPendingTask = (row) => ({
     poNumber: row.po_number || '',
     prNumber: row.pr_number || '',
@@ -466,6 +483,7 @@ export async function loadP2pActivityReport(now = new Date()) {
   });
   const vendorAcceptanceTasks = vendorAcceptanceRows.map(mapPendingTask);
   const grnPendingTasks = grnPendingRows.map((row) => mapPendingTask({ ...row, purchase_type: 'purchase_order' }));
+  const invoiceEntryTasks = invoiceEntryRows.map(mapPendingTask);
 
   const ownerMap = new Map();
   const ownerKey = (row) => {
@@ -480,15 +498,181 @@ export async function loadP2pActivityReport(now = new Date()) {
         email: task.ownerEmail || '',
         vendorAcceptance: 0,
         grnPending: 0,
+        invoiceEntry: 0,
       });
     }
     return ownerMap.get(key);
   };
   for (const task of vendorAcceptanceTasks) touchOwner(task).vendorAcceptance += 1;
   for (const task of grnPendingTasks) touchOwner(task).grnPending += 1;
+  for (const task of invoiceEntryTasks) touchOwner(task).invoiceEntry += 1;
   const requesterPending = [...ownerMap.values()]
-    .map((row) => ({ ...row, total: row.vendorAcceptance + row.grnPending }))
+    .map((row) => ({
+      ...row,
+      total: row.vendorAcceptance + row.grnPending + row.invoiceEntry,
+    }))
     .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+
+  const [approvedStageRows] = await pool.query(
+    `SELECT stage, SUM(in_card) AS in_card, SUM(card_slots) AS card_slots, SUM(on_acceptance_list) AS on_acceptance_list
+     FROM (
+       SELECT
+         CASE
+           WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'buyer_verify'
+           WHEN LOWER(po.status) = 'approved' THEN 'pending_release'
+           WHEN LOWER(po.status) = 'sent_to_vendor'
+             AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'vendor_acceptance'
+           WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'vendor_closed'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'grn_pending'
+           WHEN LOWER(po.status) IN (
+             'awaiting_grn','grn_completed','invoice_entry',
+             'pending_accounts_approval','approved_for_payment','paid'
+           ) THEN 'after_grn'
+           ELSE 'other'
+         END AS stage,
+         (
+           (
+             po.po_number NOT LIKE 'CS-%'
+             AND NOT EXISTS (
+               SELECT 1 FROM purchase_requests pr_hide
+               WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
+             )
+             AND (
+               po.approval_manager_id = ?
+               OR (po.approval_manager_id IS NULL AND ${NOT_RGML})
+             )
+             AND LOWER(po.status) IN (
+               'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+               'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+             )
+           )
+           OR (
+             (po.signer_id = ? OR LOWER(IFNULL(po.signature_name, '')) LIKE 'meet%')
+             AND LOWER(po.status) NOT IN ('cancelled','rejected','pending_approval')
+           )
+           OR (
+             (
+               po.signer_id = ?
+               OR LOWER(IFNULL(po.signature_name, '')) LIKE 'mugesh%'
+               OR (
+                 LOWER(IFNULL(po.po_sign_step, '')) = 'signed'
+                 AND LOWER(IFNULL(po.signature_name, '')) NOT LIKE 'meet%'
+               )
+             )
+             AND LOWER(po.status) NOT IN ('cancelled','rejected','pending_approval')
+           )
+         ) AS in_card,
+         (
+           (
+             po.po_number NOT LIKE 'CS-%'
+             AND NOT EXISTS (
+               SELECT 1 FROM purchase_requests pr_hide
+               WHERE pr_hide.id = po.pr_id AND pr_hide.po_creation_by = 'requester'
+             )
+             AND (
+               po.approval_manager_id = ?
+               OR (po.approval_manager_id IS NULL AND ${NOT_RGML})
+             )
+             AND LOWER(po.status) NOT IN ('pending_approval', 'rejected')
+             AND LOWER(po.status) IN (
+               'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+               'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+             )
+           )
+           + (
+             (po.signer_id = ? OR LOWER(IFNULL(po.signature_name, '')) LIKE 'meet%')
+             AND LOWER(po.status) NOT IN ('cancelled','rejected','pending_approval')
+           )
+           + (
+             (
+               po.signer_id = ?
+               OR LOWER(IFNULL(po.signature_name, '')) LIKE 'mugesh%'
+               OR (
+                 LOWER(IFNULL(po.po_sign_step, '')) = 'signed'
+                 AND LOWER(IFNULL(po.signature_name, '')) NOT LIKE 'meet%'
+               )
+             )
+             AND LOWER(po.status) NOT IN ('cancelled','rejected','pending_approval')
+           )
+         ) AS card_slots,
+         (
+           LOWER(po.status) = 'sent_to_vendor'
+           AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+         ) AS on_acceptance_list
+       FROM purchase_orders po
+       LEFT JOIN grn_headers g ON g.po_id = po.id
+       WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+         AND LOWER(TRIM(IFNULL(po.status, ''))) NOT IN ('draft', 'cancelled', 'rejected', 'pending_approval')
+     ) staged
+     GROUP BY stage`,
+    [rajeevId, meetId, mugeshId, rajeevId, meetId, mugeshId]
+  );
+
+  const stageLabels = [
+    ['buyer_verify', 'Buyer final verify — signed, not released'],
+    ['pending_release', 'Approved — waiting for release'],
+    ['vendor_acceptance', 'Vendor acceptance pending — released, next step'],
+    ['vendor_closed', 'Released, acceptance already recorded'],
+    ['grn_pending', 'GRN pending — acceptance done'],
+    ['after_grn', 'GRN done, invoice, or payment'],
+    ['other', 'Other signed status'],
+  ];
+  const stageByKey = new Map(approvedStageRows.map((row) => [row.stage, row]));
+  const approvedStages = stageLabels
+    .map(([key, label]) => ({
+      key,
+      label,
+      count: num(stageByKey.get(key)?.in_card),
+    }))
+    .filter((row) => row.count > 0);
+  const approvedUnique = approvedStages.reduce((total, row) => total + row.count, 0);
+  const approvedCardSlots = approvedStageRows.reduce((total, row) => total + num(row.card_slots), 0);
+  const vendorAcceptanceOnSigned = num(stageByKey.get('vendor_acceptance')?.in_card);
+  const vendorAcceptanceAll = approvedStageRows.reduce((total, row) => total + num(row.on_acceptance_list), 0);
+
+  const [poStageRows] = await pool.query(
+    `SELECT stage, COUNT(*) AS pos
+     FROM (
+       SELECT
+         CASE
+           WHEN LOWER(po.status) = 'pending_approval' THEN 'scm_sign'
+           WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'buyer_verify'
+           WHEN LOWER(po.status) = 'approved' THEN 'pending_release'
+           WHEN LOWER(po.status) = 'sent_to_vendor'
+             AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'vendor_acceptance'
+           WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'vendor_recorded'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'invoice_entry' THEN 'invoice_entry'
+           WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
+             OR (LOWER(po.status) = 'awaiting_grn' AND g.id IS NOT NULL) THEN 'accounts'
+           WHEN LOWER(po.status) = 'paid' THEN 'paid'
+           ELSE 'other'
+         END AS stage
+       FROM purchase_orders po
+       LEFT JOIN grn_headers g ON g.po_id = po.id
+       WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+         AND LOWER(TRIM(IFNULL(po.status, ''))) <> 'cancelled'
+     ) staged
+     GROUP BY stage`
+  );
+  const poStageLabels = [
+    ['scm_sign', 'SCM Manager sign'],
+    ['buyer_verify', 'Buyer final verify'],
+    ['pending_release', 'Approved — waiting for release'],
+    ['vendor_acceptance', 'Vendor PO acceptance'],
+    ['vendor_recorded', 'Vendor acceptance recorded'],
+    ['grn_pending', 'GRN'],
+    ['invoice_entry', 'Invoice entry'],
+    ['accounts', 'Accounts / payment'],
+    ['paid', 'Paid'],
+    ['other', 'Other'],
+  ];
+  const poStageByKey = new Map(poStageRows.map((row) => [row.stage, num(row.pos)]));
+  const poStages = poStageLabels
+    .map(([key, label]) => ({ key, label, count: poStageByKey.get(key) || 0 }))
+    .filter((row) => row.count > 0);
 
   return {
     generatedAt: formatReportDate(now),
@@ -514,9 +698,17 @@ export async function loadP2pActivityReport(now = new Date()) {
     scmTeam,
     vendorAcceptancePending: vendorAcceptanceTasks.length,
     grnPending: grnPendingTasks.length,
+    invoiceEntryPending: invoiceEntryTasks.length,
+    approvedStages,
+    approvedUnique,
+    approvedCardSlots,
+    vendorAcceptanceOnSigned,
+    vendorAcceptanceOutsideSigned: Math.max(0, vendorAcceptanceAll - vendorAcceptanceOnSigned),
     requesterPending,
     vendorAcceptanceTasks,
     grnPendingTasks,
+    invoiceEntryTasks,
+    poStages,
   };
 }
 
@@ -619,9 +811,25 @@ ${countCell(row.scmBuyerPos, '#3468a8')}
     .join('');
 }
 
+function approvedStageRowsHtml(stages) {
+  if (!stages.length) {
+    return `<tr><td colspan="2" style="padding:14px; color:#6b6b6b; background:#ffffff;">No signed purchase orders.</td></tr>`;
+  }
+  return stages
+    .map((row, index) => {
+      const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+      const color = row.key === 'vendor_acceptance' ? '#9a7a3a' : '#1a1a1a';
+      return `<tr style="background:${bg};" bgcolor="${bg}">
+<td style="padding:10px 12px; color:#1a1a1a; border-top:1px solid #ececea;">${escapeHtml(row.label)}</td>
+<td style="padding:10px 8px; color:${color}; border-top:1px solid #ececea; font-weight:bold;" align="center">${row.count}</td>
+</tr>`;
+    })
+    .join('');
+}
+
 function pendingOwnerRows(owners) {
   if (!owners.length) {
-    return `<tr><td colspan="5" style="padding:14px; color:#6b6b6b; background:#ffffff;">No pending vendor acceptance or GRN tasks.</td></tr>`;
+    return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">No pending vendor acceptance, GRN, or invoice entry.</td></tr>`;
   }
   return owners
     .map((row, index) => {
@@ -633,6 +841,7 @@ function pendingOwnerRows(owners) {
 <td style="padding:10px 8px; color:#5b5b5b; border-top:1px solid #ececea;">${escapeHtml(row.email || '—')}</td>
 ${countCell(row.vendorAcceptance, '#9a7a3a')}
 ${countCell(row.grnPending, '#3468a8')}
+${countCell(row.invoiceEntry, '#6b4c9a')}
 ${countCell(row.total, '#1a1a1a')}
 </tr>`;
     })
@@ -770,7 +979,7 @@ ${statCard({
   width: '48%',
   value: report.approvedPos,
   label: 'Approved POs',
-  sub: 'Rajeev + Meet + Mugesh',
+  sub: 'Every signed order, all later steps',
   valueColor: '#14503a',
   labelColor: '#3f8f63',
   background: 'linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%)',
@@ -872,6 +1081,54 @@ ${statCard({
   border: '#bcd6f0',
 })}
 </tr></table></td></tr>
+<tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+${statCard({
+  width: '48%',
+  value: report.invoiceEntryPending || 0,
+  label: 'Invoice entry pending',
+  sub: 'GRN done, or WO accepted — invoice not entered',
+  valueColor: '#6b4c9a',
+  labelColor: '#6b4c9a',
+  background: 'linear-gradient(180deg,#f7f4fb 0%,#ece4f6 100%)',
+  border: '#ddd0ee',
+})}
+<td width="4%"></td>
+${statCard({
+  width: '48%',
+  value: (report.vendorAcceptancePending || 0) + (report.grnPending || 0) + (report.invoiceEntryPending || 0),
+  label: 'Current pending',
+  sub: 'Acceptance + GRN + invoice entry',
+  valueColor: '#1a1a1a',
+  labelColor: '#5b7ba3',
+  background: 'linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%)',
+  border: '#dfe8f2',
+})}
+</tr></table></td></tr>
+
+<tr><td style="padding:16px 32px 4px 32px; font-size:13px; line-height:1.55; color:#3a3a3a !important;" bgcolor="#ffffff">
+Approved POs is every signed order (Rajeev + Meet + Mugesh). Vendor acceptance is only the next step after buyer final verify, while acceptance is still open. Orders still with the buyer, and orders already in GRN, invoice, or payment, stay in Approved and are not in that pending count.
+</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Where the signed POs are now</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
+</tr>
+${approvedStageRowsHtml(report.approvedStages || [])}
+<tr style="background:#f4fbf5;" bgcolor="#f4fbf5">
+<td style="padding:10px 12px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;">Signed POs, each order once</td>
+<td style="padding:10px 8px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;" align="center">${report.approvedUnique || 0}</td>
+</tr>
+</table>
+<div style="font-size:12px; color:#5b5b5b; margin-top:8px; line-height:1.5;">
+Approved card is ${report.approvedPos}. Counted once, the same signed orders are ${report.approvedUnique || 0}. Vendor acceptance pending inside those signed orders is ${report.vendorAcceptanceOnSigned || 0}. The acceptance list below is ${report.vendorAcceptancePending || 0}${
+    report.vendorAcceptanceOutsideSigned
+      ? `, including ${report.vendorAcceptanceOutsideSigned} not in the Approved card`
+      : ''
+  }.
+</div>
+</td></tr>
 
 <tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Count by requester</td></tr>
 <tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
@@ -881,6 +1138,7 @@ ${statCard({
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Email</td>
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Vendor acceptance</td>
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">GRN pending</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Invoice entry</td>
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Total</td>
 </tr>
 ${pendingOwnerRows(report.requesterPending || [])}
@@ -986,11 +1244,17 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
     '',
     `Vendor PO acceptance pending: ${report.vendorAcceptancePending || 0}`,
     `GRN pending: ${report.grnPending || 0}`,
+    `Invoice entry pending: ${report.invoiceEntryPending || 0}`,
+    'Approved POs is every signed order. Vendor acceptance is only the step after buyer final verify.',
+    ...(report.approvedStages || []).map((row) => `${row.label}: ${row.count}`),
+    `Signed POs, each order once: ${report.approvedUnique || 0}`,
+    `Approved card (Rajeev + Meet + Mugesh): ${report.approvedPos}`,
+    `Vendor acceptance inside signed POs: ${report.vendorAcceptanceOnSigned || 0}`,
     '',
     'Count by requester',
     ...(report.requesterPending || []).map(
       (row) =>
-        `${row.name} <${row.email || 'no email'}>: vendor acceptance ${row.vendorAcceptance}, GRN pending ${row.grnPending}, total ${row.total}`
+        `${row.name} <${row.email || 'no email'}>: vendor acceptance ${row.vendorAcceptance}, GRN pending ${row.grnPending}, invoice entry ${row.invoiceEntry}, total ${row.total}`
     ),
     '',
     'Vendor PO acceptance pending list',
@@ -1015,6 +1279,100 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
   return { subject, html, text };
 }
 
+export function buildP2pPendingTasksEmail(report) {
+  const stages = report.poStages || [];
+  const stageTotal = stages.reduce((total, row) => total + row.count, 0);
+  const subject = `P2P Pending Tasks — Total POs, current stage, requester count — ${report.generatedAt}`;
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+<title>P2P Pending Tasks</title>
+</head>
+<body style="margin:0; padding:0; background-color:#eef0f2 !important;" bgcolor="#eef0f2">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eef0f2 !important;" bgcolor="#eef0f2">
+<tr><td align="center" style="padding:32px 16px;">
+<table role="presentation" width="740" cellpadding="0" cellspacing="0" style="background-color:#ffffff !important; border-radius:10px; overflow:hidden;" bgcolor="#ffffff">
+<tr><td style="background-color:#ffffff !important; padding:26px 32px;" bgcolor="#ffffff">
+<div style="font-size:18px; font-weight:bold; color:#1a1a1a !important;">P2P Pending Tasks</div>
+<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">Total POs &middot; Current stage &middot; Requester-wise count</div>
+<div style="font-size:12px; color:#6b6b6b !important; margin-top:2px;">Generated ${escapeHtml(report.generatedAt)}</div>
+</td></tr>
+
+<tr><td style="padding:22px 32px 6px 32px;" bgcolor="#ffffff">
+<div style="font-size:12px; font-weight:bold; color:#8a8a8a !important; text-transform:uppercase; letter-spacing:0.5px;">Total POs</div>
+</td></tr>
+<tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td align="center" style="background:linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%) !important; border:1px solid #dfe8f2; border-radius:10px; padding:26px 10px;">
+<div style="font-size:30px; font-weight:bold; color:#1a1a1a !important;">${report.totalPos}</div>
+<div style="font-size:12px; color:#5b7ba3 !important; margin-top:6px; font-weight:bold; text-transform:uppercase; letter-spacing:0.4px;">Total POs</div>
+<div style="font-size:11px; color:#5b7ba3 !important; margin-top:4px;">Draft and cancelled excluded</div>
+</td>
+</tr></table></td></tr>
+
+<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Current stage</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Stage</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
+</tr>
+${approvedStageRowsHtml(stages)}
+<tr style="background:#f4fbf5;" bgcolor="#f4fbf5">
+<td style="padding:10px 12px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;">Total POs</td>
+<td style="padding:10px 8px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;" align="center">${stageTotal}</td>
+</tr>
+</table></td></tr>
+
+<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
+<tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
+Open work only: vendor PO acceptance, GRN, and invoice entry. A manual PO with no requester is counted under the SCM user who created it.
+</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 10px; color:#ffffff !important; font-weight:bold;">Requester</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;">Email</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Vendor acceptance</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">GRN</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Invoice entry</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Total</td>
+</tr>
+${pendingOwnerRows(report.requesterPending || [])}
+</table></td></tr>
+
+<tr><td style="background-color:#faf9f7 !important; padding:18px 32px; border-top:1px solid #ececea; font-size:11px; color:#a0a0a0 !important;" bgcolor="#faf9f7">
+P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+  const text = [
+    'P2P Pending Tasks',
+    report.generatedAt,
+    '',
+    `Total POs: ${report.totalPos}`,
+    '',
+    'Current stage',
+    ...stages.map((row) => `${row.label}: ${row.count}`),
+    `Total POs: ${stageTotal}`,
+    '',
+    'Requester-wise count',
+    ...(report.requesterPending || []).map(
+      (row) =>
+        `${row.name} <${row.email || 'no email'}>: vendor acceptance ${row.vendorAcceptance}, GRN ${row.grnPending}, invoice entry ${row.invoiceEntry}, total ${row.total}`
+    ),
+  ].join('\n');
+
+  return { subject, html, text };
+}
+
 export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
   const recipient = String(to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
   const report = await loadP2pActivityReport();
@@ -1033,6 +1391,26 @@ export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
       rajeevApproved: report.rajeevApproved,
       vendorAcceptancePending: report.vendorAcceptancePending,
       grnPending: report.grnPending,
+      invoiceEntryPending: report.invoiceEntryPending,
+      totalPos: report.totalPos,
+    },
+  });
+  return { to: recipient, subject: built.subject, report };
+}
+
+/** Separate mail: vendor acceptance, GRN, and invoice-entry pending counts and lists. */
+export async function sendP2pPendingTasksReport(to = P2P_REPORT_TO) {
+  const recipient = String(to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+  const report = await loadP2pActivityReport();
+  const built = buildP2pPendingTasksEmail(report);
+  await sendMailToRecipients([recipient], built.subject, built.html, built.text, [], {
+    emailType: 'p2p_pending_tasks',
+    skipLogo: true,
+    meta: {
+      totalPos: report.totalPos,
+      vendorAcceptancePending: report.vendorAcceptancePending,
+      grnPending: report.grnPending,
+      invoiceEntryPending: report.invoiceEntryPending,
     },
   });
   return { to: recipient, subject: built.subject, report };

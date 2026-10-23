@@ -2230,6 +2230,23 @@ export const adminApi = {
         body: JSON.stringify({ extraTo: extraTo || '' }),
       }
     ),
+  sendP2pPendingTasksReport: (to?: string) =>
+    request<{
+      data: {
+        to: string;
+        subject: string;
+        report: {
+          totalPos: number;
+          vendorAcceptancePending: number;
+          grnPending: number;
+          invoiceEntryPending: number;
+        };
+      };
+      message: string;
+    }>('/api/admin/p2p-pending-tasks/send', {
+      method: 'POST',
+      body: JSON.stringify({ to: to || 'sathishkumar.r@refex.co.in' }),
+    }),
   sendP2pActivityReport: (to?: string) =>
     request<{
       data: {

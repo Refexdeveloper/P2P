@@ -2083,6 +2083,15 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     html = built.html;
     text = built.text;
     if (!to.length) to = [P2P_REPORT_TO];
+  } else if (type === 'p2p_pending_tasks') {
+    const { loadP2pActivityReport, buildP2pPendingTasksEmail, P2P_REPORT_TO } = await import(
+      './p2pActivityReportService.js'
+    );
+    const built = buildP2pPendingTasksEmail(await loadP2pActivityReport());
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
+    if (!to.length) to = [P2P_REPORT_TO];
   } else if (type === 'smtp_test') {
     if (!to.length) to = extra;
     html = `<p>P2P SMTP test (admin retrigger) at <strong>${new Date().toISOString()}</strong></p>`;

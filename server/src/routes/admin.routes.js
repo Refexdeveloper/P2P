@@ -21,7 +21,7 @@ import {
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
 import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval } from '../services/poService.js';
-import { P2P_REPORT_TO, sendP2pActivityReport } from '../services/p2pActivityReportService.js';
+import { P2P_REPORT_TO, sendP2pActivityReport, sendP2pPendingTasksReport } from '../services/p2pActivityReportService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -137,6 +137,29 @@ router.post('/p2p-report/send', async (req, res) => {
         report: data.report,
       },
       message: `P2P report sent to ${data.to}`,
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin: send the pending-tasks mail (vendor acceptance, GRN, invoice entry). */
+router.post('/p2p-pending-tasks/send', async (req, res) => {
+  try {
+    const to = String(req.body?.to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+    const data = await sendP2pPendingTasksReport(to);
+    res.json({
+      data: {
+        to: data.to,
+        subject: data.subject,
+        report: {
+          totalPos: data.report.totalPos,
+          vendorAcceptancePending: data.report.vendorAcceptancePending,
+          grnPending: data.report.grnPending,
+          invoiceEntryPending: data.report.invoiceEntryPending,
+        },
+      },
+      message: `Pending tasks mail sent to ${data.to}`,
     });
   } catch (err) {
     res.status(400).json({ message: err.message });

@@ -220,6 +220,8 @@ export const EMAIL_TYPE_LABELS = {
   po_vendor: 'PO Vendor Acceptance',
   po_workflow: 'PO Assign / Send Back / Reject',
   vendor_invoice_request: 'Vendor Invoice Request',
+  p2p_activity_report: 'P2P Procurement Report',
+  p2p_pending_tasks: 'P2P Pending Tasks',
   smtp_test: 'SMTP Test',
   generic: 'Other',
 };
