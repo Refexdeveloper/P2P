@@ -284,7 +284,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Send pending tasks mail</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Total POs, then the current stage of those orders, then a count for each requester. Sends to sathishkumar.r@refex.co.in.
+              Approved PO count, then the stage those approved orders are in now, then a count for each requester. Sends to sathishkumar.r@refex.co.in.
             </p>
             <button
               type="button"

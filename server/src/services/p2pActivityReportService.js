@@ -636,7 +636,6 @@ export async function loadP2pActivityReport(now = new Date()) {
      FROM (
        SELECT
          CASE
-           WHEN LOWER(po.status) = 'pending_approval' THEN 'scm_sign'
            WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'buyer_verify'
            WHEN LOWER(po.status) = 'approved' THEN 'pending_release'
            WHEN LOWER(po.status) = 'sent_to_vendor'
@@ -653,14 +652,16 @@ export async function loadP2pActivityReport(now = new Date()) {
        LEFT JOIN grn_headers g ON g.po_id = po.id
        WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
          AND ${NOT_DRAFT_PO}
-         AND LOWER(TRIM(IFNULL(po.status, ''))) <> 'cancelled'
+         AND LOWER(po.status) IN (
+           'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed',
+           'invoice_entry','pending_accounts_approval','approved_for_payment','paid'
+         )
      ) staged
      GROUP BY stage`
   );
   const poStageLabels = [
-    ['scm_sign', 'SCM Manager sign'],
     ['buyer_verify', 'Buyer final verify'],
-    ['pending_release', 'Approved — waiting for release'],
+    ['pending_release', 'Waiting for release'],
     ['vendor_acceptance', 'Vendor PO acceptance'],
     ['vendor_recorded', 'Vendor acceptance recorded'],
     ['grn_pending', 'GRN'],
@@ -1282,7 +1283,7 @@ P2P Procurement Report &middot; Automated &middot; Do not reply to this email
 export function buildP2pPendingTasksEmail(report) {
   const stages = report.poStages || [];
   const stageTotal = stages.reduce((total, row) => total + row.count, 0);
-  const subject = `P2P Pending Tasks — Total POs, current stage, requester count — ${report.generatedAt}`;
+  const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1297,19 +1298,19 @@ export function buildP2pPendingTasksEmail(report) {
 <table role="presentation" width="740" cellpadding="0" cellspacing="0" style="background-color:#ffffff !important; border-radius:10px; overflow:hidden;" bgcolor="#ffffff">
 <tr><td style="background-color:#ffffff !important; padding:26px 32px;" bgcolor="#ffffff">
 <div style="font-size:18px; font-weight:bold; color:#1a1a1a !important;">P2P Pending Tasks</div>
-<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">Total POs &middot; Current stage &middot; Requester-wise count</div>
+<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">Approved POs &middot; Current stage &middot; Requester-wise count</div>
 <div style="font-size:12px; color:#6b6b6b !important; margin-top:2px;">Generated ${escapeHtml(report.generatedAt)}</div>
 </td></tr>
 
 <tr><td style="padding:22px 32px 6px 32px;" bgcolor="#ffffff">
-<div style="font-size:12px; font-weight:bold; color:#8a8a8a !important; text-transform:uppercase; letter-spacing:0.5px;">Total POs</div>
+<div style="font-size:12px; font-weight:bold; color:#8a8a8a !important; text-transform:uppercase; letter-spacing:0.5px;">Approved POs</div>
 </td></tr>
 <tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td align="center" style="background:linear-gradient(180deg,#ffffff 0%,#f2f6fb 100%) !important; border:1px solid #dfe8f2; border-radius:10px; padding:26px 10px;">
-<div style="font-size:30px; font-weight:bold; color:#1a1a1a !important;">${report.totalPos}</div>
-<div style="font-size:12px; color:#5b7ba3 !important; margin-top:6px; font-weight:bold; text-transform:uppercase; letter-spacing:0.4px;">Total POs</div>
-<div style="font-size:11px; color:#5b7ba3 !important; margin-top:4px;">Draft and cancelled excluded</div>
+<td align="center" style="background:linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%) !important; border:1px solid #c7ead4; border-radius:10px; padding:26px 10px;">
+<div style="font-size:30px; font-weight:bold; color:#14503a !important;">${stageTotal}</div>
+<div style="font-size:12px; color:#3f8f63 !important; margin-top:6px; font-weight:bold; text-transform:uppercase; letter-spacing:0.4px;">Approved POs</div>
+<div style="font-size:11px; color:#3f8f63 !important; margin-top:4px;">Signed orders only. Each order counted once.</div>
 </td>
 </tr></table></td></tr>
 
@@ -1322,7 +1323,7 @@ export function buildP2pPendingTasksEmail(report) {
 </tr>
 ${approvedStageRowsHtml(stages)}
 <tr style="background:#f4fbf5;" bgcolor="#f4fbf5">
-<td style="padding:10px 12px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;">Total POs</td>
+<td style="padding:10px 12px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;">Approved POs</td>
 <td style="padding:10px 8px; color:#14503a; border-top:1px solid #c7ead4; font-weight:bold;" align="center">${stageTotal}</td>
 </tr>
 </table></td></tr>
@@ -1357,11 +1358,11 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     'P2P Pending Tasks',
     report.generatedAt,
     '',
-    `Total POs: ${report.totalPos}`,
+    `Approved POs: ${stageTotal}`,
     '',
     'Current stage',
     ...stages.map((row) => `${row.label}: ${row.count}`),
-    `Total POs: ${stageTotal}`,
+    `Approved POs: ${stageTotal}`,
     '',
     'Requester-wise count',
     ...(report.requesterPending || []).map(
