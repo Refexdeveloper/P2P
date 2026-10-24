@@ -2001,6 +2001,17 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     subject = built.subject;
     html = built.html;
     text = built.text;
+  } else if (type === 'p2p_activity_report') {
+    const { loadP2pActivityReport, buildP2pActivityReportEmail } = await import(
+      './p2pActivityReportService.js'
+    );
+    const report = await loadP2pActivityReport();
+    const slot = meta.slot === 'morning' || meta.slot === 'evening' ? meta.slot : '';
+    report.slotLabel = slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : '';
+    const built = buildP2pActivityReportEmail(report);
+    subject = built.subject;
+    html = built.html;
+    text = built.text;
   } else if (type === 'smtp_test') {
     if (!to.length) to = extra;
     html = `<p>P2P SMTP test (admin retrigger) at <strong>${new Date().toISOString()}</strong></p>`;
@@ -2045,7 +2056,7 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       bcc: bcc.length ? bcc.join(', ') : undefined,
       subject,
       text,
-      html: withEmailLogo(html),
+      html: type === 'p2p_activity_report' ? html : withEmailLogo(html),
       attachments: attachments.length ? attachments : undefined,
     });
     await updateEmailLog(log.id, {
