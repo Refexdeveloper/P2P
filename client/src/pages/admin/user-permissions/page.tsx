@@ -10,6 +10,12 @@ const ROLE_NAV_WHITELIST: Record<string, string[]> = {
 
 const ROLES_SHOW_REQUESTER_MENUS = new Set(['Requester', 'HOD Approver', 'PR Manager']);
 
+function displayPersonName(name: string) {
+  return String(name || '')
+    .trim()
+    .replace(/[A-Za-z]+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
 export default function UserPermissionsPage() {
   const { refreshUser } = useAuth();
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
@@ -196,7 +202,7 @@ export default function UserPermissionsPage() {
       if (entityChanged) payload.entityId = selectedEntityId ? Number(selectedEntityId) : null;
 
       await adminApi.updateUser(selectedUserId, payload);
-      showToast(`Updated settings for ${selectedUser.name}`, 'success');
+      showToast(`Updated settings for ${displayPersonName(selectedUser.name)}`, 'success');
       await load();
       await refreshUser();
     } catch (err) {
@@ -286,7 +292,7 @@ export default function UserPermissionsPage() {
                     selectedUserId === u.id ? 'bg-[#E3F2FD] border-l-4 border-[#1E88E5]' : ''
                   }`}
                 >
-                  <p className="text-sm font-semibold text-gray-900">{u.name}</p>
+                  <p className="text-sm font-semibold text-gray-900">{displayPersonName(u.name)}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {getUserDesignation(u) ? (
@@ -351,7 +357,7 @@ export default function UserPermissionsPage() {
               <div className="px-6 py-5 border-b border-gray-100">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-base font-bold text-gray-900">{selectedUser.name}</h2>
+                    <h2 className="text-base font-bold text-gray-900">{displayPersonName(selectedUser.name)}</h2>
                     <p className="text-xs text-gray-500 mt-0.5">{selectedUser.email}</p>
                   </div>
                   <button

@@ -238,11 +238,8 @@ function enforceRoleNavWhitelist(role, codes = []) {
     return codes.filter((c) => !REQUESTER_ONLY_NAV_CODES.has(c));
   }
   const allowSet = new Set(allowed);
-  const out = codes.filter((c) => allowSet.has(c));
-  for (const code of ROLE_DEFAULT_PERMISSIONS[role] || []) {
-    if (allowSet.has(code) && !out.includes(code)) out.push(code);
-  }
-  return out;
+  // Keep only menus this role may have. Do not put back a menu the admin unchecked.
+  return codes.filter((c) => allowSet.has(c));
 }
 
 async function persistRoleNavWhitelist(userId, role, codes) {
