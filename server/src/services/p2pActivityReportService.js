@@ -1490,9 +1490,6 @@ export function buildP2pPendingTasksEmail(report) {
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
   const invoicePending = stageCount(stages, ['invoice_entry']);
   const invoiceCompleted = stageCount(stages, ['accounts', 'paid']);
-  const vendorAcceptancePending = screen.pending || 0;
-  const vendorAcceptancePendingShown = vendorAcceptancePending + grnOnlyPending;
-  const invoiceUploadPendingShown = vendorAcceptancePending + grnOnlyPending + invoicePending;
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1618,12 +1615,8 @@ ${outsideOrders
 </table></td></tr>`
     : ''
 }
-${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal, [
-  { label: 'Vendor PO acceptance pending + GRN pending', count: vendorAcceptancePendingShown },
-])}
-${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal, [
-  { label: 'Vendor PO acceptance pending + GRN pending + Invoice upload pending', count: invoiceUploadPendingShown },
-])}
+${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal)}
+${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
 <tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
@@ -1673,14 +1666,12 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     '',
     'GRN',
     `Pending: ${grnOnlyPending}`,
-    `Vendor PO acceptance pending + GRN pending: ${vendorAcceptancePendingShown}`,
     `Completed: ${grnCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - grnOnlyPending - grnCompleted)}`,
     `Total: ${stageTotal}`,
     '',
     'Invoice entry',
     `Pending: ${invoicePending}`,
-    `Vendor PO acceptance pending + GRN pending + Invoice upload pending: ${invoiceUploadPendingShown}`,
     `Completed: ${invoiceCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - invoicePending - invoiceCompleted)}`,
     `Total: ${stageTotal}`,
