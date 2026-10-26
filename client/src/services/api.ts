@@ -2241,6 +2241,23 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ poNumbers }),
     }),
+  sendRajeevSignedPendingTasksReport: (to?: string) =>
+    request<{
+      data: {
+        to: string;
+        subject: string;
+        report: {
+          totalPos: number;
+          vendorAcceptancePending: number;
+          grnPending: number;
+          invoiceEntryPending: number;
+        };
+      };
+      message: string;
+    }>('/api/admin/p2p-rajeev-pending-tasks/send', {
+      method: 'POST',
+      body: JSON.stringify({ to: to || 'sathishkumar.r@refex.co.in' }),
+    }),
   sendP2pPendingTasksReport: (to?: string) =>
     request<{
       data: {

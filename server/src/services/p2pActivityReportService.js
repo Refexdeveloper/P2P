@@ -1493,7 +1493,10 @@ export function buildP2pPendingTasksEmail(report) {
   const vendorAcceptancePending = screen.pending || 0;
   const grnPending = vendorAcceptancePending + grnOnlyPending;
   const invoicePending = vendorAcceptancePending + grnOnlyPending + invoiceOnlyPending;
-  const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
+  const scopeTitle = String(report.scopeTitle || '').trim();
+  const subject = scopeTitle
+    ? `P2P Pending Tasks — ${scopeTitle} — ${report.generatedAt}`
+    : `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1508,7 +1511,7 @@ export function buildP2pPendingTasksEmail(report) {
 <table role="presentation" width="740" cellpadding="0" cellspacing="0" style="background-color:#ffffff !important; border-radius:10px; overflow:hidden;" bgcolor="#ffffff">
 <tr><td style="background-color:#ffffff !important; padding:26px 32px;" bgcolor="#ffffff">
 <div style="font-size:18px; font-weight:bold; color:#1a1a1a !important;">P2P Pending Tasks</div>
-<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">Approved POs &middot; Current stage &middot; Requester-wise count</div>
+<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">${escapeHtml(scopeTitle || 'Approved POs')} &middot; Current stage &middot; Requester-wise count</div>
 <div style="font-size:12px; color:#6b6b6b !important; margin-top:2px;">Generated ${escapeHtml(report.generatedAt)}</div>
 </td></tr>
 
@@ -1520,7 +1523,7 @@ export function buildP2pPendingTasksEmail(report) {
 <td align="center" style="background:linear-gradient(180deg,#f4fbf5 0%,#e0f5e8 100%) !important; border:1px solid #c7ead4; border-radius:10px; padding:26px 10px;">
 <div style="font-size:30px; font-weight:bold; color:#14503a !important;">${stageTotal}</div>
 <div style="font-size:12px; color:#3f8f63 !important; margin-top:6px; font-weight:bold; text-transform:uppercase; letter-spacing:0.4px;">Approved POs</div>
-<div style="font-size:11px; color:#3f8f63 !important; margin-top:4px;">Signed orders only. Each order counted once.</div>
+<div style="font-size:11px; color:#3f8f63 !important; margin-top:4px;">${escapeHtml(report.scopeNote || 'Signed orders only. Each order counted once.')}</div>
 </td>
 </tr></table></td></tr>
 
@@ -1712,6 +1715,288 @@ export async function sendP2pActivityReport(to = P2P_REPORT_TO) {
     },
   });
   return { to: recipient, subject: built.subject, report };
+}
+
+const APPROVED_PO_STATUSES = `'pending_buyer_verify','approved','sent_to_vendor','awaiting_grn','grn_completed','invoice_entry','pending_accounts_approval','approved_for_payment','paid'`;
+
+function rajeevSignedSql() {
+  return `(
+    po.signer_id = ?
+    OR LOWER(IFNULL(po.signature_name, '')) LIKE 'rajeev%'
+    OR LOWER(IFNULL(signer.email, '')) LIKE 'rajeev%'
+    OR LOWER(IFNULL(signer.name, '')) LIKE 'rajeev%'
+  )`;
+}
+
+/** Pending-tasks mail limited to POs Rajeev has signed. */
+export async function loadRajeevSignedPendingReport() {
+  const now = new Date();
+  const [[rajeevUser]] = await pool.query(
+    `SELECT id, name FROM users WHERE LOWER(email) = ? LIMIT 1`,
+    [DEFAULT_SCM_MANAGER_EMAIL]
+  );
+  const [[meetUser]] = await pool.query(
+    `SELECT id, name FROM users WHERE LOWER(email) = ? LIMIT 1`,
+    [RGML_SCM_MANAGER_EMAIL]
+  );
+  const [[mugeshUser]] = await pool.query(
+    `SELECT id, name FROM users WHERE LOWER(email) = ? LIMIT 1`,
+    [String(SASS_MUGESH_EMAIL).toLowerCase()]
+  );
+  const rajeevId = Number(rajeevUser?.id) || 0;
+  const meetId = Number(meetUser?.id) || 0;
+  const mugeshId = Number(mugeshUser?.id) || 0;
+  const signedSql = rajeevSignedSql();
+  const signerJoin = 'LEFT JOIN users signer ON signer.id = po.signer_id';
+
+  const [poStageRows] = await pool.query(
+    `SELECT stage, COUNT(*) AS pos
+     FROM (
+       SELECT
+         CASE
+           WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'buyer_verify'
+           WHEN LOWER(po.status) = 'approved' THEN 'pending_release'
+           WHEN LOWER(po.status) = 'sent_to_vendor'
+             AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'vendor_acceptance'
+           WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'vendor_recorded'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL
+             AND COALESCE(po.purchase_type, 'purchase_order') = 'purchase_order'
+             AND COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'vendor_acceptance'
+           WHEN LOWER(po.status) = 'invoice_entry' THEN 'invoice_entry'
+           WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
+             OR (LOWER(po.status) = 'awaiting_grn' AND g.id IS NOT NULL) THEN 'accounts'
+           WHEN LOWER(po.status) = 'paid' THEN 'paid'
+           ELSE 'other'
+         END AS stage
+       FROM purchase_orders po
+       LEFT JOIN grn_headers g ON g.po_id = po.id
+       ${signerJoin}
+       WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+         AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+         AND ${signedSql}
+     ) staged
+     GROUP BY stage`,
+    [rajeevId]
+  );
+  const poStageLabels = [
+    ['buyer_verify', 'Buyer final verify'],
+    ['pending_release', 'Waiting for release'],
+    ['vendor_acceptance', 'Vendor PO acceptance'],
+    ['vendor_recorded', 'Vendor acceptance recorded'],
+    ['grn_pending', 'GRN'],
+    ['invoice_entry', 'Invoice entry'],
+    ['accounts', 'Accounts / payment'],
+    ['paid', 'Paid'],
+    ['other', 'Other'],
+  ];
+  const poStageByKey = new Map(poStageRows.map((row) => [row.stage, num(row.pos)]));
+  const poStages = poStageLabels
+    .map(([key, label]) => ({ key, label, count: poStageByKey.get(key) || 0 }))
+    .filter((row) => row.count > 0);
+
+  const [signerRows] = await pool.query(
+    `SELECT po.po_number,
+            COALESCE(NULLIF(TRIM(em.name), ''), NULLIF(TRIM(po.entity), ''), '') AS entity_name,
+            COALESCE(NULLIF(TRIM(po.signature_name), ''), NULLIF(TRIM(signer.name), ''), 'Not signed yet') AS signer_label,
+            1 AS is_rajeev,
+            (
+              po.signer_id = ?
+              OR LOWER(IFNULL(po.signature_name, '')) LIKE 'meet%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'meet.%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'meet@%'
+              OR LOWER(IFNULL(signer.name, '')) LIKE 'meet%'
+            ) AS is_meet,
+            (
+              po.signer_id = ?
+              OR LOWER(IFNULL(po.signature_name, '')) LIKE 'mugesh%'
+              OR LOWER(IFNULL(signer.email, '')) LIKE 'mugesh%'
+              OR LOWER(IFNULL(signer.name, '')) LIKE 'mugesh%'
+            ) AS is_mugesh
+     FROM purchase_orders po
+     ${signerJoin}
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+       AND ${signedSql}`,
+    [meetId, mugeshId, rajeevId]
+  );
+  const signedBy = { rajeev: 0, mugesh: 0, meet: 0, overlap: 0, remaining: [] };
+  for (const row of signerRows) {
+    const flags = [row.is_rajeev, row.is_mugesh, row.is_meet].filter((flag) => Number(flag) === 1).length;
+    signedBy.rajeev += 1;
+    if (Number(row.is_mugesh) === 1) signedBy.mugesh += 1;
+    if (Number(row.is_meet) === 1) signedBy.meet += 1;
+    if (flags > 1) signedBy.overlap += 1;
+  }
+
+  const [[vendorScreen]] = await pool.query(
+    `SELECT
+       SUM(bucket = 'pending') AS pending_count,
+       SUM(bucket = 'accepted') AS accepted_count,
+       SUM(bucket = 'rejected') AS rejected_count,
+       SUM(bucket = 'partial') AS partial_count,
+       SUM(bucket = 'outside') AS outside_count
+     FROM (
+       SELECT
+         CASE
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'accepted'
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'rejected' THEN 'rejected'
+           WHEN COALESCE(po.vendor_acceptance_status, '') = 'partial' THEN 'partial'
+           WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'pending'
+           WHEN LOWER(po.status) = 'awaiting_grn'
+             AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id) THEN 'pending'
+           ELSE 'outside'
+         END AS bucket
+       FROM purchase_orders po
+       ${signerJoin}
+       WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+         AND ${NOT_DRAFT_PO}
+         AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+         AND ${signedSql}
+     ) buckets`,
+    [rajeevId]
+  );
+  const [vendorOutsideRows] = await pool.query(
+    `SELECT po.po_number,
+       CASE
+         WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'Buyer final verify — not sent to the vendor yet'
+         WHEN LOWER(po.status) = 'approved' THEN 'Approved — waiting for release to the vendor'
+         WHEN LOWER(po.status) = 'awaiting_grn' THEN 'Vendor acceptance pending'
+         WHEN LOWER(po.status) = 'invoice_entry' THEN 'Invoice entry — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
+           THEN 'Accounts / payment — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) = 'paid' THEN 'Paid — vendor acceptance was not recorded'
+         ELSE LOWER(po.status)
+       END AS stage_label
+     FROM purchase_orders po
+     ${signerJoin}
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+       AND ${signedSql}
+       AND COALESCE(po.vendor_acceptance_status, '') NOT IN ('accepted', 'rejected', 'partial')
+       AND LOWER(po.status) <> 'sent_to_vendor'
+       AND NOT (
+         LOWER(po.status) = 'awaiting_grn'
+         AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id)
+       )
+     ORDER BY stage_label, po.po_number`,
+    [rajeevId]
+  );
+
+  const ownerMap = new Map();
+  const touchOwner = (row) => {
+    const email = String(row.owner_email || '').trim().toLowerCase();
+    const key = email || row.owner_name || 'Unassigned';
+    if (!ownerMap.has(key)) {
+      ownerMap.set(key, {
+        name: row.owner_name || 'Unassigned',
+        email: row.owner_email || '',
+        vendorAcceptance: 0,
+        grnPending: 0,
+        invoiceEntry: 0,
+      });
+    }
+    return ownerMap.get(key);
+  };
+  const ownerSelect = `COALESCE(req.id, creator.id, 0) AS owner_id,
+            COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), 'Unassigned') AS owner_name,
+            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS owner_email`;
+  const ownerJoins = `LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN users req ON req.id = pr.requester_id
+     LEFT JOIN users creator ON creator.id = po.created_by
+     ${signerJoin}`;
+
+  const [vendorAcceptanceRows] = await pool.query(
+    `SELECT ${ownerSelect}
+     FROM purchase_orders po
+     ${ownerJoins}
+     WHERE COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+       AND (
+         po.status = 'sent_to_vendor'
+         OR (
+           po.status = 'awaiting_grn'
+           AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id)
+         )
+       )
+       AND ${NOT_DRAFT_PO}
+       AND ${signedSql}`,
+    [rajeevId]
+  );
+  const [grnPendingRows] = await pool.query(
+    `SELECT ${ownerSelect}
+     FROM purchase_orders po
+     ${ownerJoins}
+     LEFT JOIN grn_headers g ON g.po_id = po.id
+     WHERE po.purchase_type = 'purchase_order'
+       AND po.status = 'awaiting_grn'
+       AND g.id IS NULL
+       AND COALESCE(po.vendor_acceptance_status, '') = 'accepted'
+       AND ${NOT_DRAFT_PO}
+       AND ${signedSql}`,
+    [rajeevId]
+  );
+  const [invoiceEntryRows] = await pool.query(
+    `SELECT ${ownerSelect}
+     FROM purchase_orders po
+     ${ownerJoins}
+     WHERE LOWER(po.status) = 'invoice_entry'
+       AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND ${signedSql}`,
+    [rajeevId]
+  );
+  for (const row of vendorAcceptanceRows) touchOwner(row).vendorAcceptance += 1;
+  for (const row of grnPendingRows) touchOwner(row).grnPending += 1;
+  for (const row of invoiceEntryRows) touchOwner(row).invoiceEntry += 1;
+  const requesterPending = [...ownerMap.values()]
+    .map((row) => ({ ...row, total: row.vendorAcceptance + row.grnPending + row.invoiceEntry }))
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+
+  const rajeevName = rajeevUser?.name || DEFAULT_SCM_MANAGER_NAME;
+  return {
+    generatedAt: formatReportDate(now),
+    scopeTitle: `${rajeevName} signed POs`,
+    scopeNote: `Only POs signed by ${rajeevName}. Each order counted once.`,
+    rajeevName,
+    meetName: meetUser?.name || RGML_SCM_MANAGER_NAME,
+    mugeshName: mugeshUser?.name || 'Mugesh M',
+    poStages,
+    signedBy,
+    requesterPending,
+    vendorScreen: {
+      pending: num(vendorScreen?.pending_count),
+      accepted: num(vendorScreen?.accepted_count),
+      rejected: num(vendorScreen?.rejected_count),
+      partial: num(vendorScreen?.partial_count),
+      outside: num(vendorScreen?.outside_count),
+      outsideOrders: vendorOutsideRows.map((row) => ({
+        poNumber: row.po_number || '',
+        stage: row.stage_label || '',
+      })),
+    },
+  };
+}
+
+export async function sendRajeevSignedPendingTasksReport(to = P2P_REPORT_TO) {
+  const recipient = String(to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+  const report = await loadRajeevSignedPendingReport();
+  const built = buildP2pPendingTasksEmail(report);
+  const stageTotal = (report.poStages || []).reduce((total, row) => total + row.count, 0);
+  await sendMailToRecipients([recipient], built.subject, built.html, built.text, [], {
+    emailType: 'p2p_rajeev_pending_tasks',
+    skipLogo: true,
+    meta: {
+      totalPos: stageTotal,
+      vendorAcceptancePending: report.vendorScreen.pending,
+      grnPending: (report.poStages || []).find((row) => row.key === 'grn_pending')?.count || 0,
+      invoiceEntryPending: (report.poStages || []).find((row) => row.key === 'invoice_entry')?.count || 0,
+    },
+  });
+  return { to: recipient, subject: built.subject, report: { ...report, totalPos: stageTotal } };
 }
 
 /** Separate mail: vendor acceptance, GRN, and invoice-entry pending counts and lists. */

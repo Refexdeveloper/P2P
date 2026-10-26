@@ -68,6 +68,7 @@ export default function AdminEmailLogsPage() {
   const [notifyingPo, setNotifyingPo] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
   const [sendingPending, setSendingPending] = useState(false);
+  const [sendingRajeev, setSendingRajeev] = useState(false);
   const [movePoInput, setMovePoInput] = useState(
     [
       'PO-CBGSPVM-2026-27-0001',
@@ -213,6 +214,23 @@ export default function AdminEmailLogsPage() {
     }
   };
 
+  const handleSendRajeevPending = async () => {
+    setSendingRajeev(true);
+    try {
+      const res = await adminApi.sendRajeevSignedPendingTasksReport('sathishkumar.r@refex.co.in');
+      const report = res.data?.report;
+      const detail = report
+        ? ` — Rajeev signed POs ${report.totalPos ?? 0}, vendor acceptance pending ${report.vendorAcceptancePending ?? 0}, GRN ${report.grnPending ?? 0}, invoice entry ${report.invoiceEntryPending ?? 0}`
+        : '';
+      showToast((res.message || 'Rajeev pending tasks mail sent') + detail, 'success');
+      await load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Rajeev pending tasks mail failed', 'error');
+    } finally {
+      setSendingRajeev(false);
+    }
+  };
+
   const handleMoveToVendorAcceptance = async () => {
     const poNumbers = movePoInput
       .split(/[\s,;]+/)
@@ -332,6 +350,23 @@ export default function AdminEmailLogsPage() {
               className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
             >
               {sendingPending ? 'Sending…' : 'Send pending tasks to sathishkumar.r@refex.co.in'}
+            </button>
+          </div>
+        ) : null}
+
+        {channel === 'email' ? (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Rajeev sir pending tasks</h2>
+            <p className="text-xs text-slate-500 mt-1 mb-3">
+              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSendRajeevPending()}
+              disabled={sendingRajeev}
+              className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
+            >
+              {sendingRajeev ? 'Sending…' : 'Send Rajeev signed POs to sathishkumar.r@refex.co.in'}
             </button>
           </div>
         ) : null}

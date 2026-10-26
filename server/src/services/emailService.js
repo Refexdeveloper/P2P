@@ -2083,11 +2083,17 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     html = built.html;
     text = built.text;
     if (!to.length) to = [P2P_REPORT_TO];
-  } else if (type === 'p2p_pending_tasks') {
-    const { loadP2pActivityReport, buildP2pPendingTasksEmail, P2P_REPORT_TO } = await import(
-      './p2pActivityReportService.js'
-    );
-    const built = buildP2pPendingTasksEmail(await loadP2pActivityReport());
+  } else if (type === 'p2p_pending_tasks' || type === 'p2p_rajeev_pending_tasks') {
+    const {
+      loadP2pActivityReport,
+      loadRajeevSignedPendingReport,
+      buildP2pPendingTasksEmail,
+      P2P_REPORT_TO,
+    } = await import('./p2pActivityReportService.js');
+    const report = type === 'p2p_rajeev_pending_tasks'
+      ? await loadRajeevSignedPendingReport()
+      : await loadP2pActivityReport();
+    const built = buildP2pPendingTasksEmail(report);
     subject = built.subject;
     html = built.html;
     text = built.text;
@@ -2136,7 +2142,9 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       bcc: bcc.length ? bcc.join(', ') : undefined,
       subject,
       text,
-      html: withEmailLogo(html),
+      html: type === 'p2p_activity_report' || type === 'p2p_pending_tasks' || type === 'p2p_rajeev_pending_tasks'
+        ? html
+        : withEmailLogo(html),
       attachments: attachments.length ? attachments : undefined,
     });
     await updateEmailLog(log.id, {
