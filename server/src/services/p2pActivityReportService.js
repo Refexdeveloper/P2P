@@ -1488,8 +1488,11 @@ export function buildP2pPendingTasksEmail(report) {
   ];
   const grnOnlyPending = stageCount(stages, ['grn_pending']);
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
-  const invoicePending = stageCount(stages, ['invoice_entry']);
+  const invoiceOnlyPending = stageCount(stages, ['invoice_entry']);
   const invoiceCompleted = stageCount(stages, ['accounts', 'paid']);
+  const vendorAcceptancePending = screen.pending || 0;
+  const grnPending = vendorAcceptancePending + grnOnlyPending;
+  const invoicePending = vendorAcceptancePending + grnOnlyPending + invoiceOnlyPending;
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1615,7 +1618,7 @@ ${outsideOrders
 </table></td></tr>`
     : ''
 }
-${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal)}
+${stepBalanceHtml('GRN', grnPending, grnCompleted, stageTotal)}
 ${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
@@ -1665,9 +1668,9 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Total: ${(screen.pending || 0) + (screen.accepted || 0) + (screen.rejected || 0) + (screen.partial || 0) + (screen.outside || 0)}`,
     '',
     'GRN',
-    `Pending: ${grnOnlyPending}`,
+    `Pending: ${grnPending}`,
     `Completed: ${grnCompleted}`,
-    `Remaining: ${Math.max(0, stageTotal - grnOnlyPending - grnCompleted)}`,
+    `Remaining: ${Math.max(0, stageTotal - grnPending - grnCompleted)}`,
     `Total: ${stageTotal}`,
     '',
     'Invoice entry',
