@@ -430,8 +430,14 @@ export async function loadP2pActivityReport(now = new Date()) {
      LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
      LEFT JOIN users req ON req.id = pr.requester_id
      LEFT JOIN users creator ON creator.id = po.created_by
-     WHERE po.status = 'sent_to_vendor'
-       AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+     WHERE COALESCE(po.vendor_acceptance_status, 'pending') = 'pending'
+       AND (
+         po.status = 'sent_to_vendor'
+         OR (
+           po.status = 'awaiting_grn'
+           AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id)
+         )
+       )
        AND ${NOT_DRAFT_PO}
      ORDER BY waiting_since ASC, po.id ASC`
   );
@@ -451,6 +457,7 @@ export async function loadP2pActivityReport(now = new Date()) {
      WHERE po.purchase_type = 'purchase_order'
        AND po.status = 'awaiting_grn'
        AND g.id IS NULL
+       AND COALESCE(po.vendor_acceptance_status, '') = 'accepted'
        AND ${NOT_DRAFT_PO}
      ORDER BY waiting_since ASC, po.id ASC`
   );
@@ -523,7 +530,10 @@ export async function loadP2pActivityReport(now = new Date()) {
            WHEN LOWER(po.status) = 'sent_to_vendor'
              AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'vendor_acceptance'
            WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'vendor_closed'
-           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL
+             AND COALESCE(po.purchase_type, 'purchase_order') = 'purchase_order'
+             AND COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'vendor_acceptance'
            WHEN LOWER(po.status) IN (
              'awaiting_grn','grn_completed','invoice_entry',
              'pending_accounts_approval','approved_for_payment','paid'
@@ -641,7 +651,10 @@ export async function loadP2pActivityReport(now = new Date()) {
            WHEN LOWER(po.status) = 'sent_to_vendor'
              AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'vendor_acceptance'
            WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'vendor_recorded'
-           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL
+             AND COALESCE(po.purchase_type, 'purchase_order') = 'purchase_order'
+             AND COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'grn_pending'
+           WHEN LOWER(po.status) = 'awaiting_grn' AND g.id IS NULL THEN 'vendor_acceptance'
            WHEN LOWER(po.status) = 'invoice_entry' THEN 'invoice_entry'
            WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
              OR (LOWER(po.status) = 'awaiting_grn' AND g.id IS NOT NULL) THEN 'accounts'
@@ -746,6 +759,8 @@ export async function loadP2pActivityReport(now = new Date()) {
            WHEN COALESCE(po.vendor_acceptance_status, '') = 'rejected' THEN 'rejected'
            WHEN COALESCE(po.vendor_acceptance_status, '') = 'partial' THEN 'partial'
            WHEN LOWER(po.status) = 'sent_to_vendor' THEN 'pending'
+           WHEN LOWER(po.status) = 'awaiting_grn'
+             AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id) THEN 'pending'
            ELSE 'outside'
          END AS bucket
        FROM purchase_orders po
@@ -762,7 +777,7 @@ export async function loadP2pActivityReport(now = new Date()) {
        CASE
          WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'Buyer final verify — not sent to the vendor yet'
          WHEN LOWER(po.status) = 'approved' THEN 'Approved — waiting for release to the vendor'
-         WHEN LOWER(po.status) = 'awaiting_grn' THEN 'GRN — vendor acceptance was not recorded'
+         WHEN LOWER(po.status) = 'awaiting_grn' THEN 'Vendor acceptance pending'
          WHEN LOWER(po.status) = 'invoice_entry' THEN 'Invoice entry — vendor acceptance was not recorded'
          WHEN LOWER(po.status) IN ('grn_completed', 'pending_accounts_approval', 'approved_for_payment')
            THEN 'Accounts / payment — vendor acceptance was not recorded'
@@ -778,6 +793,10 @@ export async function loadP2pActivityReport(now = new Date()) {
        )
        AND COALESCE(po.vendor_acceptance_status, '') NOT IN ('accepted', 'rejected', 'partial')
        AND LOWER(po.status) <> 'sent_to_vendor'
+       AND NOT (
+         LOWER(po.status) = 'awaiting_grn'
+         AND NOT EXISTS (SELECT 1 FROM grn_headers g_acc WHERE g_acc.po_id = po.id)
+       )
      ORDER BY stage_label, po.po_number`
   );
 
@@ -1457,13 +1476,13 @@ export function buildP2pPendingTasksEmail(report) {
     ...(screen.partial ? [{ label: 'Partial — on the Vendor PO Acceptance screen', count: screen.partial }] : []),
     { label: 'Not on the Vendor PO Acceptance screen', count: screen.outside || 0 },
   ];
-  const grnPending = stageCount(stages, ['grn_pending']);
+  const grnOnlyPending = stageCount(stages, ['grn_pending']);
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
   const invoicePending = stageCount(stages, ['invoice_entry']);
   const invoiceCompleted = stageCount(stages, ['accounts', 'paid']);
   const vendorAcceptancePending = screen.pending || 0;
-  const grnPendingShown = vendorAcceptancePending + grnPending;
-  const invoicePendingShown = vendorAcceptancePending + grnPending + invoicePending;
+  const vendorAcceptancePendingShown = vendorAcceptancePending + grnOnlyPending;
+  const invoiceUploadPendingShown = vendorAcceptancePending + grnOnlyPending + invoicePending;
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1573,18 +1592,11 @@ ${remaining
 <td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
 </tr>
 ${balanceRowsHtml([
-  {
-    label: `GRN pending — vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending}`,
-    count: grnPendingShown,
-  },
-  {
-    label: `Invoice upload pending — vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} + invoice upload pending ${invoicePending}`,
-    count: invoicePendingShown,
-    total: true,
-  },
+  { label: 'Vendor PO acceptance pending', count: vendorAcceptancePendingShown },
+  { label: 'Invoice upload pending', count: invoiceUploadPendingShown, total: true },
 ])}
 </table></td></tr>
-${namedBalanceHtml('Vendor PO acceptance', vendorRows)}
+${namedBalanceHtml('Vendor acceptance', vendorRows)}
 ${
   outsideOrders.length
     ? `<tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important; line-height:1.5;" bgcolor="#ffffff">
@@ -1608,7 +1620,7 @@ ${outsideOrders
 </table></td></tr>`
     : ''
 }
-${stepBalanceHtml('GRN', grnPending, grnCompleted, stageTotal)}
+${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal)}
 ${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
@@ -1649,6 +1661,10 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     ...(signed.overlap ? [`Counted under more than one signer: ${signed.overlap}`] : []),
     `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
     '',
+    'Open pending',
+    `Vendor PO acceptance pending: ${vendorAcceptancePendingShown}`,
+    `Invoice upload pending: ${invoiceUploadPendingShown}`,
+    '',
     'Vendor PO acceptance',
     `Pending — on the Vendor PO Acceptance screen: ${screen.pending || 0}`,
     `Accepted — on the Vendor PO Acceptance screen: ${screen.accepted || 0}`,
@@ -1658,9 +1674,9 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Total: ${(screen.pending || 0) + (screen.accepted || 0) + (screen.rejected || 0) + (screen.partial || 0) + (screen.outside || 0)}`,
     '',
     'GRN',
-    `Pending: ${grnPending}`,
+    `Pending: ${grnOnlyPending}`,
     `Completed: ${grnCompleted}`,
-    `Remaining: ${Math.max(0, stageTotal - grnPending - grnCompleted)}`,
+    `Remaining: ${Math.max(0, stageTotal - grnOnlyPending - grnCompleted)}`,
     `Total: ${stageTotal}`,
     '',
     'Invoice entry',
@@ -1668,10 +1684,6 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Completed: ${invoiceCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - invoicePending - invoiceCompleted)}`,
     `Total: ${stageTotal}`,
-    '',
-    'Open pending',
-    `GRN pending: vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} = ${grnPendingShown}`,
-    `Invoice upload pending: vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} + invoice upload pending ${invoicePending} = ${invoicePendingShown}`,
     '',
     'Requester-wise count',
     ...(report.requesterPending || []).map(
