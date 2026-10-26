@@ -340,7 +340,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Move to vendor PO acceptance</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              For approved orders whose vendor acceptance was never recorded. They appear as pending on Vendor PO Acceptance. After acceptance is recorded, each order returns to the stage it left (GRN or invoice entry).
+              Moves only orders already at GRN or invoice entry whose vendor acceptance was never recorded. Buyer final verify is left as it is. After acceptance is recorded, each order returns to the stage it left.
             </p>
             <textarea
               value={movePoInput}

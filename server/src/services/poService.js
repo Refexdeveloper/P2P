@@ -6604,6 +6604,13 @@ export async function adminMovePurchaseOrdersToVendorAcceptance(user, poNumbers)
       skipped.push({ poNumber, reason: 'Already on vendor PO acceptance' });
       continue;
     }
+    if (status === 'pending_buyer_verify' || status === 'approved') {
+      skipped.push({
+        poNumber,
+        reason: 'Still at buyer final verify or not released. Left there. Vendor acceptance starts only after release.',
+      });
+      continue;
+    }
     if (!ADMIN_MOVE_TO_ACCEPTANCE_STATUSES.includes(status)) {
       skipped.push({ poNumber, reason: `Current stage ${status || 'unknown'} cannot move to vendor acceptance` });
       continue;
