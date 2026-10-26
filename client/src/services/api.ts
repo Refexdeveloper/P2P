@@ -2245,9 +2245,12 @@ export const adminApi = {
     request<{
       data: {
         poNumber: string;
+        status: string;
+        vendorName: string;
         requesterName: string;
-        requesterEmail: string;
         department: string;
+        basicValue: number;
+        gst: number;
         amount: number;
         createdBy: string;
         poDate: string;

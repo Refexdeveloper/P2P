@@ -1742,9 +1742,26 @@ export async function listRajeevSignedPurchaseOrders() {
   const rajeevId = Number(rajeevUser?.id) || 0;
   const [rows] = await pool.query(
     `SELECT po.po_number,
+            CASE
+              WHEN LOWER(po.status) = 'pending_buyer_verify' THEN 'Buyer final verify'
+              WHEN LOWER(po.status) = 'approved' THEN 'Approved — waiting for release'
+              WHEN LOWER(po.status) = 'sent_to_vendor' AND COALESCE(po.vendor_acceptance_status, 'pending') = 'pending' THEN 'Vendor PO acceptance pending'
+              WHEN LOWER(po.status) = 'sent_to_vendor' AND COALESCE(po.vendor_acceptance_status, '') = 'accepted' THEN 'Vendor accepted'
+              WHEN LOWER(po.status) = 'sent_to_vendor' AND COALESCE(po.vendor_acceptance_status, '') = 'rejected' THEN 'Vendor rejected'
+              WHEN LOWER(po.status) = 'sent_to_vendor' AND COALESCE(po.vendor_acceptance_status, '') = 'partial' THEN 'Vendor partial acceptance'
+              WHEN LOWER(po.status) = 'awaiting_grn' THEN 'Awaiting GRN'
+              WHEN LOWER(po.status) = 'grn_completed' THEN 'GRN completed'
+              WHEN LOWER(po.status) = 'invoice_entry' THEN 'Invoice entry'
+              WHEN LOWER(po.status) = 'pending_accounts_approval' THEN 'Pending accounts approval'
+              WHEN LOWER(po.status) = 'approved_for_payment' THEN 'Approved for payment'
+              WHEN LOWER(po.status) = 'paid' THEN 'Paid'
+              ELSE LOWER(po.status)
+            END AS po_status,
+            COALESCE(NULLIF(TRIM(po.vendor_name), ''), '') AS vendor_name,
             COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), '') AS requester_name,
-            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS requester_email,
             COALESCE(NULLIF(TRIM(dept.name), ''), NULLIF(TRIM(creator_dept.name), ''), '') AS department,
+            po.subtotal,
+            po.tax_amount,
             po.grand_total,
             COALESCE(NULLIF(TRIM(creator.name), ''), '') AS created_by_name,
             DATE_FORMAT(COALESCE(po.po_date, po.created_at), '%Y-%m-%d') AS po_date,
@@ -1766,9 +1783,12 @@ export async function listRajeevSignedPurchaseOrders() {
   );
   return rows.map((row) => ({
     poNumber: row.po_number || '',
+    status: row.po_status || '',
+    vendorName: row.vendor_name || '',
     requesterName: row.requester_name || '',
-    requesterEmail: row.requester_email || '',
     department: row.department || '',
+    basicValue: Number(row.subtotal) || 0,
+    gst: Number(row.tax_amount) || 0,
     amount: Number(row.grand_total) || 0,
     createdBy: row.created_by_name || '',
     poDate: row.po_date || '',
