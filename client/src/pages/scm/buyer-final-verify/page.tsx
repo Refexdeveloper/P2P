@@ -4,6 +4,7 @@ import DashboardLayout from '../../../components/feature/DashboardLayout';
 import AnimatedKpiCard from '../../../components/feature/AnimatedKpiCard';
 import '../../../styles/dashboard-fx.css';
 import { poApi } from '../../../services/api';
+import PrDocumentsPanel from '../../../components/feature/PrDocumentsPanel';
 import { useAuth } from '../../../contexts/AuthContext';
 import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
 
@@ -396,6 +397,14 @@ export default function BuyerFinalVerifyPage() {
                                     Confirm signed PDF and commercial terms. Vendor is not emailed from this step.
                                   </p>
                                   <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                                    {po.prId > 0 ? (
+                                      <div className={`${fieldCard} lg:col-span-2`}>
+                                        <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                        <div className="relative z-[1]">
+                                          <PrDocumentsPanel prId={po.prId} compact />
+                                        </div>
+                                      </div>
+                                    ) : null}
                                     <div className="space-y-3">
                                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         {[

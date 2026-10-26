@@ -4,7 +4,8 @@ import ApprovalHistoryPanel, {
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
-import { poApi, prApi, rfqApi, VendorComparisonData } from '../../../../services/api';
+import { poApi, prApi, rfqApi, VendorComparisonData, type PrAttachmentRecord } from '../../../../services/api';
+import PrDocumentsPanel from '../../../../components/feature/PrDocumentsPanel';
 import '../../../../styles/dashboard-fx.css';
 import '../../../../styles/po-workspace.css';
 
@@ -39,6 +40,7 @@ interface PRDetail {
   statusUI: string;
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryEntry[];
+  attachments?: PrAttachmentRecord[];
 }
 
 interface Props {
@@ -564,6 +566,7 @@ export default function PRBucketExpandedRow({
               statusUI: String(d.statusUI || statusLabel),
               lineItems: items,
               approvalHistory: mapHistory(historyRaw),
+              attachments: Array.isArray(d.attachments) ? (d.attachments as PrAttachmentRecord[]) : [],
             });
             setAddressInfo(addressFromPr(d));
           } else {
@@ -920,6 +923,14 @@ export default function PRBucketExpandedRow({
                       </p>
                     </div>
                   </div>
+                  {prId > 0 ? (
+                    <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]">
+                      <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                      <div className="relative z-[1]">
+                        <PrDocumentsPanel prId={prId} attachments={pr.attachments} compact />
+                      </div>
+                    </div>
+                  ) : null}
                   <div>
                     <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                       Manager &amp; L2 Comments

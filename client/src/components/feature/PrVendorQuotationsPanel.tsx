@@ -69,7 +69,11 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
   const [rows, setRows] = useState<QuoteRow[]>([]);
   const [recommendationJustification, setRecommendationJustification] = useState('');
   const [recommendedVendorName, setRecommendedVendorName] = useState('');
-  const [preview, setPreview] = useState<{ url: string; fileName: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    url: string;
+    fileName: string;
+    files: QuotationFileView[];
+  } | null>(null);
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
 
   const onPresenceRef = useRef(onPresenceChange);
@@ -159,7 +163,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
     return Math.min(4, Math.max(1, ...rounds, 1));
   }, [rows]);
 
-  const openFile = async (file: QuotationFileView) => {
+  const openFile = async (file: QuotationFileView, siblings: QuotationFileView[] = []) => {
     const token = localStorage.getItem('p2p_token');
     const submissionId = Number(file.submissionId) || 0;
     const extraId = Number(file.extraFileId) || 0;
@@ -181,7 +185,8 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
     }
     const blob = await res.blob();
     if (preview?.url) URL.revokeObjectURL(preview.url);
-    setPreview({ url: URL.createObjectURL(blob), fileName: file.fileName });
+    const files = siblings.length ? siblings : [file];
+    setPreview({ url: URL.createObjectURL(blob), fileName: file.fileName, files });
   };
 
   if (loading) {
@@ -336,7 +341,7 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                                 </p>
                                 <button
                                   type="button"
-                                  onClick={() => void openFile(file)}
+                                  onClick={() => void openFile(file, files)}
                                   className="inline-flex cursor-pointer items-center gap-1 self-start rounded-lg bg-[#e6f6f8] px-2 py-1 text-[10px] font-semibold text-[#0f6b7a] transition-colors hover:bg-[#c5e6eb]"
                                 >
                                   <i className="ri-eye-line" />
@@ -444,6 +449,30 @@ export default function PrVendorQuotationsPanel({ prId, currency, onPresenceChan
                 <i className="ri-close-line text-lg" />
               </button>
             </div>
+            {preview.files.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-2">
+                {preview.files.map((file, idx) => {
+                  const active = file.fileName === preview.fileName;
+                  return (
+                    <button
+                      key={`${file.fileName}-${file.extraFileId || 'primary'}-${idx}`}
+                      type="button"
+                      onClick={() => {
+                        if (!active) void openFile(file, preview.files);
+                      }}
+                      className={`max-w-[220px] shrink-0 truncate rounded-lg px-2.5 py-1.5 text-left text-[11px] font-semibold ${
+                        active
+                          ? 'bg-[#0f6b7a] text-white'
+                          : 'bg-[#e6f6f8] text-[#0f6b7a] hover:bg-[#c5e6eb]'
+                      }`}
+                      title={file.fileName}
+                    >
+                      {file.fileName}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
               {/\.pdf$/i.test(preview.fileName) ? (
                 <iframe

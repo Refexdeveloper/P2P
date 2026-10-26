@@ -5,6 +5,7 @@ import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix'
 import ManagerRfqQuoteSummary from '../../components/rfq/ManagerRfqQuoteSummary';
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
 import { rfqApi, VendorComparisonData } from '../../services/api';
+import PrDocumentsPanel from '../../components/feature/PrDocumentsPanel';
 import { useAuth } from '../../contexts/AuthContext';
 import { isL1OrL2Manager } from '../../utils/roleDisplay';
 
@@ -290,6 +291,12 @@ export default function RfqApprovalDetailPage() {
           After approval you will be redirected to <strong>Create PO</strong> for this purchase request.
         </div>
       )}
+
+      {Number(prId) > 0 ? (
+        <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
+          <PrDocumentsPanel prId={Number(prId)} compact />
+        </div>
+      ) : null}
 
       {(!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
         <div className="space-y-4">

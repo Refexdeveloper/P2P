@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { prApi, type PrAttachmentRecord } from '../../services/api';
 
 type Props = {
@@ -24,11 +24,37 @@ export default function PrDocumentsPanel({
   className = '',
   emptyLabel = 'No FSD / PR documents uploaded for this purchase request.',
 }: Props) {
-  const files = Array.isArray(attachments)
-    ? attachments.filter((f) => Number(f?.id) > 0 && String(f?.fileName || '').trim())
-    : [];
+  const provided = Array.isArray(attachments) ? attachments : null;
+  const [loaded, setLoaded] = useState<PrAttachmentRecord[] | null>(provided);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (provided) {
+      setLoaded(provided);
+      return;
+    }
+    if (!prId) {
+      setLoaded([]);
+      return;
+    }
+    let cancelled = false;
+    prApi
+      .get(prId)
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data as { attachments?: PrAttachmentRecord[] }).attachments;
+        setLoaded(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [prId, provided]);
+
+  const files = (loaded || []).filter((f) => Number(f?.id) > 0 && String(f?.fileName || '').trim());
 
   const openFile = async (file: PrAttachmentRecord) => {
     setBusyId(file.id);
@@ -68,7 +94,9 @@ export default function PrDocumentsPanel({
         </div>
       )}
 
-      {files.length === 0 ? (
+      {loaded === null ? (
+        <p className="text-sm text-gray-500 py-2">Loading documents…</p>
+      ) : files.length === 0 ? (
         <p className="text-sm text-gray-500 py-2">{emptyLabel}</p>
       ) : (
         <div className="space-y-2">

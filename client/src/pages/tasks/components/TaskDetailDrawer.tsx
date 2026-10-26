@@ -5,6 +5,7 @@ import PrVendorQuotationsPanel from '../../../components/feature/PrVendorQuotati
 import { collapsePrAdminEditHistory } from '../../../components/feature/ApprovalHistoryPanel';
 import { formatMoney } from '../../../constants/currency';
 import { formatPersonRoleSuffix } from '../../../utils/roleDisplay';
+import { prApi } from '../../../services/api';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import '../../../styles/drawer-fx.css';
 
@@ -88,6 +89,7 @@ interface PRTask {
   deliveryPoc?: string;
   vendorQuoteRounds?: VendorQuoteVendor[];
   lineItems: LineItem[];
+  attachments?: Array<{ id: number; fileName: string; size?: number }>;
   approvalHistory: ApprovalStep[];
   slaHours: number;
   slaRemaining: number;
@@ -223,6 +225,13 @@ export default function TaskDetailDrawer({
   const approvalHistory = currentStepEntry ? [currentStepEntry, ...pastHistory] : pastHistory;
   const [hasQuotes, setHasQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>('details');
+  const [filePreview, setFilePreview] = useState<{
+    url: string;
+    fileName: string;
+    kind: 'pdf' | 'image' | 'other';
+  } | null>(null);
+  const [openingFileId, setOpeningFileId] = useState<number | null>(null);
+  const attachments = Array.isArray(task.attachments) ? task.attachments.filter((file) => file?.id && file.fileName) : [];
   const [closing, setClosing] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -287,6 +296,30 @@ export default function TaskDetailDrawer({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+
+  const openAttachment = async (file: { id: number; fileName: string }) => {
+    const prId = Number(task.prId) || 0;
+    if (!prId) return;
+    setOpeningFileId(file.id);
+    try {
+      const token = localStorage.getItem('p2p_token');
+      const res = await fetch(prApi.attachmentFileUrl(prId, file.id), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
+      const name = file.fileName.toLowerCase();
+      const kind = blob.type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(name)
+        ? 'image'
+        : blob.type.includes('pdf') || name.endsWith('.pdf')
+          ? 'pdf'
+          : 'other';
+      setFilePreview({ url: URL.createObjectURL(blob), fileName: file.fileName, kind });
+    } finally {
+      setOpeningFileId(null);
+    }
+  };
 
   return (
     <div className={`dfx-root fixed inset-0 z-40 flex justify-end${closing ? ' is-closing' : ''}`}>
@@ -502,6 +535,32 @@ export default function TaskDetailDrawer({
                         {task.specialNotes || '—'}
                       </p>
                     </div>
+
+                    {attachments.length > 0 && (
+                      <div>
+                        <p className="dfx-label mb-2 px-0.5">Attachments</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {attachments.map((file, i) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              disabled={openingFileId === file.id}
+                              onClick={() => void openAttachment(file)}
+                              className="dfx-file"
+                              style={{ '--i': 18 + i } as CSSProperties}
+                            >
+                              <span className="dfx-file-ic">
+                                {(file.fileName.split('.').pop() || 'FILE').slice(0, 4).toUpperCase()}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-800">
+                                {file.fileName}
+                              </span>
+                              <i className="ri-eye-line text-[#0f6b7a]" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {savedQuoteVendors.length > 0 && !hasQuotes && (
                       <div className="space-y-3">
@@ -744,6 +803,66 @@ export default function TaskDetailDrawer({
           </footer>
         )}
       </aside>
+      {filePreview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <span className="truncate font-semibold text-slate-800">{filePreview.fileName}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  URL.revokeObjectURL(filePreview.url);
+                  setFilePreview(null);
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+              >
+                <i className="ri-close-line text-lg" />
+              </button>
+            </div>
+            {attachments.length > 1 ? (
+              <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-2">
+                {attachments.map((file) => {
+                  const active = file.fileName === filePreview.fileName;
+                  return (
+                    <button
+                      key={file.id}
+                      type="button"
+                      onClick={() => {
+                        if (!active) void openAttachment(file);
+                      }}
+                      className={`max-w-[220px] shrink-0 truncate rounded-lg px-2.5 py-1.5 text-left text-[11px] font-semibold ${
+                        active ? 'bg-[#0f6b7a] text-white' : 'bg-[#e6f6f8] text-[#0f6b7a]'
+                      }`}
+                      title={file.fileName}
+                    >
+                      {file.fileName}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
+              {filePreview.kind === 'image' ? (
+                <img src={filePreview.url} alt="" className="mx-auto max-h-[70vh] max-w-full object-contain" />
+              ) : filePreview.kind === 'pdf' ? (
+                <iframe title={filePreview.fileName} src={filePreview.url} className="h-[70vh] w-full rounded-xl border-0 bg-white" />
+              ) : (
+                <div className="py-10 text-center">
+                  <p className="text-sm text-slate-600">Preview is not available for this file type.</p>
+                  <a
+                    href={filePreview.url}
+                    download={filePreview.fileName}
+                    className="mt-3 inline-flex items-center gap-1 rounded-lg bg-[#e6f6f8] px-3 py-2 text-sm font-semibold text-[#0f6b7a]"
+                  >
+                    <i className="ri-download-2-line" />
+                    Download {filePreview.fileName}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

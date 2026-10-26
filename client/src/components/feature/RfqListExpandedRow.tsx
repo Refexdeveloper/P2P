@@ -342,6 +342,12 @@ export default function RfqListExpandedRow({
 
             {!loading && !error && pr && tab === 'details' && (
               <div className="space-y-4">
+                <div className={softDetailCard}>
+                  <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
+                  <div className="relative z-[1]">
+                    <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} compact />
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     ['PR Number', pr.prNumber],
@@ -438,12 +444,6 @@ export default function RfqListExpandedRow({
                   <ManagerL2CommentsHighlight history={pr.approvalHistory} />
                 </div>
 
-                <div className={softDetailCard}>
-                  <div className="pointer-events-none absolute inset-0" style={softDetailWash} />
-                  <div className="relative z-[1]">
-                    <PrDocumentsPanel prId={pr.id} attachments={pr.attachments} compact />
-                  </div>
-                </div>
               </div>
             )}
 

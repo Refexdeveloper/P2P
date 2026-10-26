@@ -325,6 +325,7 @@ export default function TasksPage() {
         quotationFileName?: string;
       }>;
     }>;
+    attachments?: Array<{ id: number; fileName: string; size?: number }>;
   purchaseType?: string;
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
@@ -474,6 +475,7 @@ export default function TasksPage() {
       placeOfDelivery: '',
       deliveryPoc: '',
       vendorQuoteRounds: [],
+      attachments: [],
       lineItems: [],
       approvalHistory: [],
       slaHours: 48,
@@ -573,6 +575,11 @@ export default function TasksPage() {
         placeOfDelivery: String(pr.placeOfDelivery || ''),
         deliveryPoc: String(pr.deliveryPoc || ''),
         vendorQuoteRounds: Array.isArray(pr.vendorQuoteRounds) ? pr.vendorQuoteRounds : [],
+        attachments: Array.isArray(pr.attachments)
+          ? (pr.attachments as Array<{ id: number; fileName: string; size?: number }>).filter(
+              (file) => Number(file?.id) > 0 && String(file?.fileName || '').trim()
+            )
+          : [],
         lineItems,
         approvalHistory,
         slaHours: 48,
