@@ -1461,6 +1461,9 @@ export function buildP2pPendingTasksEmail(report) {
   const grnCompleted = stageCount(stages, ['invoice_entry', 'accounts', 'paid']);
   const invoicePending = stageCount(stages, ['invoice_entry']);
   const invoiceCompleted = stageCount(stages, ['accounts', 'paid']);
+  const vendorAcceptancePending = screen.pending || 0;
+  const grnPendingShown = vendorAcceptancePending + grnPending;
+  const invoicePendingShown = vendorAcceptancePending + grnPending + invoicePending;
   const subject = `P2P Pending Tasks — Approved POs and current stage — ${report.generatedAt}`;
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -1562,6 +1565,25 @@ ${remaining
 </table></td></tr>`
     : ''
 }
+<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Open pending</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Open pending</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
+</tr>
+${balanceRowsHtml([
+  {
+    label: `GRN pending — vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending}`,
+    count: grnPendingShown,
+  },
+  {
+    label: `Invoice upload pending — vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} + invoice upload pending ${invoicePending}`,
+    count: invoicePendingShown,
+    total: true,
+  },
+])}
+</table></td></tr>
 ${namedBalanceHtml('Vendor PO acceptance', vendorRows)}
 ${
   outsideOrders.length
@@ -1646,6 +1668,10 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     `Completed: ${invoiceCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - invoicePending - invoiceCompleted)}`,
     `Total: ${stageTotal}`,
+    '',
+    'Open pending',
+    `GRN pending: vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} = ${grnPendingShown}`,
+    `Invoice upload pending: vendor PO acceptance pending ${vendorAcceptancePending} + GRN pending ${grnPending} + invoice upload pending ${invoicePending} = ${invoicePendingShown}`,
     '',
     'Requester-wise count',
     ...(report.requesterPending || []).map(
