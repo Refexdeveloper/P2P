@@ -1452,13 +1452,23 @@ ${balanceRowsHtml([
 </table></td></tr>`;
 }
 
-function stepBalanceHtml(title, pending, completed, total) {
+function stepBalanceHtml(title, pending, completed, total, extraRows = []) {
   const left = Math.max(0, total - pending - completed);
-  return namedBalanceHtml(title, [
-    { label: 'Pending', count: pending },
-    { label: 'Completed', count: completed },
-    { label: 'Remaining', count: left },
-  ]);
+  return `<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">${escapeHtml(title)}</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">${escapeHtml(title)}</td>
+<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
+</tr>
+${balanceRowsHtml([
+  { label: 'Pending', count: pending },
+  ...extraRows,
+  { label: 'Completed', count: completed },
+  { label: 'Remaining', count: left },
+  { label: 'Total', count: total, total: true },
+])}
+</table></td></tr>`;
 }
 
 export function buildP2pPendingTasksEmail(report) {
@@ -1584,18 +1594,6 @@ ${remaining
 </table></td></tr>`
     : ''
 }
-<tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Open pending</td></tr>
-<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
-<tr style="background-color:#14503a !important;" bgcolor="#14503a">
-<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Open pending</td>
-<td style="padding:12px 8px; color:#ffffff !important; font-weight:bold;" align="center">Count</td>
-</tr>
-${balanceRowsHtml([
-  { label: 'Vendor PO acceptance pending', count: vendorAcceptancePendingShown },
-  { label: 'Invoice upload pending', count: invoiceUploadPendingShown, total: true },
-])}
-</table></td></tr>
 ${namedBalanceHtml('Vendor acceptance', vendorRows)}
 ${
   outsideOrders.length
@@ -1620,8 +1618,12 @@ ${outsideOrders
 </table></td></tr>`
     : ''
 }
-${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal)}
-${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal)}
+${stepBalanceHtml('GRN', grnOnlyPending, grnCompleted, stageTotal, [
+  { label: 'Vendor PO acceptance pending + GRN pending', count: vendorAcceptancePendingShown },
+])}
+${stepBalanceHtml('Invoice entry', invoicePending, invoiceCompleted, stageTotal, [
+  { label: 'Vendor PO acceptance pending + GRN pending + Invoice upload pending', count: invoiceUploadPendingShown },
+])}
 
 <tr><td style="padding:22px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Requester-wise count</td></tr>
 <tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
@@ -1661,10 +1663,6 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     ...(signed.overlap ? [`Counted under more than one signer: ${signed.overlap}`] : []),
     `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
     '',
-    'Open pending',
-    `Vendor PO acceptance pending: ${vendorAcceptancePendingShown}`,
-    `Invoice upload pending: ${invoiceUploadPendingShown}`,
-    '',
     'Vendor PO acceptance',
     `Pending — on the Vendor PO Acceptance screen: ${screen.pending || 0}`,
     `Accepted — on the Vendor PO Acceptance screen: ${screen.accepted || 0}`,
@@ -1675,12 +1673,14 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     '',
     'GRN',
     `Pending: ${grnOnlyPending}`,
+    `Vendor PO acceptance pending + GRN pending: ${vendorAcceptancePendingShown}`,
     `Completed: ${grnCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - grnOnlyPending - grnCompleted)}`,
     `Total: ${stageTotal}`,
     '',
     'Invoice entry',
     `Pending: ${invoicePending}`,
+    `Vendor PO acceptance pending + GRN pending + Invoice upload pending: ${invoiceUploadPendingShown}`,
     `Completed: ${invoiceCompleted}`,
     `Remaining: ${Math.max(0, stageTotal - invoicePending - invoiceCompleted)}`,
     `Total: ${stageTotal}`,
