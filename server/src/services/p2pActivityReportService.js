@@ -1526,7 +1526,7 @@ export function buildP2pPendingTasksEmail(report) {
 <div style="font-size:11px; color:#3f8f63 !important; margin-top:4px;">${escapeHtml(report.scopeNote || 'Signed orders only. Each order counted once.')}</div>
 </td>
 </tr></table></td></tr>
-
+${scopeTitle ? '' : `
 <tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Signed by</td></tr>
 <tr><td style="padding:10px 32px 4px 32px;" bgcolor="#ffffff">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -1597,6 +1597,7 @@ ${remaining
 </table></td></tr>`
     : ''
 }
+`}
 ${namedBalanceHtml('Vendor acceptance', vendorRows)}
 ${
   outsideOrders.length
@@ -1655,12 +1656,16 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
     report.generatedAt,
     '',
     `Approved POs: ${stageTotal}`,
-    `${report.rajeevName || 'Rajeev'} signed: ${signed.rajeev || 0}`,
-    `${report.mugeshName || 'Mugesh'} signed: ${signed.mugesh || 0}`,
-    `${report.meetName || 'Meet'} signed: ${signed.meet || 0}`,
-    ...(remaining.length ? [`Remaining: ${remaining.length}`, ...remaining.map((row) => `${row.poNumber} | ${row.entity || '—'} | ${row.signer}`)] : []),
-    ...(signed.overlap ? [`Counted under more than one signer: ${signed.overlap}`] : []),
-    `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
+    ...(scopeTitle
+      ? []
+      : [
+          `${report.rajeevName || 'Rajeev'} signed: ${signed.rajeev || 0}`,
+          `${report.mugeshName || 'Mugesh'} signed: ${signed.mugesh || 0}`,
+          `${report.meetName || 'Meet'} signed: ${signed.meet || 0}`,
+          ...(remaining.length ? [`Remaining: ${remaining.length}`, ...remaining.map((row) => `${row.poNumber} | ${row.entity || '—'} | ${row.signer}`)] : []),
+          ...(signed.overlap ? [`Counted under more than one signer: ${signed.overlap}`] : []),
+          `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
+        ]),
     '',
     'Vendor PO acceptance',
     `Pending — on the Vendor PO Acceptance screen: ${screen.pending || 0}`,
