@@ -1742,6 +1742,8 @@ export async function listRajeevSignedPurchaseOrders() {
   const rajeevId = Number(rajeevUser?.id) || 0;
   const [rows] = await pool.query(
     `SELECT po.po_number,
+            COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), '') AS requester_name,
+            COALESCE(NULLIF(TRIM(req.email), ''), NULLIF(TRIM(creator.email), ''), '') AS requester_email,
             COALESCE(NULLIF(TRIM(dept.name), ''), NULLIF(TRIM(creator_dept.name), ''), '') AS department,
             po.grand_total,
             COALESCE(NULLIF(TRIM(creator.name), ''), '') AS created_by_name,
@@ -1750,6 +1752,7 @@ export async function listRajeevSignedPurchaseOrders() {
      FROM purchase_orders po
      LEFT JOIN users signer ON signer.id = po.signer_id
      LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN users req ON req.id = pr.requester_id
      LEFT JOIN departments dept ON dept.id = pr.department_id
      LEFT JOIN users creator ON creator.id = po.created_by
      LEFT JOIN departments creator_dept ON creator_dept.id = creator.department_id
@@ -1763,6 +1766,8 @@ export async function listRajeevSignedPurchaseOrders() {
   );
   return rows.map((row) => ({
     poNumber: row.po_number || '',
+    requesterName: row.requester_name || '',
+    requesterEmail: row.requester_email || '',
     department: row.department || '',
     amount: Number(row.grand_total) || 0,
     createdBy: row.created_by_name || '',

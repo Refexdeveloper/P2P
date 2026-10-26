@@ -222,9 +222,11 @@ export default function AdminEmailLogsPage() {
       const res = await adminApi.listRajeevSignedPurchaseOrders();
       const rows = res.data || [];
       const sheet = XLSX.utils.aoa_to_sheet([
-        ['PO number', 'Requester department', 'PO amount', 'PO created by', 'PO date', 'PO entity'],
+        ['PO number', 'Requester name', 'Requester email', 'Requester department', 'PO amount', 'PO created by', 'PO date', 'PO entity'],
         ...rows.map((row) => [
           row.poNumber,
+          row.requesterName,
+          row.requesterEmail,
           row.department,
           row.amount,
           row.createdBy,
@@ -232,7 +234,7 @@ export default function AdminEmailLogsPage() {
           row.entity,
         ]),
       ]);
-      sheet['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 28 }];
+      sheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 32 }, { wch: 28 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 28 }];
       const book = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(book, sheet, 'Rajeev signed POs');
       const stamp = new Date().toISOString().slice(0, 10);
@@ -389,7 +391,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Rajeev sir pending tasks</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in. Download Excel lists those same POs: PO number, requester department, PO amount, created by, PO date, and entity.
+              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in. Download Excel lists those same POs: PO number, requester name, requester email, requester department, PO amount, created by, PO date, and entity.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
