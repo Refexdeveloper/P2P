@@ -2241,6 +2241,17 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ poNumbers }),
     }),
+  listRajeevSignedPurchaseOrders: () =>
+    request<{
+      data: {
+        poNumber: string;
+        department: string;
+        amount: number;
+        createdBy: string;
+        poDate: string;
+        entity: string;
+      }[];
+    }>('/api/admin/p2p-rajeev-pending-tasks/export'),
   sendRajeevSignedPendingTasksReport: (to?: string) =>
     request<{
       data: {

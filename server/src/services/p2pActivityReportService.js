@@ -1733,6 +1733,44 @@ function rajeevSignedSql() {
   )`;
 }
 
+/** Same approved POs as the Rajeev pending-tasks mail, one row per order. */
+export async function listRajeevSignedPurchaseOrders() {
+  const [[rajeevUser]] = await pool.query(
+    `SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1`,
+    [DEFAULT_SCM_MANAGER_EMAIL]
+  );
+  const rajeevId = Number(rajeevUser?.id) || 0;
+  const [rows] = await pool.query(
+    `SELECT po.po_number,
+            COALESCE(NULLIF(TRIM(dept.name), ''), NULLIF(TRIM(creator_dept.name), ''), '') AS department,
+            po.grand_total,
+            COALESCE(NULLIF(TRIM(creator.name), ''), '') AS created_by_name,
+            DATE_FORMAT(COALESCE(po.po_date, po.created_at), '%Y-%m-%d') AS po_date,
+            COALESCE(NULLIF(TRIM(em.name), ''), NULLIF(TRIM(po.entity), ''), '') AS entity_name
+     FROM purchase_orders po
+     LEFT JOIN users signer ON signer.id = po.signer_id
+     LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+     LEFT JOIN departments dept ON dept.id = pr.department_id
+     LEFT JOIN users creator ON creator.id = po.created_by
+     LEFT JOIN departments creator_dept ON creator_dept.id = creator.department_id
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+       AND ${rajeevSignedSql()}
+     ORDER BY COALESCE(po.po_date, DATE(po.created_at)) DESC, po.po_number`,
+    [rajeevId]
+  );
+  return rows.map((row) => ({
+    poNumber: row.po_number || '',
+    department: row.department || '',
+    amount: Number(row.grand_total) || 0,
+    createdBy: row.created_by_name || '',
+    poDate: row.po_date || '',
+    entity: row.entity_name || '',
+  }));
+}
+
 /** Pending-tasks mail limited to POs Rajeev has signed. */
 export async function loadRajeevSignedPendingReport() {
   const now = new Date();

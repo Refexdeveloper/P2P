@@ -21,7 +21,7 @@ import {
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
 import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval, adminMovePurchaseOrdersToVendorAcceptance } from '../services/poService.js';
-import { P2P_REPORT_TO, sendP2pActivityReport, sendP2pPendingTasksReport, sendRajeevSignedPendingTasksReport } from '../services/p2pActivityReportService.js';
+import { P2P_REPORT_TO, listRajeevSignedPurchaseOrders, sendP2pActivityReport, sendP2pPendingTasksReport, sendRajeevSignedPendingTasksReport } from '../services/p2pActivityReportService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -161,6 +161,16 @@ router.post('/p2p-pending-tasks/send', async (req, res) => {
       },
       message: `Pending tasks mail sent to ${data.to}`,
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Super Admin: Excel rows for the POs counted in the Rajeev pending-tasks mail. */
+router.get('/p2p-rajeev-pending-tasks/export', async (_req, res) => {
+  try {
+    const rows = await listRajeevSignedPurchaseOrders();
+    res.json({ data: rows });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

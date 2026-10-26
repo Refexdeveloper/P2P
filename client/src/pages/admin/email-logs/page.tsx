@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
+import * as XLSX from 'xlsx';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import { adminApi, EmailLogRecord, UserActivityLogRecord, WhatsAppLogRecord } from '../../../services/api';
 
@@ -69,6 +70,7 @@ export default function AdminEmailLogsPage() {
   const [sendingReport, setSendingReport] = useState(false);
   const [sendingPending, setSendingPending] = useState(false);
   const [sendingRajeev, setSendingRajeev] = useState(false);
+  const [downloadingRajeev, setDownloadingRajeev] = useState(false);
   const [movePoInput, setMovePoInput] = useState(
     [
       'PO-CBGSPVM-2026-27-0001',
@@ -211,6 +213,35 @@ export default function AdminEmailLogsPage() {
       showToast(err instanceof Error ? err.message : 'Pending tasks mail failed', 'error');
     } finally {
       setSendingPending(false);
+    }
+  };
+
+  const handleDownloadRajeevExcel = async () => {
+    setDownloadingRajeev(true);
+    try {
+      const res = await adminApi.listRajeevSignedPurchaseOrders();
+      const rows = res.data || [];
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['PO number', 'Requester department', 'PO amount', 'PO created by', 'PO date', 'PO entity'],
+        ...rows.map((row) => [
+          row.poNumber,
+          row.department,
+          row.amount,
+          row.createdBy,
+          row.poDate,
+          row.entity,
+        ]),
+      ]);
+      sheet['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 28 }];
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, sheet, 'Rajeev signed POs');
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(book, `rajeev-signed-pos-${stamp}.xlsx`);
+      showToast(`Downloaded ${rows.length} Rajeev signed POs`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Excel download failed', 'error');
+    } finally {
+      setDownloadingRajeev(false);
     }
   };
 
@@ -358,16 +389,26 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Rajeev sir pending tasks</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in.
+              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in. Download Excel lists those same POs: PO number, requester department, PO amount, created by, PO date, and entity.
             </p>
-            <button
-              type="button"
-              onClick={() => void handleSendRajeevPending()}
-              disabled={sendingRajeev}
-              className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
-            >
-              {sendingRajeev ? 'Sending…' : 'Send Rajeev signed POs to sathishkumar.r@refex.co.in'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSendRajeevPending()}
+                disabled={sendingRajeev}
+                className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {sendingRajeev ? 'Sending…' : 'Send Rajeev signed POs to sathishkumar.r@refex.co.in'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDownloadRajeevExcel()}
+                disabled={downloadingRajeev}
+                className="rounded-lg border border-[#14503a] bg-white text-[#14503a] px-4 py-2 text-sm disabled:opacity-60"
+              >
+                {downloadingRajeev ? 'Downloading…' : 'Download Excel'}
+              </button>
+            </div>
           </div>
         ) : null}
 
