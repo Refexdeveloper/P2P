@@ -973,6 +973,21 @@ function approvedStageRowsHtml(stages) {
     .join('');
 }
 
+function entityPoCountRows(entities) {
+  if (!entities.length) {
+    return `<tr><td colspan="2" style="padding:14px; color:#6b6b6b; background:#ffffff;">No purchase orders.</td></tr>`;
+  }
+  return entities
+    .map((row, index) => {
+      const bg = index % 2 === 0 ? '#ffffff' : '#f7f8f6';
+      return `<tr style="background:${bg};" bgcolor="${bg}">
+${entityNameCell(row)}
+${countCell(row.count, '#14503a')}
+</tr>`;
+    })
+    .join('');
+}
+
 function pendingOwnerRows(owners) {
   if (!owners.length) {
     return `<tr><td colspan="6" style="padding:14px; color:#6b6b6b; background:#ffffff;">No pending vendor acceptance, GRN, or invoice entry.</td></tr>`;
@@ -1519,7 +1534,7 @@ export function buildP2pPendingTasksEmail(report) {
 <table role="presentation" width="740" cellpadding="0" cellspacing="0" style="background-color:#ffffff !important; border-radius:10px; overflow:hidden;" bgcolor="#ffffff">
 <tr><td style="background-color:#ffffff !important; padding:26px 32px;" bgcolor="#ffffff">
 <div style="font-size:18px; font-weight:bold; color:#1a1a1a !important;">P2P Pending Tasks</div>
-<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">${escapeHtml(scopeTitle || 'Approved POs')} &middot; Current stage &middot; Requester-wise count</div>
+<div style="font-size:12px; color:#6b6b6b !important; margin-top:4px;">${escapeHtml(scopeTitle || 'Approved POs')} &middot; ${(report.entityCounts || []).length ? 'Entity-wise count &middot; ' : ''}Current stage &middot; Requester-wise count</div>
 <div style="font-size:12px; color:#6b6b6b !important; margin-top:2px;">Generated ${escapeHtml(report.generatedAt)}</div>
 </td></tr>
 
@@ -1606,6 +1621,22 @@ ${remaining
     : ''
 }
 `}
+${
+  (report.entityCounts || []).length
+    ? `<tr><td style="padding:18px 32px 6px 32px; font-size:13.5px; font-weight:bold; color:#1a1a1a !important;" bgcolor="#ffffff">Entity-wise PO count</td></tr>
+<tr><td style="padding:4px 32px 0 32px; font-size:12px; color:#5b5b5b !important;" bgcolor="#ffffff">
+Approved POs in this mail, counted once per entity. Total across entities is ${stageTotal}.
+</td></tr>
+<tr><td style="padding:8px 32px 8px 32px;" bgcolor="#ffffff">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:12.5px;">
+<tr style="background-color:#14503a !important;" bgcolor="#14503a">
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;">Entity</td>
+<td style="padding:12px 12px; color:#ffffff !important; font-weight:bold;" align="center">PO count</td>
+</tr>
+${entityPoCountRows(report.entityCounts || [])}
+</table></td></tr>`
+    : ''
+}
 ${namedBalanceHtml('Vendor acceptance', vendorRows)}
 ${
   outsideOrders.length
@@ -1675,6 +1706,15 @@ P2P Pending Tasks &middot; Automated &middot; Do not reply to this email
           `Rajeev + Mugesh + Meet${remaining.length ? ' + remaining' : ''}${signed.overlap ? ' − overlap' : ''} = ${signerSum}`,
         ]),
     '',
+    ...((report.entityCounts || []).length
+      ? [
+          'Entity-wise PO count',
+          ...(report.entityCounts || []).map(
+            (row) => `${row.name}${row.code ? ` (${row.code})` : ''}: ${row.count}`
+          ),
+          '',
+        ]
+      : []),
     'Vendor PO acceptance',
     `Pending — on the Vendor PO Acceptance screen: ${screen.pending || 0}`,
     `Accepted — on the Vendor PO Acceptance screen: ${screen.accepted || 0}`,
@@ -1872,6 +1912,30 @@ export async function loadRajeevSignedPendingReport() {
     .map(([key, label]) => ({ key, label, count: poStageByKey.get(key) || 0 }))
     .filter((row) => row.count > 0);
 
+  const [entityCountRows] = await pool.query(
+    `SELECT
+       COALESCE(em.id, 0) AS entity_id,
+       COALESCE(NULLIF(TRIM(em.name), ''), NULLIF(TRIM(po.entity), ''), 'Unassigned') AS entity_name,
+       COALESCE(em.code, '') AS entity_code,
+       COUNT(*) AS pos
+     FROM purchase_orders po
+     ${signerJoin}
+     LEFT JOIN entity_masters em ON em.id = po.entity_id
+     WHERE COALESCE(po.purchase_type, 'purchase_order') <> 'sass'
+       AND ${NOT_DRAFT_PO}
+       AND LOWER(po.status) IN (${APPROVED_PO_STATUSES})
+       AND ${signedSql}
+     GROUP BY entity_id, entity_name, entity_code
+     ORDER BY pos DESC, entity_name`,
+    [rajeevId]
+  );
+  const entityCounts = entityCountRows.map((row) => ({
+    id: Number(row.entity_id) || 0,
+    name: row.entity_name || 'Unassigned',
+    code: row.entity_code || '',
+    count: num(row.pos),
+  }));
+
   const [signerRows] = await pool.query(
     `SELECT po.po_number,
             COALESCE(NULLIF(TRIM(em.name), ''), NULLIF(TRIM(po.entity), ''), '') AS entity_name,
@@ -2042,6 +2106,7 @@ export async function loadRajeevSignedPendingReport() {
     mugeshName: mugeshUser?.name || 'Mugesh M',
     poStages,
     signedBy,
+    entityCounts,
     requesterPending,
     vendorScreen: {
       pending: num(vendorScreen?.pending_count),
