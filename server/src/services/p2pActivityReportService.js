@@ -1808,6 +1808,15 @@ export async function listRajeevSignedPurchaseOrders() {
             COALESCE(NULLIF(TRIM(po.vendor_name), ''), '') AS vendor_name,
             COALESCE(NULLIF(TRIM(req.name), ''), NULLIF(TRIM(creator.name), ''), '') AS requester_name,
             COALESCE(NULLIF(TRIM(dept.name), ''), NULLIF(TRIM(creator_dept.name), ''), '') AS department,
+            (
+              SELECT GROUP_CONCAT(
+                COALESCE(NULLIF(TRIM(pli.item_name), ''), NULLIF(TRIM(pli.description), ''), 'Item')
+                ORDER BY pli.id
+                SEPARATOR '; '
+              )
+              FROM po_line_items pli
+              WHERE pli.po_id = po.id
+            ) AS item_names,
             po.subtotal,
             po.tax_amount,
             po.grand_total,
@@ -1833,6 +1842,7 @@ export async function listRajeevSignedPurchaseOrders() {
     poNumber: row.po_number || '',
     status: row.po_status || '',
     vendorName: row.vendor_name || '',
+    itemNames: row.item_names || '',
     requesterName: row.requester_name || '',
     department: row.department || '',
     basicValue: Number(row.subtotal) || 0,
@@ -2135,6 +2145,7 @@ export async function buildRajeevSignedPosExcelAttachment(rows) {
       'PO number',
       'PO status',
       'Vendor name',
+      'Item name',
       'Requester name',
       'Requester department',
       'Basic value',
@@ -2148,6 +2159,7 @@ export async function buildRajeevSignedPosExcelAttachment(rows) {
       row.poNumber,
       row.status,
       row.vendorName,
+      row.itemNames,
       row.requesterName,
       row.department,
       row.basicValue,
@@ -2162,6 +2174,7 @@ export async function buildRajeevSignedPosExcelAttachment(rows) {
     { wch: 28 },
     { wch: 32 },
     { wch: 28 },
+    { wch: 40 },
     { wch: 24 },
     { wch: 28 },
     { wch: 16 },

@@ -754,13 +754,15 @@ export default function TrackPoExpandedRow({
   );
   const gstin = pickText(poTerms.buyerGstNo, pr?.billingGstNo).toUpperCase();
 
+  const poStatusRaw = po?.statusRaw || row.statusRaw || '';
   const showFulfillmentTabs =
-    Boolean(row.poId) && isPoPastApproval(po?.statusRaw, row.statusLabel);
+    Boolean(row.poId) && isPoPastApproval(poStatusRaw, row.statusLabel);
   const showAcceptanceTab =
-    showFulfillmentTabs && shouldShowVendorAcceptanceTab(po, po?.statusRaw);
+    showFulfillmentTabs && shouldShowVendorAcceptanceTab(po, poStatusRaw);
   const acceptanceFinished = isVendorAcceptanceFinished(po);
-  const showGrnTab = showFulfillmentTabs && Boolean(grn);
-  const showInvoiceTab = showFulfillmentTabs && Boolean(invoice);
+  // Keep GRN tab after GRN → invoice entry / accounts / paid (as long as a GRN record loaded).
+  const showGrnTab = Boolean(row.poId) && Boolean(grn);
+  const showInvoiceTab = Boolean(row.poId) && Boolean(invoice);
 
   const currentPoNo = String(po?.poNumber || row.poNumber || '').trim();
   const strippedBase = currentPoNo.replace(/\/R\d+$/i, '');

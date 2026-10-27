@@ -1450,33 +1450,32 @@ export async function getPoFulfillmentSummary(poId) {
     );
     const attMap = await loadAttachmentsByLineIds(lines.map((li) => li.id));
     const statusRaw = String(row.status || '');
-    const finished = ['submitted', 'fully_received', 'partially_received'].includes(statusRaw);
-    if (finished) {
-      grn = {
-        id: row.id,
-        grnNumber: row.grn_number,
-        poId: row.po_id,
-        poNumber: row.po_number,
-        vendor: row.vendor_name || '',
-        status: GRN_STATUS_UI[statusRaw] || statusRaw,
-        statusRaw,
-        receivedDate: row.receipt_date ? formatDate(row.receipt_date) : null,
-        receivedBy: row.received_by || '',
-        inspectedBy: row.inspected_by || '',
-        remarks: row.remarks || '',
-        receivedValue: Number(row.received_value) || 0,
-        lineItems: lines.map((li) => ({
-          id: String(li.id),
-          description: li.description,
-          orderedQty: Number(li.ordered_qty) || 0,
-          receivedQty: Number(li.received_qty) || 0,
-          unitPrice: Number(li.unit_price) || 0,
-          total: Number(li.line_total) || 0,
-          condition: li.condition_label || 'Good',
-          attachments: attMap[String(li.id)] || [],
-        })),
-      };
-    }
+    // Always expose a GRN header once it exists so PO/WO expand keeps the GRN tab
+    // after the PO moves from GRN completed into invoice entry / accounts / paid.
+    grn = {
+      id: row.id,
+      grnNumber: row.grn_number,
+      poId: row.po_id,
+      poNumber: row.po_number,
+      vendor: row.vendor_name || '',
+      status: GRN_STATUS_UI[statusRaw] || statusRaw,
+      statusRaw,
+      receivedDate: row.receipt_date ? formatDate(row.receipt_date) : null,
+      receivedBy: row.received_by || '',
+      inspectedBy: row.inspected_by || '',
+      remarks: row.remarks || '',
+      receivedValue: Number(row.received_value) || 0,
+      lineItems: lines.map((li) => ({
+        id: String(li.id),
+        description: li.description,
+        orderedQty: Number(li.ordered_qty) || 0,
+        receivedQty: Number(li.received_qty) || 0,
+        unitPrice: Number(li.unit_price) || 0,
+        total: Number(li.line_total) || 0,
+        condition: li.condition_label || 'Good',
+        attachments: attMap[String(li.id)] || [],
+      })),
+    };
   }
 
   const [invRows] = await pool.query(
@@ -1495,9 +1494,11 @@ export async function getPoFulfillmentSummary(poId) {
     const row = invRows[0];
     const statusRaw = String(row.status || '');
     const hasFile = Boolean(row.invoice_file_path);
+    // Include awaiting_upload so the Invoice tab appears as soon as GRN creates the base invoice.
     const finished =
       hasFile ||
       [
+        'awaiting_upload',
         'pending_verification',
         'pending_manager_approval',
         'approved_for_payment',

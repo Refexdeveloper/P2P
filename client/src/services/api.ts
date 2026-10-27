@@ -2247,6 +2247,7 @@ export const adminApi = {
         poNumber: string;
         status: string;
         vendorName: string;
+        itemNames: string;
         requesterName: string;
         department: string;
         basicValue: number;
