@@ -196,8 +196,19 @@ router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
   try {
     const file = await getPrAttachmentFile(Number(req.params.id), Number(req.params.attachmentId));
     const safeName = String(file.fileName || 'attachment').replace(/"/g, '');
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    const lower = safeName.toLowerCase();
+    let mimeType = String(file.mimeType || '').trim();
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      if (lower.endsWith('.pdf')) mimeType = 'application/pdf';
+      else if (/\.(png)$/i.test(lower)) mimeType = 'image/png';
+      else if (/\.(jpe?g)$/i.test(lower)) mimeType = 'image/jpeg';
+      else if (/\.(gif)$/i.test(lower)) mimeType = 'image/gif';
+      else if (/\.(webp)$/i.test(lower)) mimeType = 'image/webp';
+      else mimeType = 'application/octet-stream';
+    }
+    // inline so My Tasks / drawer PDF preview can render in an iframe
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
     res.send(file.buffer);
   } catch (err) {
     res.status(404).json({ message: err.message });

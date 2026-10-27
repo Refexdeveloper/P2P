@@ -231,7 +231,10 @@ export default function TaskDetailDrawer({
     kind: 'pdf' | 'image' | 'other';
   } | null>(null);
   const [openingFileId, setOpeningFileId] = useState<number | null>(null);
-  const attachments = Array.isArray(task.attachments) ? task.attachments.filter((file) => file?.id && file.fileName) : [];
+  const [previewError, setPreviewError] = useState('');
+  const [attachments, setAttachments] = useState(
+    () => (Array.isArray(task.attachments) ? task.attachments.filter((file) => file?.id && file.fileName) : [])
+  );
   const [closing, setClosing] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
@@ -245,7 +248,39 @@ export default function TaskDetailDrawer({
   useEffect(() => {
     setActiveTab('details');
     setHasQuotes(false);
-  }, [task.id]);
+    setPreviewError('');
+    setFilePreview((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return null;
+    });
+    setAttachments(
+      Array.isArray(task.attachments) ? task.attachments.filter((file) => file?.id && file.fileName) : []
+    );
+  }, [task.id, task.attachments]);
+
+  // If the task payload had no FSD list yet, load it from the PR.
+  useEffect(() => {
+    const prId = Number(task.prId) || 0;
+    if (!prId || attachments.length > 0) return;
+    let cancelled = false;
+    void prApi
+      .get(prId)
+      .then((res) => {
+        if (cancelled) return;
+        const list = (res.data as { attachments?: Array<{ id: number; fileName: string; size?: number }> })
+          ?.attachments;
+        if (!Array.isArray(list)) return;
+        setAttachments(
+          list.filter((file) => Number(file?.id) > 0 && String(file?.fileName || '').trim())
+        );
+      })
+      .catch(() => {
+        /* keep empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [task.prId, task.id, attachments.length]);
 
   const isSass =
     Boolean(task.isSass) ||
@@ -301,21 +336,48 @@ export default function TaskDetailDrawer({
     const prId = Number(task.prId) || 0;
     if (!prId) return;
     setOpeningFileId(file.id);
+    setPreviewError('');
     try {
       const token = localStorage.getItem('p2p_token');
       const res = await fetch(prApi.attachmentFileUrl(prId, file.id), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-      if (!res.ok) return;
-      const blob = await res.blob();
+      if (!res.ok) {
+        const text = await res.text();
+        let message = `Could not open ${file.fileName}`;
+        try {
+          message = (JSON.parse(text) as { message?: string }).message || message;
+        } catch {
+          /* keep fallback */
+        }
+        throw new Error(message);
+      }
+      const raw = await res.blob();
       if (filePreview?.url) URL.revokeObjectURL(filePreview.url);
       const name = file.fileName.toLowerCase();
-      const kind = blob.type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(name)
+      const kind = raw.type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(name)
         ? 'image'
-        : blob.type.includes('pdf') || name.endsWith('.pdf')
+        : raw.type.includes('pdf') || name.endsWith('.pdf')
           ? 'pdf'
           : 'other';
-      setFilePreview({ url: URL.createObjectURL(blob), fileName: file.fileName, kind });
+      // Chrome blanks iframe previews when the blob mime is octet-stream.
+      const typed =
+        kind === 'pdf' && !raw.type.includes('pdf')
+          ? new Blob([raw], { type: 'application/pdf' })
+          : kind === 'image' && !raw.type.startsWith('image/')
+            ? new Blob([raw], {
+                type: name.endsWith('.png')
+                  ? 'image/png'
+                  : name.endsWith('.webp')
+                    ? 'image/webp'
+                    : name.endsWith('.gif')
+                      ? 'image/gif'
+                      : 'image/jpeg',
+              })
+            : raw;
+      setFilePreview({ url: URL.createObjectURL(typed), fileName: file.fileName, kind });
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : `Could not open ${file.fileName}`);
     } finally {
       setOpeningFileId(null);
     }
@@ -536,9 +598,14 @@ export default function TaskDetailDrawer({
                       </p>
                     </div>
 
-                    {attachments.length > 0 && (
+                    {(attachments.length > 0 || previewError) && (
                       <div>
-                        <p className="dfx-label mb-2 px-0.5">Attachments</p>
+                        <p className="dfx-label mb-2 px-0.5">FSD / PR documents</p>
+                        {previewError ? (
+                          <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                            {previewError}
+                          </div>
+                        ) : null}
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           {attachments.map((file, i) => (
                             <button
@@ -553,7 +620,7 @@ export default function TaskDetailDrawer({
                                 {(file.fileName.split('.').pop() || 'FILE').slice(0, 4).toUpperCase()}
                               </span>
                               <span className="min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-800">
-                                {file.fileName}
+                                {openingFileId === file.id ? 'Opening…' : file.fileName}
                               </span>
                               <i className="ri-eye-line text-[#0f6b7a]" />
                             </button>
@@ -808,16 +875,26 @@ export default function TaskDetailDrawer({
           <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
               <span className="truncate font-semibold text-slate-800">{filePreview.fileName}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  URL.revokeObjectURL(filePreview.url);
-                  setFilePreview(null);
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
-              >
-                <i className="ri-close-line text-lg" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <a
+                  href={filePreview.url}
+                  download={filePreview.fileName}
+                  className="flex h-9 items-center gap-1 rounded-xl px-2.5 text-sm font-semibold text-[#0f6b7a] hover:bg-[#e6f6f8]"
+                >
+                  <i className="ri-download-2-line" />
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(filePreview.url);
+                    setFilePreview(null);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                >
+                  <i className="ri-close-line text-lg" />
+                </button>
+              </div>
             </div>
             {attachments.length > 1 ? (
               <div className="flex gap-2 overflow-x-auto border-b border-slate-100 px-4 py-2">
