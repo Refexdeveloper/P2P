@@ -30,6 +30,7 @@ import {
 } from '../services/prService.js';
 import { getSendBackTargetsForPr } from '../services/sendBackService.js';
 import { addPrAttachment, addPrAttachmentBuffer, getPrAttachmentFile, deletePrAttachment } from '../services/prAttachmentService.js';
+import { contentDispositionHeader, contentTypeForFileName } from '../utils/sendStoredFile.js';
 import express from 'express';
 import pool from '../config/db.js';
 
@@ -195,20 +196,14 @@ router.get(
 router.get('/:id/attachments/:attachmentId/file', async (req, res) => {
   try {
     const file = await getPrAttachmentFile(Number(req.params.id), Number(req.params.attachmentId));
-    const safeName = String(file.fileName || 'attachment').replace(/"/g, '');
-    const lower = safeName.toLowerCase();
+    const fileName = String(file.fileName || 'attachment');
     let mimeType = String(file.mimeType || '').trim();
     if (!mimeType || mimeType === 'application/octet-stream') {
-      if (lower.endsWith('.pdf')) mimeType = 'application/pdf';
-      else if (/\.(png)$/i.test(lower)) mimeType = 'image/png';
-      else if (/\.(jpe?g)$/i.test(lower)) mimeType = 'image/jpeg';
-      else if (/\.(gif)$/i.test(lower)) mimeType = 'image/gif';
-      else if (/\.(webp)$/i.test(lower)) mimeType = 'image/webp';
-      else mimeType = 'application/octet-stream';
+      mimeType = contentTypeForFileName(fileName);
     }
     // inline so My Tasks / drawer PDF preview can render in an iframe
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
+    res.setHeader('Content-Disposition', contentDispositionHeader('inline', fileName));
     res.send(file.buffer);
   } catch (err) {
     res.status(404).json({ message: err.message });
