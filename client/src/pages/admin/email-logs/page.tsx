@@ -395,7 +395,7 @@ export default function AdminEmailLogsPage() {
           <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="text-sm font-semibold text-slate-900">Rajeev sir pending tasks</h2>
             <p className="text-xs text-slate-500 mt-1 mb-3">
-              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, entity-wise PO count, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in, gopikrishnan.p@refex.co.in, and satish.manickam@refex.co.in, with the Excel file attached. Download Excel lists those same POs: PO number, PO status, vendor name, item name, requester name, requester department, basic value, GST, PO amount, created by, PO date, and entity.
+              Same pending-tasks mail, counted only on the POs Rajeev has signed. Total, entity-wise PO count, vendor PO acceptance, GRN, and invoice upload. Sends to sathishkumar.r@refex.co.in, gopikrishnan.p@refex.co.in, satish.manickam@refex.co.in, and rajeev.v@refex.co.in, with the Excel file attached. Download Excel lists those same POs: PO number, PO status, vendor name, item name, requester name, requester department, basic value, GST, PO amount, created by, PO date, and entity.
             </p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -404,7 +404,7 @@ export default function AdminEmailLogsPage() {
                 disabled={sendingRajeev}
                 className="rounded-lg bg-[#14503a] text-white px-4 py-2 text-sm disabled:opacity-60"
               >
-                {sendingRajeev ? 'Sending…' : 'Send Rajeev signed POs (Sathish + Gopi + Satish)'}
+                {sendingRajeev ? 'Sending…' : 'Send Rajeev signed POs (Sathish + Gopi + Satish + Rajeev)'}
               </button>
               <button
                 type="button"

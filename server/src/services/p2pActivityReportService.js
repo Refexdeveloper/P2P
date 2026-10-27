@@ -14,10 +14,11 @@ import { getSlaWaitingDays, taskSlaBreachedSql } from '../utils/sla.js';
 
 export const P2P_REPORT_TO = 'sathishkumar.r@refex.co.in';
 
-/** Rajeev signed pending-tasks mail: Sathish + Gopi + Satish Manickam. */
+/** Rajeev signed pending-tasks mail: Sathish + Gopi + Satish Manickam + Rajeev. */
 export const P2P_RAJEEV_PENDING_TASKS_TO = [
   P2P_REPORT_TO,
   ...DEFAULT_SCM_BUYER_EMAILS,
+  DEFAULT_SCM_MANAGER_EMAIL,
 ];
 
 function escapeHtml(value) {
