@@ -1,7 +1,9 @@
+import * as XLSX from 'xlsx';
 import pool from '../config/db.js';
 import { ensureUserActivityLogsTable } from './userActivityLogService.js';
 import { sendMailToRecipients } from './emailService.js';
 import {
+  DEFAULT_SCM_BUYER_EMAILS,
   DEFAULT_SCM_MANAGER_EMAIL,
   DEFAULT_SCM_MANAGER_NAME,
   RGML_SCM_MANAGER_EMAIL,
@@ -11,6 +13,12 @@ import { SASS_MUGESH_EMAIL } from './sassWorkflow.js';
 import { getSlaWaitingDays, taskSlaBreachedSql } from '../utils/sla.js';
 
 export const P2P_REPORT_TO = 'sathishkumar.r@refex.co.in';
+
+/** Rajeev signed pending-tasks mail: Sathish + Gopi + Satish Manickam. */
+export const P2P_RAJEEV_PENDING_TASKS_TO = [
+  P2P_REPORT_TO,
+  ...DEFAULT_SCM_BUYER_EMAILS,
+];
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -2049,12 +2057,76 @@ export async function loadRajeevSignedPendingReport() {
   };
 }
 
-export async function sendRajeevSignedPendingTasksReport(to = P2P_REPORT_TO) {
-  const recipient = String(to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+function normalizeRecipientList(to) {
+  const values = Array.isArray(to) ? to : String(to || '').split(/[,;\s]+/);
+  return [...new Set(values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean))];
+}
+
+/** Same columns as the admin Download Excel button. */
+export async function buildRajeevSignedPosExcelAttachment(rows) {
+  const list = Array.isArray(rows) ? rows : await listRajeevSignedPurchaseOrders();
+  const sheet = XLSX.utils.aoa_to_sheet([
+    [
+      'PO number',
+      'PO status',
+      'Vendor name',
+      'Requester name',
+      'Requester department',
+      'Basic value',
+      'GST',
+      'PO amount',
+      'PO created by',
+      'PO date',
+      'PO entity',
+    ],
+    ...list.map((row) => [
+      row.poNumber,
+      row.status,
+      row.vendorName,
+      row.requesterName,
+      row.department,
+      row.basicValue,
+      row.gst,
+      row.amount,
+      row.createdBy,
+      row.poDate,
+      row.entity,
+    ]),
+  ]);
+  sheet['!cols'] = [
+    { wch: 28 },
+    { wch: 32 },
+    { wch: 28 },
+    { wch: 24 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 14 },
+    { wch: 28 },
+  ];
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, 'Rajeev signed POs');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `rajeev-signed-pos-${stamp}.xlsx`;
+  const content = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
+  return {
+    filename,
+    content: Buffer.isBuffer(content) ? content : Buffer.from(content),
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+}
+
+export async function sendRajeevSignedPendingTasksReport(to = P2P_RAJEEV_PENDING_TASKS_TO) {
+  const recipients = normalizeRecipientList(to);
+  const toList = recipients.length ? recipients : [...P2P_RAJEEV_PENDING_TASKS_TO];
   const report = await loadRajeevSignedPendingReport();
   const built = buildP2pPendingTasksEmail(report);
   const stageTotal = (report.poStages || []).reduce((total, row) => total + row.count, 0);
-  await sendMailToRecipients([recipient], built.subject, built.html, built.text, [], {
+  const excelRows = await listRajeevSignedPurchaseOrders();
+  const excelAttachment = await buildRajeevSignedPosExcelAttachment(excelRows);
+  await sendMailToRecipients(toList, built.subject, built.html, built.text, [excelAttachment], {
     emailType: 'p2p_rajeev_pending_tasks',
     skipLogo: true,
     meta: {
@@ -2062,9 +2134,15 @@ export async function sendRajeevSignedPendingTasksReport(to = P2P_REPORT_TO) {
       vendorAcceptancePending: report.vendorScreen.pending,
       grnPending: (report.poStages || []).find((row) => row.key === 'grn_pending')?.count || 0,
       invoiceEntryPending: (report.poStages || []).find((row) => row.key === 'invoice_entry')?.count || 0,
+      excelRows: excelRows.length,
+      excelFile: excelAttachment.filename,
     },
   });
-  return { to: recipient, subject: built.subject, report: { ...report, totalPos: stageTotal } };
+  return {
+    to: toList.join(', '),
+    subject: built.subject,
+    report: { ...report, totalPos: stageTotal },
+  };
 }
 
 /** Separate mail: vendor acceptance, GRN, and invoice-entry pending counts and lists. */

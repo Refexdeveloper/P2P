@@ -2088,7 +2088,9 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
       loadP2pActivityReport,
       loadRajeevSignedPendingReport,
       buildP2pPendingTasksEmail,
+      buildRajeevSignedPosExcelAttachment,
       P2P_REPORT_TO,
+      P2P_RAJEEV_PENDING_TASKS_TO,
     } = await import('./p2pActivityReportService.js');
     const report = type === 'p2p_rajeev_pending_tasks'
       ? await loadRajeevSignedPendingReport()
@@ -2097,7 +2099,13 @@ export async function retriggerEmailLog(logId, { extraTo } = {}) {
     subject = built.subject;
     html = built.html;
     text = built.text;
-    if (!to.length) to = [P2P_REPORT_TO];
+    if (type === 'p2p_rajeev_pending_tasks') {
+      if (!to.length) to = [...P2P_RAJEEV_PENDING_TASKS_TO];
+      const excelAttachment = await buildRajeevSignedPosExcelAttachment();
+      attachments = [excelAttachment];
+    } else if (!to.length) {
+      to = [P2P_REPORT_TO];
+    }
   } else if (type === 'smtp_test') {
     if (!to.length) to = extra;
     html = `<p>P2P SMTP test (admin retrigger) at <strong>${new Date().toISOString()}</strong></p>`;

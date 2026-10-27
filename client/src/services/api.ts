@@ -2257,7 +2257,7 @@ export const adminApi = {
         entity: string;
       }[];
     }>('/api/admin/p2p-rajeev-pending-tasks/export'),
-  sendRajeevSignedPendingTasksReport: (to?: string) =>
+  sendRajeevSignedPendingTasksReport: (to?: string | string[]) =>
     request<{
       data: {
         to: string;
@@ -2272,7 +2272,11 @@ export const adminApi = {
       message: string;
     }>('/api/admin/p2p-rajeev-pending-tasks/send', {
       method: 'POST',
-      body: JSON.stringify({ to: to || 'sathishkumar.r@refex.co.in' }),
+      body: JSON.stringify(
+        to == null || to === ''
+          ? {}
+          : { to }
+      ),
     }),
   sendP2pPendingTasksReport: (to?: string) =>
     request<{

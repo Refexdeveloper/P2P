@@ -21,7 +21,7 @@ import {
 } from '../services/slaBreachService.js';
 import { SLA_REMINDER_SLOTS, normalizeSlaReminderSlot } from '../utils/sla.js';
 import { repairUnsignedManualPosToPendingApproval, adminNotifyScmManagerPoApproval, adminMovePurchaseOrdersToVendorAcceptance } from '../services/poService.js';
-import { P2P_REPORT_TO, listRajeevSignedPurchaseOrders, sendP2pActivityReport, sendP2pPendingTasksReport, sendRajeevSignedPendingTasksReport } from '../services/p2pActivityReportService.js';
+import { P2P_REPORT_TO, P2P_RAJEEV_PENDING_TASKS_TO, listRajeevSignedPurchaseOrders, sendP2pActivityReport, sendP2pPendingTasksReport, sendRajeevSignedPendingTasksReport } from '../services/p2pActivityReportService.js';
 
 const router = Router();
 router.use(authenticate);
@@ -179,7 +179,10 @@ router.get('/p2p-rajeev-pending-tasks/export', async (_req, res) => {
 /** Super Admin: pending-tasks mail for POs Rajeev has signed only. */
 router.post('/p2p-rajeev-pending-tasks/send', async (req, res) => {
   try {
-    const to = String(req.body?.to || P2P_REPORT_TO).trim() || P2P_REPORT_TO;
+    const bodyTo = req.body?.to;
+    const to = bodyTo == null || bodyTo === ''
+      ? P2P_RAJEEV_PENDING_TASKS_TO
+      : bodyTo;
     const data = await sendRajeevSignedPendingTasksReport(to);
     res.json({
       data: {
