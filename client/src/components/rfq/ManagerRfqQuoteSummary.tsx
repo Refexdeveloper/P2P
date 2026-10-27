@@ -198,9 +198,9 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
   const businessJustification = String(data.pr?.justification || '').trim();
 
   const renderQuoteLinesTable = (lines: QuoteLine[], quotedTotal: number, recommendedTable: boolean) => {
-    const headCls = recommendedTable ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-50 text-slate-700';
-    const footCls = recommendedTable ? 'border-emerald-100 bg-emerald-50' : 'border-slate-100 bg-slate-50';
-    const totalCls = recommendedTable ? 'text-emerald-700' : 'text-slate-900';
+    const headCls = recommendedTable ? 'bg-[#e6f6f8] text-[#0f6b7a]' : 'bg-slate-50 text-slate-700';
+    const footCls = recommendedTable ? 'border-[#c5e6eb] bg-[#f4fbfc]' : 'border-slate-100 bg-slate-50';
+    const totalCls = recommendedTable ? 'text-[#0f6b7a]' : 'text-slate-900';
     return (
       <div className="overflow-x-auto bg-white">
         <table className="w-full text-sm min-w-[560px]">
@@ -230,7 +230,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
           </tbody>
           <tfoot>
             <tr className={`border-t ${footCls}`}>
-              <td colSpan={5} className={`px-3 py-2.5 text-right text-sm font-bold ${recommendedTable ? 'text-emerald-900' : 'text-slate-700'}`}>
+              <td colSpan={5} className={`px-3 py-2.5 text-right text-sm font-bold ${recommendedTable ? 'text-[#0b5361]' : 'text-slate-700'}`}>
                 Quoted total
               </td>
               <td className={`px-3 py-2.5 text-right text-base font-extrabold tabular-nums ${totalCls}`}>
@@ -244,23 +244,28 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {fileError ? (
-        <div className="px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{fileError}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{fileError}</div>
       ) : null}
 
-      <section className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 shadow-sm ring-2 ring-amber-200/60">
-        <div className="px-4 py-3 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
-          <i className="ri-lightbulb-flash-line text-amber-700 text-lg" aria-hidden />
+      <section
+        className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+        style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) both' }}
+      >
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-100/80 px-4 py-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white">
+            <i className="ri-lightbulb-flash-line" aria-hidden />
+          </span>
           <div>
-            <p className="text-[11px] font-extrabold tracking-wide uppercase text-amber-900">
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-amber-900">
               Business Justification
             </p>
-            <p className="text-xs text-amber-800/90 mt-0.5">Requester rationale for this purchase</p>
+            <p className="mt-0.5 text-xs text-amber-800/90">Requester rationale for this purchase</p>
           </div>
         </div>
         {businessJustification ? (
-          <p className="px-4 py-3.5 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
+          <p className="whitespace-pre-wrap px-4 py-3.5 text-sm font-medium leading-relaxed text-amber-950">
             {businessJustification}
           </p>
         ) : (
@@ -269,14 +274,19 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
       </section>
 
       {justification || data.recommendedVendorName ? (
-        <section className="rounded-xl overflow-hidden border-2 border-emerald-400 bg-emerald-50 shadow-sm ring-2 ring-emerald-300/70">
-          <div className="px-4 py-3 bg-emerald-200/90 border-b border-emerald-400 flex items-center gap-2">
-            <i className="ri-award-fill text-emerald-800 text-lg" aria-hidden />
+        <section
+          className="overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+          style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) .06s both' }}
+        >
+          <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-100/90 px-4 py-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#0c9f68] text-white">
+              <i className="ri-award-fill" aria-hidden />
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-extrabold tracking-wide uppercase text-emerald-950">
+              <p className="text-[11px] font-extrabold uppercase tracking-wide text-emerald-950">
                 Vendor Recommendation Justification
               </p>
-              <p className="text-base font-bold text-emerald-950 mt-0.5 truncate">
+              <p className="mt-0.5 truncate text-base font-bold text-emerald-950">
                 {data.recommendedVendorName || recommended?.name || 'Recommended vendor'}
                 {recommendedQuotedTotal > 0 ? (
                   <span className="ml-2 text-sm font-semibold text-emerald-800">{money(recommendedQuotedTotal)}</span>
@@ -285,7 +295,7 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
             </div>
           </div>
           {justification ? (
-            <p className="px-4 py-3.5 text-sm text-emerald-950 leading-relaxed whitespace-pre-wrap font-medium">
+            <p className="whitespace-pre-wrap px-4 py-3.5 text-sm font-medium leading-relaxed text-emerald-950">
               {justification}
             </p>
           ) : (
@@ -297,10 +307,13 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
       ) : null}
 
       {recLines.length > 0 ? (
-        <section className="rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50/40">
-          <div className="px-4 py-3 bg-emerald-600 text-white">
-            <p className="text-[11px] font-bold tracking-wider uppercase">Recommended quotation — line items</p>
-            <p className="text-sm font-semibold mt-0.5 opacity-95">
+        <section
+          className="overflow-hidden rounded-2xl border border-[#c5e6eb] bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+          style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) .12s both' }}
+        >
+          <div className="bg-[#0f6b7a] px-4 py-3 text-white">
+            <p className="text-[11px] font-bold uppercase tracking-wider">Recommended quotation — line items</p>
+            <p className="mt-0.5 text-sm font-semibold opacity-95">
               {data.recommendedVendorName || recommended?.name || 'Recommended vendor'}
             </p>
           </div>
@@ -314,12 +327,14 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
           const lines = quoteLinesForVendor(vendor);
           if (!lines.length) return null;
           return (
-            <section key={`vendor-lines-${vendor.id}`} className="rounded-xl overflow-hidden border border-slate-200">
-              <div className="px-4 py-3 bg-slate-700 text-white">
-                <p className="text-[11px] font-bold tracking-wider uppercase">Vendor quotation — line items</p>
-                <p className="text-sm font-semibold mt-0.5 opacity-95">
-                  {vendor.name}
-                </p>
+            <section
+              key={`vendor-lines-${vendor.id}`}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+              style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) .16s both' }}
+            >
+              <div className="bg-slate-700 px-4 py-3 text-white">
+                <p className="text-[11px] font-bold uppercase tracking-wider">Vendor quotation — line items</p>
+                <p className="mt-0.5 text-sm font-semibold opacity-95">{vendor.name}</p>
               </div>
               {renderQuoteLinesTable(lines, vendorLatestPrice(vendor), false)}
             </section>
@@ -327,8 +342,11 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
         })}
 
       {vendors.length > 0 ? (
-        <section className="rounded-xl overflow-hidden border border-slate-200">
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+        <section
+          className="overflow-hidden rounded-2xl border border-[#c5e6eb] bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+          style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) .2s both' }}
+        >
+          <div className="border-b border-[#c5e6eb] bg-[#f4fbfc] px-4 py-3">
             <h2 className="text-[15px] font-extrabold text-slate-900">Vendor Comparison</h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {data.vendorCount || vendors.length} vendors · Recommended:{' '}
@@ -394,10 +412,13 @@ export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
       {vendors.some((v) =>
         (v.rounds || []).some((r) => r.quotationFileName || r.hasQuotationFile || (r.quotationFiles?.length ?? 0) > 0)
       ) ? (
-        <section className="rounded-xl overflow-hidden border border-indigo-200">
-          <div className="px-4 py-3 bg-indigo-50 border-b border-indigo-200">
-            <h2 className="text-[15px] font-extrabold text-indigo-950">Quotation Files</h2>
-            <p className="text-xs text-indigo-700 mt-0.5">Quotation file for each vendor</p>
+        <section
+          className="overflow-hidden rounded-2xl border border-[#c5e6eb] bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+          style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) .24s both' }}
+        >
+          <div className="border-b border-[#c5e6eb] bg-[#e6f6f8] px-4 py-3">
+            <h2 className="text-[15px] font-extrabold text-[#0b5361]">Quotation Files</h2>
+            <p className="mt-0.5 text-xs text-[#0f6b7a]">Quotation file for each vendor</p>
           </div>
           <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-white">
             {vendors.flatMap((vendor) => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../components/rfq/VendorComparisonMatrix';
@@ -8,6 +8,8 @@ import { rfqApi, VendorComparisonData } from '../../services/api';
 import PrDocumentsPanel from '../../components/feature/PrDocumentsPanel';
 import { useAuth } from '../../contexts/AuthContext';
 import { isL1OrL2Manager } from '../../utils/roleDisplay';
+import '../../styles/dashboard-fx.css';
+import '../../styles/drawer-fx.css';
 
 export default function RfqApprovalDetailPage() {
   const { prId } = useParams();
@@ -96,7 +98,6 @@ export default function RfqApprovalDetailPage() {
     deepLinkHandled.current = true;
     pendingDeepLinkAction.current = null;
 
-    // Buyer Create PO: deep-link approve goes to Create PO page
     if (
       modalAction === 'approve' &&
       (user?.role === 'SCM Buyer' || data.stageLabel === 'SCM PO Create')
@@ -126,7 +127,6 @@ export default function RfqApprovalDetailPage() {
     const isBuyerCreatePo =
       user?.role === 'SCM Buyer' || data?.stageLabel === 'SCM PO Create';
 
-    // Buyer Create PO step: go straight to Create PO — do not mark PR APPROVED yet
     if (modal.action === 'approve' && isBuyerCreatePo) {
       navigate(`/scm/create-po?prId=${prId}${fromParam ? `&from=${encodeURIComponent(fromParam)}` : ''}`);
       return;
@@ -164,7 +164,11 @@ export default function RfqApprovalDetailPage() {
       });
       if (!res.ok) throw new Error('Could not load file');
       const blob = await res.blob();
-      setFilePreview({ url: URL.createObjectURL(blob), fileName });
+      const typed =
+        /\.pdf$/i.test(fileName) && !blob.type.includes('pdf')
+          ? new Blob([blob], { type: 'application/pdf' })
+          : blob;
+      setFilePreview({ url: URL.createObjectURL(typed), fileName });
     } catch {
       showToast(`Failed to preview ${fileName}`);
     }
@@ -173,7 +177,14 @@ export default function RfqApprovalDetailPage() {
   if (loading) {
     return (
       <DashboardLayout>
-        <p className="text-sm text-gray-500">Loading vendor comparison...</p>
+        <div className="tasks-fx min-h-full p-6">
+          <div className="tfx-panel rounded-2xl border border-white/70 bg-white/95 p-8 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]">
+            <div className="flex items-center gap-3 text-sm text-slate-500">
+              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[#0f6b7a] border-t-transparent" />
+              Loading vendor comparison…
+            </div>
+          </div>
+        </div>
       </DashboardLayout>
     );
   }
@@ -181,219 +192,333 @@ export default function RfqApprovalDetailPage() {
   if (error || !data) {
     return (
       <DashboardLayout>
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error || 'Not found'}</div>
-        <Link to={backPath} className="text-[#1E88E5] text-sm mt-4 inline-block">← {backLabel}</Link>
+        <div className="tasks-fx min-h-full p-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error || 'Not found'}
+          </div>
+          <Link
+            to={backPath}
+            className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-[#0f6b7a] hover:text-[#0b5361]"
+          >
+            <i className="ri-arrow-left-line" /> {backLabel}
+          </Link>
+        </div>
       </DashboardLayout>
     );
   }
 
+  const stageText = data.stageLabel || data.pr.statusUI || 'RFQ Approval';
+  const entityLine = [data.pr.entityName, data.pr.entityCode ? `(${data.pr.entityCode})` : '']
+    .filter(Boolean)
+    .join(' ');
+  const vendorMeta = data.vendorCount
+    ? `Requester stage complete · ${data.vendorCount} vendors quoted`
+    : data.pr.prFlow === 'functional'
+      ? 'Functional Flow · awaiting SCM RFQ'
+      : 'RFQ quotation';
+
   return (
     <DashboardLayout>
-      {toast && (
-        <div className="fixed top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm">
-          {toast}
-        </div>
-      )}
-
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="min-w-0">
-          <Link
-            to={backPath}
-            className="text-sm text-[#1E88E5] hover:text-[#1565C0] mb-2 inline-flex items-center gap-1"
-          >
-            <i className="ri-arrow-left-line"></i> {backLabel}
-          </Link>
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words leading-snug">
-            <span className="block sm:inline text-[#1565C0]">{data.pr.prNumber}</span>
-            <span className="hidden sm:inline"> — </span>
-            <span className="block sm:inline mt-1 sm:mt-0 text-base sm:text-xl md:text-2xl font-semibold sm:font-bold text-gray-900">
-              {data.pr.title}
-            </span>
-          </h1>
-          <div className="flex flex-col sm:flex-wrap sm:flex-row gap-2 sm:gap-3 mt-3 text-sm text-gray-600">
-            <span className="inline-flex self-start px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full font-semibold text-xs">
-              {data.stageLabel || data.pr.statusUI}
-            </span>
-            <span className="break-words">
-              <strong>Entity:</strong> {data.pr.entityName || '—'}
-              {data.pr.entityCode ? ` (${data.pr.entityCode})` : ''}
-            </span>
-            <span>
-              <strong>Department:</strong> {data.pr.department || '—'}
-            </span>
-            <span>
-              {data.vendorCount
-                ? `Requester stage complete · ${data.vendorCount} vendors quoted`
-                : data.pr.prFlow === 'functional'
-                  ? 'Functional Flow · awaiting SCM RFQ'
-                  : 'RFQ quotation'}
-            </span>
-            {data.recommendedVendorName && (
-              <span className="inline-flex self-start items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold">
-                <i className="ri-award-fill" aria-hidden />
-                Recommended: {data.recommendedVendorName}
-              </span>
-            )}
-            {String(data.recommendationJustification || '').trim() ? (
-              <span
-                className="inline-flex self-start max-w-full sm:max-w-md px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-950 border border-emerald-300 text-xs font-medium truncate"
-                title={String(data.recommendationJustification)}
-              >
-                Justify: {String(data.recommendationJustification).trim()}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        {String(data.sendBackRemarks || '').trim() ? (
-          <div className="rounded-xl border-2 border-orange-400 bg-orange-50 px-4 py-3 ring-2 ring-orange-200/70">
-            <p className="text-xs font-extrabold uppercase tracking-wide text-orange-800 flex items-center gap-1.5">
-              <i className="ri-arrow-go-back-line" aria-hidden />
-              Sent back to this step
-            </p>
-            <p className="mt-1.5 text-sm font-medium text-orange-950 whitespace-pre-wrap leading-relaxed">
-              {String(data.sendBackRemarks).trim()}
-            </p>
+      <div className="tasks-fx dfx-root min-h-full font-sans text-[#0F172A]">
+        {toast ? (
+          <div className="fixed top-4 right-4 z-50 rounded-xl bg-[#0c9f68] px-4 py-2.5 text-sm font-semibold text-white shadow-lg">
+            {toast}
           </div>
         ) : null}
 
-        {data.canApprove && (
-          <div className="flex flex-col xs:flex-row sm:flex-row flex-wrap gap-2 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={() => setModal({ open: true, action: 'approve' })}
-              className="w-full sm:w-auto px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 cursor-pointer inline-flex items-center justify-center gap-2"
-            >
-              <i className="ri-check-line"></i>
-              {user?.role === 'SCM Buyer' ? 'Create PO' : 'Approve'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setModal({ open: true, action: 'rework' })}
-              className="w-full sm:w-auto px-4 py-2.5 bg-orange-600 text-white text-sm font-semibold rounded-lg hover:bg-orange-700 cursor-pointer inline-flex items-center justify-center gap-2"
-            >
-              <i className="ri-arrow-go-back-line"></i> Send Back
-            </button>
-            <button
-              type="button"
-              onClick={() => setModal({ open: true, action: 'reject' })}
-              className="w-full sm:w-auto px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 cursor-pointer inline-flex items-center justify-center gap-2"
-            >
-              <i className="ri-close-line"></i> Reject
-            </button>
+        <section className="tfx-hero tfx-hero--plain">
+          <div className="tfx-bubbles" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
           </div>
-        )}
-      </div>
+          <div className="tfx-hero-content !pb-10 !pr-6">
+            <Link
+              to={backPath}
+              className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-[#0f6b7a] hover:text-[#0b5361]"
+            >
+              <i className="ri-arrow-left-line" /> {backLabel}
+            </Link>
+            <div className="tfx-hi">RFQ Approval</div>
+            <h1 className="!text-[1.55rem] sm:!text-[1.9rem] md:!text-[2.1rem]">
+              <span className="tfx-shimmer block sm:inline">{data.pr.prNumber}</span>
+              <span className="hidden sm:inline"> — </span>
+              <span className="mt-1 block text-[1.05rem] font-semibold leading-snug text-[#0e1726] sm:mt-0 sm:inline sm:text-[1.35rem] md:text-[1.55rem]">
+                {data.pr.title}
+              </span>
+            </h1>
+            <p className="max-w-3xl">{vendorMeta}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                {stageText}
+              </span>
+              {entityLine ? (
+                <span className="inline-flex items-center rounded-full border border-[#c5e6eb] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#0f6b7a]">
+                  Entity: {entityLine}
+                </span>
+              ) : null}
+              {data.pr.department ? (
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                  Department: {data.pr.department}
+                </span>
+              ) : null}
+              {data.recommendedVendorName ? (
+                <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-900">
+                  <i className="ri-award-fill" aria-hidden />
+                  Recommended: {data.recommendedVendorName}
+                </span>
+              ) : null}
+              {String(data.recommendationJustification || '').trim() ? (
+                <span
+                  className="inline-flex max-w-full truncate rounded-full border border-emerald-200 bg-emerald-50/80 px-2.5 py-1 text-[11px] font-medium text-emerald-950 sm:max-w-md"
+                  title={String(data.recommendationJustification)}
+                >
+                  Justify: {String(data.recommendationJustification).trim()}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </section>
 
-      {data.canApprove && user?.role === 'SCM Buyer' && (
-        <div className="mb-4 p-3 bg-[#E3F2FD] border border-[#90CAF9] rounded-lg text-sm text-[#1565C0]">
-          <i className="ri-information-line mr-1"></i>
-          After approval you will be redirected to <strong>Create PO</strong> for this purchase request.
-        </div>
-      )}
-
-      {Number(prId) > 0 ? (
-        <div className="mb-4 rounded-xl border border-gray-200 bg-white p-4">
-          <PrDocumentsPanel prId={Number(prId)} compact />
-        </div>
-      ) : null}
-
-      {(!data.vendors || data.vendors.length === 0) && data.pr.prFlow === 'standard' && data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
-        <div className="space-y-4">
-          <section className="rounded-xl overflow-hidden border-2 border-amber-300 bg-amber-50 shadow-sm ring-2 ring-amber-200/60">
-            <div className="px-4 py-3 bg-amber-100 border-b border-amber-300 flex items-center gap-2">
-              <i className="ri-lightbulb-flash-line text-amber-700 text-lg" aria-hidden />
-              <div>
-                <p className="text-[11px] font-extrabold tracking-wide uppercase text-amber-900">
-                  Business Justification
+        <div className="relative z-[4] mx-auto max-w-6xl space-y-4 px-4 pb-10 pt-0 sm:px-6" style={{ marginTop: '-48px' }}>
+          {String(data.sendBackRemarks || '').trim() ? (
+            <div
+              className="dfx-alert"
+              style={{ '--i': 0 } as CSSProperties}
+            >
+              <span className="dfx-alert-ic">
+                <i className="ri-arrow-go-back-line" aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-extrabold uppercase tracking-wide text-orange-800">
+                  Sent back to this step
                 </p>
-                <p className="text-xs text-amber-800/90 mt-0.5">Requester rationale for this purchase</p>
+                <p className="mt-1.5 whitespace-pre-wrap text-sm font-medium leading-relaxed text-orange-950">
+                  {String(data.sendBackRemarks).trim()}
+                </p>
               </div>
             </div>
-            <p className="px-4 py-3.5 text-sm text-amber-950 leading-relaxed whitespace-pre-wrap font-medium">
-              {data.pr.justification || 'No business justification provided.'}
-            </p>
-          </section>
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-base font-bold text-gray-900 mb-3">PR Details</h3>
-            <p className="text-sm text-gray-600">
-              {data.pr.title || 'Awaiting RFQ quotations.'}
-            </p>
-          </div>
-        </div>
-      ) : isL1OrL2Manager(user?.role) ? (
-        <ManagerRfqQuoteSummary data={data} onPreviewFile={handlePreviewFile} />
-      ) : (
-        <VendorComparisonMatrix data={data} onPreviewFile={handlePreviewFile} />
-      )}
+          ) : null}
 
-      {data.pr.approvalHistory?.length > 0 && (
-        <div className="mt-6 bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-base font-bold text-gray-900 mb-4">Approval History</h3>
-          <div className="space-y-3">
-            {data.pr.approvalHistory.map((h, i) => (
-              <div key={i} className="flex gap-4 text-sm border-b border-gray-100 pb-3">
-                <div className="w-32 font-medium text-gray-700">{h.stage}</div>
-                <div className="flex-1">
-                  <span className="font-semibold">{h.user}</span>
-                  <span className="text-gray-500"> · {h.role}</span>
-                  <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold ${
-                    h.status === 'Approve' ? 'bg-emerald-100 text-emerald-700' :
-                    h.status === 'Reject' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
-                  }`}>{h.status}</span>
-                  {h.remarks && <p className="text-gray-600 mt-1">{h.remarks}</p>}
-                </div>
-                <div className="text-gray-400 text-xs">{h.date}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <PostRfqApprovalModal
-        isOpen={modal.open}
-        action={modal.action}
-        prNumber={data.pr.prNumber}
-        title={data.pr.title}
-        stageLabel={data.stageLabel || user?.role || 'Approval'}
-        prId={Number(prId)}
-        askBusinessApproval={Boolean(data.askBusinessApproval)}
-        useAdminTargets={Boolean(
-          user?.isSuperAdmin ||
-            user?.role === 'Super Admin' ||
-            user?.role === 'SCM Manager' ||
-            user?.role === 'SCM Buyer'
-        )}
-        onClose={() => setModal((m) => ({ ...m, open: false }))}
-        onConfirm={handleApprove}
-      />
-
-      {filePreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-xl">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <span className="font-semibold text-gray-900">{filePreview.fileName}</span>
+          {data.canApprove ? (
+            <div
+              className="tfx-panel flex flex-col gap-2 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:p-4"
+              style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) both' }}
+            >
               <button
                 type="button"
-                onClick={() => {
-                  URL.revokeObjectURL(filePreview.url);
-                  setFilePreview(null);
-                }}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl cursor-pointer"
+                onClick={() => setModal({ open: true, action: 'approve' })}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0c9f68] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_20px_-12px_rgba(12,159,104,.8)] transition hover:-translate-y-0.5 hover:bg-[#0a8a5a] sm:w-auto"
               >
-                ×
+                <i className="ri-check-line text-base" />
+                {user?.role === 'SCM Buyer' ? 'Create PO' : 'Approve'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setModal({ open: true, action: 'rework' })}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#f2761c] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_20px_-12px_rgba(242,118,28,.75)] transition hover:-translate-y-0.5 hover:bg-[#db6814] sm:w-auto"
+              >
+                <i className="ri-arrow-go-back-line text-base" />
+                Send Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setModal({ open: true, action: 'reject' })}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#ef3b4b] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_20px_-12px_rgba(239,59,75,.75)] transition hover:-translate-y-0.5 hover:bg-[#d92f3e] sm:w-auto"
+              >
+                <i className="ri-close-line text-base" />
+                Reject
               </button>
             </div>
-            <div className="p-4 flex-1 overflow-auto">
-              {/\.pdf$/i.test(filePreview.fileName) ? (
-                <iframe title="Quotation preview" src={filePreview.url} className="w-full h-[70vh] border border-gray-200 rounded-lg" />
-              ) : (
-                <img src={filePreview.url} alt={filePreview.fileName} className="max-h-[70vh] mx-auto rounded-lg" />
-              )}
+          ) : null}
+
+          {data.canApprove && user?.role === 'SCM Buyer' ? (
+            <div className="dfx-note" style={{ '--i': 1 } as CSSProperties}>
+              <p className="dfx-label">
+                <i className="ri-information-line mr-1" /> Next step
+              </p>
+              <p className="mt-2 text-sm text-slate-700">
+                After approval you will be redirected to <strong>Create PO</strong> for this purchase request.
+              </p>
+            </div>
+          ) : null}
+
+          {Number(prId) > 0 ? (
+            <div
+              className="tfx-panel overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:p-5"
+              style={{ animation: 'tfx-fadeUp .6s cubic-bezier(.2,.8,.2,1) .08s both' }}
+            >
+              <PrDocumentsPanel prId={Number(prId)} compact />
+            </div>
+          ) : null}
+
+          {!data.vendors?.length &&
+          data.pr.prFlow === 'standard' &&
+          data.pr.status === 'PENDING_BUSINESS_APPROVAL' ? (
+            <div className="space-y-4">
+              <section
+                className="overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+                style={{ animation: 'tfx-fadeUp .6s cubic-bezier(.2,.8,.2,1) .12s both' }}
+              >
+                <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-100/80 px-4 py-3">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500 text-white">
+                    <i className="ri-lightbulb-flash-line" aria-hidden />
+                  </span>
+                  <div>
+                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-amber-900">
+                      Business Justification
+                    </p>
+                    <p className="mt-0.5 text-xs text-amber-800/90">Requester rationale for this purchase</p>
+                  </div>
+                </div>
+                <p className="whitespace-pre-wrap px-4 py-3.5 text-sm font-medium leading-relaxed text-amber-950">
+                  {data.pr.justification || 'No business justification provided.'}
+                </p>
+              </section>
+              <div
+                className="tfx-panel rounded-2xl border border-white/70 bg-white/95 p-5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]"
+                style={{ animation: 'tfx-fadeUp .6s cubic-bezier(.2,.8,.2,1) .16s both' }}
+              >
+                <h3 className="mb-2 text-base font-bold text-slate-900">PR Details</h3>
+                <p className="text-sm text-slate-600">{data.pr.title || 'Awaiting RFQ quotations.'}</p>
+              </div>
+            </div>
+          ) : isL1OrL2Manager(user?.role) ? (
+            <div style={{ animation: 'tfx-fadeUp .65s cubic-bezier(.2,.8,.2,1) .1s both' }}>
+              <ManagerRfqQuoteSummary data={data} onPreviewFile={handlePreviewFile} />
+            </div>
+          ) : (
+            <div style={{ animation: 'tfx-fadeUp .65s cubic-bezier(.2,.8,.2,1) .1s both' }}>
+              <VendorComparisonMatrix data={data} onPreviewFile={handlePreviewFile} />
+            </div>
+          )}
+
+          {data.pr.approvalHistory?.length > 0 ? (
+            <div
+              className="tfx-panel overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:p-6"
+              style={{ animation: 'tfx-fadeUp .65s cubic-bezier(.2,.8,.2,1) .18s both' }}
+            >
+              <h3 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e6f6f8] text-[#0f6b7a]">
+                  <i className="ri-history-line" aria-hidden />
+                </span>
+                Approval History
+              </h3>
+              <ul className="dfx-timeline">
+                {data.pr.approvalHistory.map((h, i) => {
+                  const tone =
+                    h.status === 'Approve'
+                      ? 'tone-green'
+                      : h.status === 'Reject'
+                        ? 'tone-red'
+                        : 'tone-orange';
+                  return (
+                    <li key={i} className={`dfx-tl-item ${tone}`} style={{ '--i': i } as CSSProperties}>
+                      <span className="dfx-tl-dot">
+                        <i
+                          className={
+                            h.status === 'Approve'
+                              ? 'ri-check-line'
+                              : h.status === 'Reject'
+                                ? 'ri-close-line'
+                                : 'ri-arrow-go-back-line'
+                          }
+                          aria-hidden
+                        />
+                      </span>
+                      <div className="dfx-tl-card min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-900">{h.stage}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              <span className="font-semibold text-slate-700">{h.user}</span>
+                              {h.role ? ` · ${h.role}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                h.status === 'Approve'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : h.status === 'Reject'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-orange-100 text-orange-700'
+                              }`}
+                            >
+                              {h.status}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{h.date}</span>
+                          </div>
+                        </div>
+                        {h.remarks ? (
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{h.remarks}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <PostRfqApprovalModal
+          isOpen={modal.open}
+          action={modal.action}
+          prNumber={data.pr.prNumber}
+          title={data.pr.title}
+          stageLabel={data.stageLabel || user?.role || 'Approval'}
+          prId={Number(prId)}
+          askBusinessApproval={Boolean(data.askBusinessApproval)}
+          useAdminTargets={Boolean(
+            user?.isSuperAdmin ||
+              user?.role === 'Super Admin' ||
+              user?.role === 'SCM Manager' ||
+              user?.role === 'SCM Buyer'
+          )}
+          onClose={() => setModal((m) => ({ ...m, open: false }))}
+          onConfirm={handleApprove}
+        />
+
+        {filePreview ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]">
+            <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                <span className="truncate font-semibold text-slate-800">{filePreview.fileName}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    URL.revokeObjectURL(filePreview.url);
+                    setFilePreview(null);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100"
+                >
+                  <i className="ri-close-line text-lg" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-auto bg-[#F8FAFC] p-4">
+                {/\.pdf$/i.test(filePreview.fileName) ? (
+                  <iframe
+                    title="Quotation preview"
+                    src={filePreview.url}
+                    className="h-[70vh] w-full rounded-xl border-0 bg-white"
+                  />
+                ) : (
+                  <img
+                    src={filePreview.url}
+                    alt={filePreview.fileName}
+                    className="mx-auto max-h-[70vh] rounded-xl object-contain"
+                  />
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
     </DashboardLayout>
   );
 }
