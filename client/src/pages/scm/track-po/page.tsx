@@ -15,6 +15,24 @@ import {
 
 type PurchaseTypeFilter = 'all' | 'purchase_order' | 'work_order';
 
+const TRACK_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'ready', label: 'Ready for PO' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'pending', label: 'SCM Manager Sign' },
+  { value: 'pending_buyer_verify', label: 'Buyer Verify' },
+  { value: 'approved', label: 'Approved (all later stages)' },
+  { value: 'sent_to_vendor', label: 'Vendor Acceptance' },
+  { value: 'awaiting_grn', label: 'Awaiting GRN' },
+  { value: 'grn_completed', label: 'GRN Completed' },
+  { value: 'invoice_entry', label: 'Invoice Entry' },
+  { value: 'pending_accounts_approval', label: 'Accounts Approval' },
+  { value: 'approved_for_payment', label: 'Approved for Payment' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 type TrackRow = {
   key: string;
   prId: number;
@@ -235,6 +253,7 @@ export default function TrackPoPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<PurchaseTypeFilter>('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [entityId, setEntityId] = useState<number | ''>('');
   const [department, setDepartment] = useState('');
   const [category, setCategory] = useState('');
@@ -286,6 +305,7 @@ export default function TrackPoPage() {
         page,
         limit: pageSize,
         search: debouncedSearch || undefined,
+        status: statusFilter,
         purchaseType: purchaseTypeFilter,
         entityId: entityId || undefined,
         department: department || undefined,
@@ -316,7 +336,7 @@ export default function TrackPoPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, debouncedSearch, purchaseTypeFilter, entityId, department, category, dateFrom, dateTo]);
+  }, [page, pageSize, debouncedSearch, statusFilter, purchaseTypeFilter, entityId, department, category, dateFrom, dateTo]);
 
   useEffect(() => {
     load();
@@ -396,6 +416,7 @@ export default function TrackPoPage() {
 
   const resetFilters = () => {
     setSearch('');
+    setStatusFilter('all');
     setPurchaseTypeFilter('all');
     setEntityId('');
     setDepartment('');
@@ -456,6 +477,7 @@ export default function TrackPoPage() {
       let totalPages = 1;
       const filters = {
         search: debouncedSearch || undefined,
+        status: statusFilter,
         purchaseType: purchaseTypeFilter,
         entityId: entityId || undefined,
         department: department || undefined,
@@ -637,7 +659,7 @@ export default function TrackPoPage() {
               <span className="tfx-shimmer">PO/WO Tracker</span>
             </h1>
             <p className="max-w-[620px]">
-              All purchase orders and work orders. Filter by entity, department, category, type, and date.
+              All purchase orders and work orders. Filter by status, entity, department, category, type, and date.
             </p>
           </div>
           <div className="fi-actions">
@@ -714,6 +736,22 @@ export default function TrackPoPage() {
                     </button>
                   ) : null}
                 </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                    setExpandedKey(null);
+                  }}
+                  className="h-11 min-w-[200px] cursor-pointer tfx-input rounded-xl border bg-white px-3.5 text-sm text-slate-700 outline-none"
+                  aria-label="Filter by status"
+                >
+                  {TRACK_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
                 <EntitySearchSelect
                   entities={entities}
                   value={entityId}

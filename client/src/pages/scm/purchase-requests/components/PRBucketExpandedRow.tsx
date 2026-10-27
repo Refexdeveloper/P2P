@@ -4,10 +4,41 @@ import ApprovalHistoryPanel, {
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
-import { poApi, prApi, rfqApi, VendorComparisonData, type PrAttachmentRecord } from '../../../../services/api';
+import {
+  accountsApi,
+  poApi,
+  prApi,
+  rfqApi,
+  VendorComparisonData,
+  type PrAttachmentRecord,
+} from '../../../../services/api';
 import PrDocumentsPanel from '../../../../components/feature/PrDocumentsPanel';
 import '../../../../styles/dashboard-fx.css';
 import '../../../../styles/po-workspace.css';
+
+type WorkspaceGrn = {
+  id: number;
+  grnNumber?: string;
+  status?: string;
+  receivedDate?: string | null;
+  receivedBy?: string;
+  inspectedBy?: string;
+  remarks?: string;
+  receivedValue?: number;
+  lineItems?: Array<{
+    id?: string;
+    description?: string;
+    orderedQty?: number;
+    receivedQty?: number;
+    unitPrice?: number;
+    total?: number;
+    condition?: string;
+    attachments?: Array<{
+      id: number;
+      fileName: string;
+    }>;
+  }>;
+};
 
 interface LineItem {
   id?: number;
@@ -313,13 +344,15 @@ export default function PRBucketExpandedRow({
   const expandWrapRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [tab, setTab] = useState<
-    'details' | 'items' | 'vendors' | 'history' | 'cancellation' | 'pdf' | 'reference'
+    'details' | 'items' | 'vendors' | 'history' | 'cancellation' | 'pdf' | 'reference' | 'grn'
   >('details');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
   const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
   const [cancellation, setCancellation] = useState<CancellationInfo | null>(null);
+  const [grn, setGrn] = useState<WorkspaceGrn | null>(null);
+  const [openingGrnFile, setOpeningGrnFile] = useState<number | null>(null);
   const [poSummary, setPoSummary] = useState<PoSummary | null>(null);
   const [addressInfo, setAddressInfo] = useState<AddressContactInfo>(EMPTY_ADDRESS);
   const [referencePo, setReferencePo] = useState<ReferencePoInfo | null>(null);
@@ -526,6 +559,7 @@ export default function PRBucketExpandedRow({
       setError('');
       setAddressInfo(EMPTY_ADDRESS);
       setReferencePo(null);
+      setGrn(null);
       revokePdfUrl(currentPdfUrlRef);
       revokePdfUrl(referencePdfUrlRef);
       setCurrentPdfUrl(null);
@@ -632,13 +666,20 @@ export default function PRBucketExpandedRow({
               String(loaded?.referencePoNumber || '')
             );
             await loadRelatedDocs(poId, refNo, () => cancelled);
+            try {
+              const fulRes = await poApi.fulfillment(poId);
+              if (!cancelled) setGrn((fulRes.data?.grn as WorkspaceGrn | null) || null);
+            } catch {
+              if (!cancelled) setGrn(null);
+            }
           }
         } else if (poId) {
           setComparison(null);
           try {
-            const [poRes, cmpRes] = await Promise.allSettled([
+            const [poRes, cmpRes, fulRes] = await Promise.allSettled([
               poApi.get(poId),
               poApi.getComparison(poId),
+              poApi.fulfillment(poId),
             ]);
             if (cancelled) return;
             if (poRes.status !== 'fulfilled') {
@@ -647,6 +688,11 @@ export default function PRBucketExpandedRow({
             applyPoPayload(poRes.value.data as Record<string, unknown>);
             if (cmpRes.status === 'fulfilled') {
               setComparison(cmpRes.value.data);
+            }
+            if (fulRes.status === 'fulfilled') {
+              setGrn((fulRes.value.data?.grn as WorkspaceGrn | null) || null);
+            } else {
+              setGrn(null);
             }
             await loadRelatedDocs(
               poId,
@@ -678,6 +724,38 @@ export default function PRBucketExpandedRow({
     };
   }, [prId, poId, poNumber, title, statusLabel]);
 
+  const grnFiles = (grn?.lineItems || []).flatMap((line) =>
+    (line.attachments || []).map((file) => ({
+      ...file,
+      lineDescription: line.description || 'Line item',
+    }))
+  );
+
+  const openGrnFile = async (fileId: number, fileName: string) => {
+    setOpeningGrnFile(fileId);
+    try {
+      const token = localStorage.getItem('p2p_token');
+      const res = await fetch(accountsApi.grnLineAttachmentUrl(fileId), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to open GRN file');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName || `grn-file-${fileId}`;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open GRN file');
+    } finally {
+      setOpeningGrnFile(null);
+    }
+  };
+
   const tabs = [
     { key: 'details' as const, label: isManualDoc ? 'WO / PO Details' : 'PR Details', icon: 'ri-information-line' },
     { key: 'items' as const, label: 'Line Items', icon: 'ri-list-check-2' },
@@ -690,6 +768,9 @@ export default function PRBucketExpandedRow({
     ...(poId
       ? [{ key: 'pdf' as const, label: 'PDF', icon: 'ri-file-pdf-line' }]
       : []),
+    ...(grn
+      ? [{ key: 'grn' as const, label: 'GRN', icon: 'ri-truck-line' }]
+      : []),
     ...(poSummary?.referencePoNumber
       ? [{ key: 'reference' as const, label: `Original PO (${poSummary.referencePoNumber})`, icon: 'ri-links-line' }]
       : []),
@@ -697,6 +778,11 @@ export default function PRBucketExpandedRow({
       ? [{ key: 'cancellation' as const, label: 'Cancellation', icon: 'ri-close-circle-line' }]
       : []),
   ];
+
+  useEffect(() => {
+    const keys = new Set(tabs.map((t) => t.key));
+    if (!keys.has(tab)) setTab('details');
+  }, [tab, grn, cancellation, poSummary?.referencePoNumber, poId]);
 
   return (
     <tr>
@@ -1103,6 +1189,98 @@ export default function PRBucketExpandedRow({
                       </div>
                     </>
                   )}
+                </div>
+              )}
+
+              {!loading && !error && tab === 'grn' && grn && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <SoftDetailField label="GRN Number" value={grn.grnNumber} />
+                    <SoftDetailField label="Status" value={grn.status} />
+                    <SoftDetailField label="Received date" value={grn.receivedDate} />
+                    <SoftDetailField
+                      label="Received value"
+                      value={formatCurrency(Number(grn.receivedValue || 0))}
+                    />
+                    <SoftDetailField label="Received by" value={grn.receivedBy} />
+                    <SoftDetailField label="Inspected by" value={grn.inspectedBy} />
+                  </div>
+                  <SoftDetailField label="Remarks" value={grn.remarks || '—'} />
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      GRN files ({grnFiles.length})
+                    </p>
+                    {grnFiles.length === 0 ? (
+                      <p className="text-sm text-slate-500">No GRN files uploaded.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {grnFiles.map((file) => (
+                          <button
+                            key={file.id}
+                            type="button"
+                            disabled={openingGrnFile === file.id}
+                            onClick={() => void openGrnFile(file.id, file.fileName)}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-[#c5e6eb] bg-white px-3 py-2 text-left text-sm hover:bg-[#e6f6f8] disabled:opacity-50"
+                          >
+                            <span className="min-w-0">
+                              <span className="block font-semibold text-[#0f6b7a]">
+                                {openingGrnFile === file.id ? 'Opening…' : file.fileName}
+                              </span>
+                              <span className="block truncate text-xs text-slate-500">
+                                {file.lineDescription}
+                              </span>
+                            </span>
+                            <i className="ri-external-link-line text-[#0f6b7a]" aria-hidden />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                      GRN line items ({grn.lineItems?.length || 0})
+                    </p>
+                    {(grn.lineItems || []).length === 0 ? (
+                      <p className="text-sm text-slate-500 text-center py-4">No GRN lines</p>
+                    ) : (
+                      <div className="w-full min-w-0 overflow-x-auto">
+                        <table className="w-full min-w-[640px] text-sm">
+                          <thead className="border-b border-slate-100 bg-[#F8FBFF]">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Item
+                              </th>
+                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Ordered
+                              </th>
+                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Received
+                              </th>
+                              <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Condition
+                              </th>
+                              <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                Total
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(grn.lineItems || []).map((li, idx) => (
+                              <tr key={li.id || idx}>
+                                <td className="px-3 py-2 text-[#2C3E50]">{li.description || '—'}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{li.orderedQty ?? '—'}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{li.receivedQty ?? '—'}</td>
+                                <td className="px-3 py-2">{li.condition || '—'}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatCurrency(Number(li.total || 0))}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

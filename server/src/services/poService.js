@@ -3915,12 +3915,29 @@ export async function listTrackPurchaseOrders(
     poParams.push(user.id);
   }
 
+  const detailedPoStatuses = new Set([
+    'pending_approval',
+    'pending_buyer_verify',
+    'approved',
+    'sent_to_vendor',
+    'awaiting_grn',
+    'grn_completed',
+    'invoice_entry',
+    'pending_accounts_approval',
+    'approved_for_payment',
+    'paid',
+    'rejected',
+    'draft',
+    'cancelled',
+    'imported',
+  ]);
   const includeReady =
     statusFilter === 'all' || statusFilter === 'ready';
   const includePo =
     statusFilter !== 'ready' &&
     (statusFilter === 'all' ||
-      ['pending', 'approved', 'rejected', 'sent', 'imported', 'draft', 'cancelled'].includes(statusFilter));
+      ['pending', 'approved', 'rejected', 'sent', 'imported', 'draft', 'cancelled'].includes(statusFilter) ||
+      detailedPoStatuses.has(statusFilter));
 
   const readyTypeFilter = typeSqlValue
     ? ` AND COALESCE(pr.purchase_type, 'purchase_order') = ?`
@@ -4093,6 +4110,9 @@ export async function listTrackPurchaseOrders(
     whereExtra += ` AND t.status_raw = 'draft'`;
   } else if (statusFilter === 'cancelled') {
     whereExtra += ` AND t.status_raw = 'cancelled'`;
+  } else if (detailedPoStatuses.has(statusFilter)) {
+    whereExtra += ` AND t.status_raw = ?`;
+    filterParams.push(statusFilter);
   }
 
   if (q) {

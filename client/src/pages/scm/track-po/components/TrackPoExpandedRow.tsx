@@ -1305,7 +1305,55 @@ export default function TrackPoExpandedRow({
                   <FieldCard label="Received by" value={grn.receivedBy} />
                   <FieldCard label="Inspected by" value={grn.inspectedBy} />
                 </div>
-                {grn.remarks ? <SoftDetailField label="Remarks" value={grn.remarks} /> : null}
+                <SoftDetailField label="Remarks" value={grn.remarks || '—'} />
+                {(() => {
+                  const files = (grn.lineItems || []).flatMap((line) =>
+                    (line.attachments || []).map((file) => ({
+                      ...file,
+                      lineDescription: line.description || 'Line item',
+                    }))
+                  );
+                  return (
+                    <div>
+                      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        GRN files ({files.length})
+                      </h4>
+                      {files.length === 0 ? (
+                        <p className="text-sm text-slate-500">No GRN files uploaded.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {files.map((file) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              disabled={openingKey === `grn-att-${file.id}`}
+                              onClick={() =>
+                                void handleOpenFile({
+                                  key: `grn-att-${file.id}`,
+                                  kind: 'GRN Attachment',
+                                  name: file.fileName,
+                                  fileName: file.fileName,
+                                  url: accountsApi.grnLineAttachmentUrl(file.id),
+                                })
+                              }
+                              className="flex items-center justify-between gap-3 rounded-xl border border-[#c5e6eb] bg-white px-3 py-2 text-left text-sm hover:bg-[#e6f6f8] disabled:opacity-50 cursor-pointer"
+                            >
+                              <span className="min-w-0">
+                                <span className="block font-semibold text-[#0f6b7a]">
+                                  {openingKey === `grn-att-${file.id}` ? 'Opening…' : file.fileName}
+                                </span>
+                                <span className="block truncate text-xs text-slate-500">
+                                  {file.lineDescription}
+                                </span>
+                              </span>
+                              <i className="ri-external-link-line text-[#0f6b7a]" aria-hidden />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div>
                   <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     GRN line items ({grn.lineItems?.length || 0})

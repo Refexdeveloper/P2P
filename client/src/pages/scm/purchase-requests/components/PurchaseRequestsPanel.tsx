@@ -24,24 +24,45 @@ export type PurchaseRequestsPanelHandle = {
   openImport: () => void;
 };
 
-type WorkspaceFilter = 'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled';
+type WorkspaceFilter = string;
 
-const WORKSPACE_FILTERS: WorkspaceFilter[] = ['all', 'ready', 'created', 'approved', 'rejected', 'draft', 'cancelled'];
+const WORKSPACE_BUCKET_FILTERS = ['all', 'ready', 'created', 'approved', 'rejected', 'draft', 'cancelled'] as const;
+
+const WORKSPACE_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All Statuses' },
+  { value: 'ready', label: 'Ready for PO' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'created', label: 'SCM Manager Sign' },
+  { value: 'pending_buyer_verify', label: 'Buyer Verify' },
+  { value: 'approved', label: 'Approved (all later stages)' },
+  { value: 'sent_to_vendor', label: 'Vendor Acceptance' },
+  { value: 'awaiting_grn', label: 'Awaiting GRN' },
+  { value: 'grn_completed', label: 'GRN Completed' },
+  { value: 'invoice_entry', label: 'Invoice Entry' },
+  { value: 'pending_accounts_approval', label: 'Accounts Approval' },
+  { value: 'approved_for_payment', label: 'Approved for Payment' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
 const WORKSPACE_LIST_KEY = 'po-workspace-list';
 
 function readWorkspaceList(): { search: string; status: WorkspaceFilter; page: number } {
-  const empty = { search: '', status: 'all' as WorkspaceFilter, page: 1 };
+  const empty = { search: '', status: 'all', page: 1 };
   try {
     const raw = sessionStorage.getItem(WORKSPACE_LIST_KEY);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as { search?: string; status?: string; page?: number };
-    const status = WORKSPACE_FILTERS.includes(parsed.status as WorkspaceFilter)
-      ? (parsed.status as WorkspaceFilter)
-      : 'all';
+    const status = String(parsed.status || 'all').trim() || 'all';
+    const allowed = new Set([
+      ...WORKSPACE_BUCKET_FILTERS,
+      ...WORKSPACE_STATUS_OPTIONS.map((row) => row.value),
+    ]);
     const page = Number(parsed.page);
     return {
       search: String(parsed.search || ''),
-      status,
+      status: allowed.has(status) ? status : 'all',
       page: Number.isFinite(page) && page > 0 ? page : 1,
     };
   } catch {
@@ -104,17 +125,13 @@ function mapTrackStatusToBucket(status: string, statusRaw?: string): RowStatus {
   return 'PO Approved';
 }
 
-function mapUiFilterToApi(filter: 'all' | 'ready' | 'created' | 'approved' | 'rejected' | 'draft' | 'cancelled'): string {
+function mapUiFilterToApi(filter: string): string {
   if (filter === 'created') return 'pending';
-  return filter;
+  return filter || 'all';
 }
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
-
-
-
-type WorkspaceFilter = 'all' | 'ready' | 'draft' | 'created' | 'approved' | 'rejected';
 
 /** Workspace KPI cards — rendered with the shared AnimatedKpiCard (same look as the requester dashboard). */
 const PO_KPIS: {
@@ -122,7 +139,7 @@ const PO_KPIS: {
   caption: string;
   emptyCaption: string;
   stat: 'total' | 'readyForPO' | 'draft' | 'pendingApproval' | 'poApproved' | 'poRejected';
-  filter: WorkspaceFilter;
+  filter: (typeof WORKSPACE_BUCKET_FILTERS)[number];
   icon: string;
   variant: KpiVariant;
   /** Pulsing dot when there is something waiting. */
@@ -567,6 +584,22 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
               </button>
             ) : null}
           </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+              setExpandedKey(null);
+            }}
+            className="h-11 min-w-[200px] cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 outline-none"
+            aria-label="Filter by status"
+          >
+            {WORKSPACE_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <div className="po-tabs">
             {(
               [
