@@ -322,8 +322,15 @@ export default function TaskDetailDrawer({
   // Slide the active-tab pill under whichever tab is selected.
   useLayoutEffect(() => {
     const root = tabsRef.current;
-    const btn = root?.querySelector<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
-    if (root && btn) setIndicator({ left: btn.offsetLeft, width: btn.offsetWidth });
+    if (!root) return;
+    const measure = () => {
+      const btn = root.querySelector<HTMLButtonElement>(`[data-tab="${activeTab}"]`);
+      if (btn) setIndicator({ left: btn.offsetLeft, width: btn.offsetWidth });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
   }, [activeTab, tabKey, task.id, loading]);
 
   const money = (n: number) =>
@@ -473,7 +480,7 @@ export default function TaskDetailDrawer({
           </div>
         ) : (
           <>
-            <div className="dfx-tabs-wrap shrink-0 px-5 sm:px-7">
+            <div className="dfx-tabs-wrap shrink-0 px-3 sm:px-7">
               <div ref={tabsRef} className="dfx-tabs" role="tablist">
                 <span
                   className="dfx-tab-ind"
@@ -827,7 +834,7 @@ export default function TaskDetailDrawer({
 
         {/* Footer — pinned so L1/L2 always see Approve / Send Back / Reject */}
         {showActions && (
-          <footer className="dfx-foot is-actions shrink-0 px-5 py-4 sm:px-7">
+          <footer className="dfx-foot is-actions shrink-0 px-4 py-3 sm:px-7 sm:py-4">
             <button
               type="button"
               disabled={loading}
@@ -848,7 +855,7 @@ export default function TaskDetailDrawer({
                   : 'Approve'}
             </button>
             {!task.isSassInvoiceUpload && !task.isMugeshSign && (
-              <div className="flex gap-2 sm:contents">
+              <div className="dfx-actions">
                 <button
                   type="button"
                   disabled={loading}
