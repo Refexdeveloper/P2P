@@ -132,10 +132,16 @@ export default function VendorInvoicePage() {
     load();
   }, [load]);
 
+  const pendingOnly = new URLSearchParams(location.search).get('pending') === '1';
   const filtered = useMemo(() => {
+    const base = pendingOnly
+      ? rows.filter(
+          (r) => r.statusRaw === 'awaiting_upload' || r.canSendMail || r.canManualEntry
+        )
+      : rows;
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return base;
+    return base.filter(
       (r) =>
         r.invoiceNumber.toLowerCase().includes(q) ||
         r.poNumber.toLowerCase().includes(q) ||
@@ -143,7 +149,7 @@ export default function VendorInvoicePage() {
         r.vendorName.toLowerCase().includes(q) ||
         r.vendorEmail.toLowerCase().includes(q)
     );
-  }, [rows, searchTerm]);
+  }, [rows, searchTerm, pendingOnly]);
 
   const draftCount = rows.filter((r) => r.canSendMail || r.canManualEntry).length;
 
@@ -235,11 +241,15 @@ export default function VendorInvoicePage() {
 
         <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-            <h1 className="text-2xl font-bold text-gray-900">Vendor Invoice</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {pendingOnly ? 'Invoice Pending' : 'Vendor Invoice'}
+            </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {isRequesterView
-                ? 'After GRN, send mail so the vendor uploads the invoice, or use Manual Entry — then record vendor acceptance.'
-                : 'After GRN, Send Mail so the vendor uploads the invoice, or use Manual Entry to record it yourself'}
+              {pendingOnly
+                ? 'Invoices still waiting to be sent or entered'
+                : isRequesterView
+                  ? 'After GRN, send mail so the vendor uploads the invoice, or use Manual Entry — then record vendor acceptance.'
+                  : 'After GRN, Send Mail so the vendor uploads the invoice, or use Manual Entry to record it yourself'}
             </p>
           </div>
           <div className="flex items-center gap-2">

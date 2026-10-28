@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
-import { poApi, rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
+import { accountsApi, poApi, rfqApi, PostRfqPendingItem, ScmRfqEntryItem } from '../../../services/api';
 import { finalizeGoPo, rfqEntryPath } from '../../../utils/scmGoPo';
 import { useAuth } from '../../../contexts/AuthContext';
 import FinancialInsightsDashboard from '../../dashboard/page';
@@ -33,18 +33,22 @@ export default function SCMPurchaseRequestsPage() {
   const [createPoTasks, setCreatePoTasks] = useState<DashTask[]>([]);
   const [verifyTasks, setVerifyTasks] = useState<DashTask[]>([]);
   const [acceptanceTasks, setAcceptanceTasks] = useState<DashTask[]>([]);
+  const [grnPendingCount, setGrnPendingCount] = useState(0);
+  const [invoicePendingCount, setInvoicePendingCount] = useState(0);
   const [goPoPrId, setGoPoPrId] = useState<number | null>(null);
   const [goPoError, setGoPoError] = useState('');
   const [showDetailedView, setShowDetailedView] = useState(false);
 
   const loadQueues = useCallback(async () => {
     try {
-      const [rfqRes, entryRes, readyRes, verifyRes, acceptRes] = await Promise.all([
+      const [rfqRes, entryRes, readyRes, verifyRes, acceptRes, grnRes, invoiceRes] = await Promise.all([
         rfqApi.listPostApprovalPending().catch(() => ({ data: [] as PostRfqPendingItem[] })),
         rfqApi.listScmEntryPending().catch(() => ({ data: [] as ScmRfqEntryItem[] })),
         poApi.listTrack({ page: 1, limit: 50, status: 'ready' }).catch(() => ({ data: [] })),
         poApi.listPendingBuyerVerify().catch(() => ({ data: [] as unknown[] })),
         poApi.listVendorAcceptance().catch(() => ({ data: [] as unknown[] })),
+        accountsApi.listPendingGrnPos().catch(() => ({ data: [] as Record<string, unknown>[] })),
+        accountsApi.listInvoices().catch(() => ({ data: [] as Record<string, unknown>[] })),
       ]);
       setRfqPending(rfqRes.data || []);
       setRfqGoPo(entryRes.data || []);
@@ -100,12 +104,21 @@ export default function SCMPurchaseRequestsPage() {
       setCreatePoTasks([...createMap.values()]);
       setVerifyTasks([...verifyMap.values()]);
       setAcceptanceTasks(acceptRows);
+      setGrnPendingCount((grnRes.data || []).length);
+      setInvoicePendingCount(
+        ((invoiceRes.data as Record<string, unknown>[]) || []).filter((row) => {
+          const status = String(row.statusRaw || '');
+          return status === 'awaiting_upload' || Boolean(row.canSendMail) || Boolean(row.canManualEntry);
+        }).length
+      );
     } catch {
       setRfqPending([]);
       setRfqGoPo([]);
       setCreatePoTasks([]);
       setVerifyTasks([]);
       setAcceptanceTasks([]);
+      setGrnPendingCount(0);
+      setInvoicePendingCount(0);
     }
   }, []);
 
@@ -170,6 +183,22 @@ export default function SCMPurchaseRequestsPage() {
       icon: 'ri-team-line',
       to: '/scm/vendor-po-acceptance',
       variant: 'pending_approval' as KpiVariant,
+    },
+    {
+      label: 'GRN Pending',
+      value: grnPendingCount,
+      sub: 'POs waiting for goods receipt',
+      icon: 'ri-truck-line',
+      to: '/grn?filter=Pending%20Receipt',
+      variant: 'overdue' as KpiVariant,
+    },
+    {
+      label: 'Invoice Pending',
+      value: invoicePendingCount,
+      sub: 'Invoices waiting to be submitted',
+      icon: 'ri-file-invoice-line',
+      to: '/scm/vendor-invoice?pending=1',
+      variant: 'payments' as KpiVariant,
     },
   ];
   const kpiTotal = kpiCards.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
@@ -255,7 +284,7 @@ export default function SCMPurchaseRequestsPage() {
         </section>
 
         <section className="tfx-kpis mb-4">
-          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-4">
+          <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 sm:gap-4 md:gap-5 lg:grid-cols-3 xl:grid-cols-6">
             {kpiCards.map((card, i) => (
               <AnimatedKpiCard
                 key={card.label}

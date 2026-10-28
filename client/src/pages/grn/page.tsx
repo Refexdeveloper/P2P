@@ -633,7 +633,7 @@ export default function GRNPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState(() => searchParams.get('filter') || 'all');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusUpdates, setStatusUpdates] = useState<Record<string, GRNStatus>>({});
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
