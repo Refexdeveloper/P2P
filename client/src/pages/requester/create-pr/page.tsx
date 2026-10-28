@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
+import '../../../styles/create-pr-fx.css';
 import ApprovalHistoryPanel from '../../../components/feature/ApprovalHistoryPanel';
 import { prApi, masterApi, vendorApi, fileToAttachmentPayload, ItemRecord, CategoryRecord, EntityRecord, DepartmentRecord, ProjectRecord, PrAttachmentRecord, VendorRecord, rfqApi } from '../../../services/api';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
-  BRAND,
-  BRAND_HERO_GRADIENT,
-  BRAND_PRIMARY_GRADIENT,
-} from '../../../constants/brandColors';
+  PM_BTN_PRIMARY,
+  PM_BTN_SECONDARY,
+  PM_CARD,
+  PM_ICON_CHIP_SOLID,
+  PM_PAGE_BG,
+} from '../../../constants/pmTheme';
 import DepartmentCombobox from './DepartmentCombobox';
 import ProjectCombobox from './ProjectCombobox';
 import SearchCreateField from './SearchCreateField';
@@ -121,15 +124,37 @@ const FIELD_SCROLL_ORDER = [
   'lineItems',
 ];
 
-function scrollToFirstError(errs: Record<string, string>) {
+type CreatePrTab = 'basic' | 'items' | 'vendors' | 'scm';
+
+function tabForErrorField(field: string | null): CreatePrTab {
+  if (!field) return 'basic';
+  if (field === 'lineItems' || field.startsWith('item_')) return 'items';
+  if (field === 'rfqVendors') return 'vendors';
+  if (
+    field === 'billingLocationId' ||
+    field === 'billingAddress' ||
+    field === 'deliveryPoc' ||
+    field === 'placeOfDelivery' ||
+    field === 'expectedDeliveryTimeline' ||
+    field === 'paymentTerms'
+  ) {
+    return 'scm';
+  }
+  return 'basic';
+}
+
+function scrollToFirstError(errs: Record<string, string>, setTab?: (tab: CreatePrTab) => void) {
   const first =
     FIELD_SCROLL_ORDER.find((key) => errs[key]) ||
     Object.keys(errs).find((key) => key.startsWith('item_')) ||
     Object.keys(errs)[0];
   if (!first) return;
   const field = first.startsWith('item_') ? 'lineItems' : first;
+  if (setTab) setTab(tabForErrorField(first));
   requestAnimationFrame(() => {
-    document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-field="${field}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   });
 }
 
@@ -153,6 +178,7 @@ export default function CreatePRPage() {
   const wantFreshStart = !editPrId && searchParams.get('new') === '1';
   const freshHandledRef = useRef(false);
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  const [activeTab, setActiveTab] = useState<CreatePrTab>('basic');
   /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
   const isAdminEditFlow = isEditMode && isAdminEditor;
 
@@ -185,7 +211,7 @@ export default function CreatePRPage() {
     'purchase_order' | 'work_order' | 'sass' | 'online_purchase'
   >('purchase_order');
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
-  const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
+  const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('functional');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
   const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
   const [rfqMaxRounds, setRfqMaxRounds] = useState(1);
@@ -342,6 +368,24 @@ export default function CreatePRPage() {
     vendorSelection === 'own';
   const showInlineVendorQuotes =
     purchaseType === 'sass' || (prFlow === 'functional' && vendorSelection === 'own');
+  const createPrTabs = useMemo(() => {
+    const tabs: { id: CreatePrTab; label: string; icon: string }[] = [
+      { id: 'basic', label: 'Basic Details', icon: 'ri-information-line' },
+      { id: 'items', label: 'Line Items', icon: 'ri-shopping-cart-line' },
+    ];
+    if (showInlineVendorQuotes) {
+      tabs.push({ id: 'vendors', label: 'Vendor Rounds', icon: 'ri-store-2-line' });
+    }
+    tabs.push({ id: 'scm', label: 'SCM Team', icon: 'ri-team-line' });
+    return tabs;
+  }, [showInlineVendorQuotes]);
+
+  useEffect(() => {
+    if (!createPrTabs.some((t) => t.id === activeTab)) {
+      setActiveTab('basic');
+    }
+  }, [activeTab, createPrTabs]);
+
   const restoredKeyRef = useRef('');
 
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
@@ -380,7 +424,7 @@ export default function CreatePRPage() {
     );
     setSassSubscriptionStartDate(draft.sassSubscriptionStartDate || '');
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
-    setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
+    setPrFlow(isEditMode && draft.prFlow !== 'functional' ? 'standard' : 'functional');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
     setRfqMaxRounds(draft.rfqMaxRounds || 1);
     setRfqRecommendedKey(draft.rfqRecommendedKey || null);
@@ -1808,7 +1852,7 @@ export default function CreatePRPage() {
       const firstMsg =
         Object.values(newErrors).find(Boolean) || 'Please fill the required fields';
       showToast(firstMsg, 'error');
-      scrollToFirstError(newErrors);
+      scrollToFirstError(newErrors, setActiveTab);
     }
     return ok;
   };
@@ -1821,7 +1865,7 @@ export default function CreatePRPage() {
     const ok = Object.keys(newErrors).length === 0;
     if (!ok) {
       showToast(Object.values(newErrors)[0] || 'Entity is required', 'error');
-      scrollToFirstError(newErrors);
+      scrollToFirstError(newErrors, setActiveTab);
     }
     return ok;
   };
@@ -1943,7 +1987,10 @@ export default function CreatePRPage() {
     requestType,
     purchaseType,
     requestCategory,
-    projectDetail: projectDetail.trim() || undefined,
+    projectDetail:
+      purchaseType === 'sass' || purchaseType === 'online_purchase'
+        ? undefined
+        : projectDetail.trim() || undefined,
     specialNotes: specialNotes.trim() || undefined,
     department,
     entityId: entityId ? Number(entityId) : undefined,
@@ -2476,16 +2523,18 @@ export default function CreatePRPage() {
         </div>
       ) : null}
       {isLoadingPr ? (
-        <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="flex min-h-[60vh] items-center justify-center" style={{ background: PM_PAGE_BG }}>
           <div className="text-center">
-            <i className="ri-loader-4-line text-3xl text-slate-400 animate-spin"></i>
-            <p className="text-sm text-gray-500 mt-3">Loading purchase request...</p>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <i className="ri-loader-4-line animate-spin text-2xl text-[#0f6b7a]"></i>
+            </div>
+            <p className="mt-3 text-sm text-gray-500">Loading purchase request...</p>
           </div>
         </div>
       ) : loadError ? (
-        <div className="p-8">
-          <div className="max-w-md mx-auto p-6 bg-red-50 border border-red-200 rounded-xl text-center">
-            <p className="text-sm text-red-700 mb-4">{loadError}</p>
+        <div className="p-8 font-sans" style={{ background: PM_PAGE_BG }}>
+          <div className="mx-auto max-w-md rounded-2xl border border-red-200 bg-white p-6 text-center shadow-sm">
+            <p className="mb-4 text-sm text-red-700">{loadError}</p>
             <Link to={backTo} className="text-sm font-medium text-red-800 hover:underline">
               {isAdminEditFlow || isEditMode ? 'Back to Track PR' : 'Back to Dashboard'}
             </Link>
@@ -2493,20 +2542,18 @@ export default function CreatePRPage() {
         </div>
       ) : (
       <>
-      {/* ── Hero Header Banner (primary / secondary / accent) ── */}
-      <div
-        className="px-4 sm:px-8 py-5 sm:py-6 mb-0"
-        style={{ background: BRAND_HERO_GRADIENT }}
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          {/* Left: breadcrumb + title */}
-          <div>
-            <div className="flex items-center gap-2 text-white/80 text-xs mb-2">
-              <Link to={backTo} className="hover:text-white transition-colors cursor-pointer">
-                {isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}
-              </Link>
+      <div className="cpr-fx min-h-full font-sans text-[#0F172A]">
+      <header className="cpr-hero">
+        <div className="cpr-art" aria-hidden="true" />
+        <div className="cpr-hero-bubbles" aria-hidden="true">
+          <i /><i /><i /><i /><i />
+        </div>
+        <div className="cpr-hero-inner">
+          <div className="cpr-hero-text min-w-0">
+            <div className="cpr-crumbs">
+              <Link to={backTo}>{isAdminEditFlow || isEditMode ? 'Track PR' : 'Dashboard'}</Link>
               <i className="ri-arrow-right-s-line"></i>
-              <span className="text-white/90">
+              <span>
                 {isAdminEditFlow
                   ? 'Admin Edit PR'
                   : isEditMode
@@ -2516,7 +2563,7 @@ export default function CreatePRPage() {
                     : 'Create Purchase Requisition'}
               </span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">
+            <h1 className="cpr-title">
               {isAdminEditFlow
                 ? 'Admin Edit Purchase Requisition'
                 : isEditMode
@@ -2525,7 +2572,7 @@ export default function CreatePRPage() {
                     : 'Edit Purchase Requisition'
                   : 'New Purchase Requisition'}
             </h1>
-            <p className="text-white/85 text-sm mt-1">
+            <p className="cpr-sub">
               {isAdminEditFlow
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
@@ -2536,102 +2583,86 @@ export default function CreatePRPage() {
                 ? 'Update your draft or submit when ready'
                 : 'Fill in the details to raise a new procurement request'}
             </p>
-          </div>
-
-          {/* Right: PR Number + Total Amount chips — glass cards on brand gradient */}
-          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 w-full lg:w-auto">
-            {/* PR Number */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-file-list-3-line text-white text-sm"></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">PR Number</p>
-                <p className="text-white font-bold text-base tracking-wide truncate">{displayPrNumber}</p>
-              </div>
-            </div>
-
-            {/* Total Amount */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-money-dollar-circle-line text-white text-sm"></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">
-                  {hideLinePricing ? 'Vendor Path' : 'Total Amount'}
-                </p>
-                <p className="text-white font-bold text-base truncate">
-                  {hideLinePricing
-                    ? 'Own Vendor'
-                    : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-
-            {/* Items count */}
-            <div className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl px-4 py-3 backdrop-blur-sm w-full sm:w-auto">
-              <div className="w-8 h-8 flex items-center justify-center bg-white/25 rounded-lg shrink-0">
-                <i className="ri-shopping-cart-line text-white text-sm"></i>
-              </div>
-              <div className="min-w-0">
-                <p className="text-white/80 text-xs leading-none mb-0.5">Line Items</p>
-                <p className="text-white font-bold text-base">{lineItems.length}</p>
-              </div>
+            <div className="cpr-chips">
+              <span className={`cpr-chip ${typeColors[requestType]}`}>{requestType}</span>
+              <span className={`cpr-chip ${priorityColors[priority]}`}>{priority} Priority</span>
+              {department && (
+                <span className="cpr-chip cpr-chip-dept">
+                  <i className="ri-building-line mr-1"></i>
+                  {department}
+                </span>
+              )}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* ── Sticky Sub-header (type + status bar) ── */}
-      <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm px-3 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${typeColors[requestType]}`}>
-            {requestType}
-          </span>
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${priorityColors[priority]}`}>
-            {priority} Priority
-          </span>
-          {department && (
-            <span className="text-xs font-medium px-3 py-1 rounded-full bg-slate-100 text-slate-600">
-              <i className="ri-building-line mr-1"></i>{department}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {softSaveHint && (
-            <span className="hidden sm:inline text-xs text-emerald-600 font-medium">
-              <i className="ri-checkbox-circle-line mr-1"></i>
-              {softSaveHint}
-            </span>
-          )}
-          <span className="text-xs text-gray-400">
-            {lineItems.length === 0
-              ? 'No items yet'
-              : hideLinePricing
-                ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
-                : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
-          </span>
-          <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-              style={{
-                width: `${
-                  lineItems.length > 0
-                    ? ((hideLinePricing
-                        ? lineItems.filter((i) => i.description || i.itemName).length
-                        : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
-                        lineItems.length) *
-                      100
-                    : 0
-                }%`,
-              }}
-            />
+          <div className="cpr-hero-side">
+            <div className="cpr-stats">
+              <div className="cpr-stat" style={{ '--i': 0 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-teal">
+                  <i className="ri-file-list-3-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>PR Number</small>
+                  <b className="cpr-stat-accent truncate">{displayPrNumber}</b>
+                </div>
+              </div>
+              <div className="cpr-stat" style={{ '--i': 1 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-green">
+                  <i className="ri-money-rupee-circle-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>{hideLinePricing ? 'Vendor Path' : 'Total Amount'}</small>
+                  <b className="truncate tabular-nums">
+                    {hideLinePricing
+                      ? 'Own Vendor'
+                      : formatMoney(getTotalAmount(), currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </b>
+                </div>
+              </div>
+              <div className="cpr-stat" style={{ '--i': 2 } as React.CSSProperties}>
+                <span className="cpr-stat-ic tone-violet">
+                  <i className="ri-shopping-cart-2-line"></i>
+                </span>
+                <div className="min-w-0">
+                  <small>Line Items</small>
+                  <b className="tabular-nums">{lineItems.length}</b>
+                </div>
+              </div>
+            </div>
+            <div className="cpr-status">
+              <span className="cpr-status-msg">
+                <i className="cpr-status-dot" />
+                {softSaveHint ||
+                  (isEditMode || isAdminEditFlow ? 'Editing purchase requisition' : 'Starting a new purchase requisition')}
+              </span>
+              <span className="cpr-status-count">
+                {lineItems.length === 0
+                  ? 'No items yet'
+                  : hideLinePricing
+                    ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
+                    : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
+              </span>
+              <div className="cpr-status-track">
+                <div
+                  className="cpr-status-fill"
+                  style={{
+                    width: `${
+                      lineItems.length > 0
+                        ? ((hideLinePricing
+                            ? lineItems.filter((i) => i.description || i.itemName).length
+                            : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
+                            lineItems.length) *
+                          100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
+      <div className="cpr-body w-full min-w-0 max-w-full space-y-4 pt-3">
 
-      {/* ── Main Content ── */}
-      <div className="p-3 sm:p-6 lg:p-8 space-y-6 w-full min-w-0 max-w-full">
 
         {isReturned && (
           <div className="p-5 bg-orange-50 border border-orange-200 rounded-xl space-y-4">
@@ -2665,8 +2696,8 @@ export default function CreatePRPage() {
         )}
 
         {isAdminEditFlow && approvalHistory.length > 0 ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+          <div className={PM_CARD}>
+            <div className="cpr-sec-head relative z-[1] flex items-center justify-between gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Approval History</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -2681,22 +2712,53 @@ export default function CreatePRPage() {
           </div>
         ) : null}
 
+        <div className="cpr-steps">
+          {createPrTabs.map((tab, index) => {
+            const isActive = activeTab === tab.id;
+            const activeIdx = createPrTabs.findIndex((t) => t.id === activeTab);
+            const isDone = index < activeIdx;
+            return (
+              <div key={tab.id} className="flex min-w-0 flex-1 items-center">
+                {index > 0 ? (
+                  <i
+                    className={`cpr-step-sep ri-arrow-right-s-line${isDone || isActive ? ' is-on' : ''}`}
+                    aria-hidden
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`cpr-step${isActive ? ' is-active' : ''}${isDone ? ' is-done' : ''}`}
+                >
+                  <span className="cpr-step-ic">
+                    <i className={isDone && !isActive ? 'ri-check-line' : tab.icon}></i>
+                    {tab.id === 'items' && lineItems.length > 0 ? (
+                      <span className="cpr-step-badge">{lineItems.length}</span>
+                    ) : null}
+                  </span>
+                  <span className="cpr-step-label">{tab.label}</span>
+                  {isActive ? <i className="cpr-step-go ri-arrow-right-s-line" aria-hidden /> : null}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {activeTab === 'basic' && (
+          <div className="space-y-4">
         {/* ── Section 1: Basic Information ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-4 sm:px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div
-              className="w-8 h-8 flex items-center justify-center rounded-lg"
-              style={{ backgroundColor: BRAND.secondary }}
-            >
-              <i className="ri-information-line text-white text-sm"></i>
+        <div className={PM_CARD}>
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+            <div className={PM_ICON_CHIP_SOLID}>
+              <i className="ri-information-line text-sm"></i>
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Basic Information</h2>
-              <p className="text-xs text-gray-500">General details about this requisition</p>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Basic Information</h2>
+              <p className="text-xs text-[#64748B]">General details about this requisition</p>
             </div>
           </div>
 
-          <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 w-full min-w-0">
+          <div className="relative z-[1] grid w-full min-w-0 grid-cols-1 items-start gap-x-4 gap-y-3 p-3 sm:grid-cols-2 sm:p-4">
             {/* PR Number */}
             <div className="w-full min-w-0">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">PR Number</label>
@@ -2709,7 +2771,7 @@ export default function CreatePRPage() {
             </div>
 
             {/* PR Title */}
-            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-2" data-field="prTitle">
+            <div className="w-full min-w-0 sm:col-span-2" data-field="prTitle">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 PR Title <span className="text-red-500">*</span>
               </label>
@@ -2822,74 +2884,46 @@ export default function CreatePRPage() {
             </div>
 
             {/* Purchase Type */}
-            <div className="w-full min-w-0 lg:col-span-2 xl:col-span-3">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+            <div className="w-full min-w-0 sm:col-span-2">
+              <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Purchase Type <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 w-full">
+              <div className="grid grid-cols-2 gap-2 w-full">
                 {(
                   [
-                    { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####' },
-                    { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####' },
-                    {
-                      id: 'sass' as const,
-                      label: 'Cloud Subscription',
-                      hint: 'No PO · L1 → invoice path',
-                    },
-                    {
-                      id: 'online_purchase' as const,
-                      label: 'Online Purchase',
-                      hint: 'Number: OP-Entity-FY-####',
-                    },
+                    { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####', icon: 'ri-file-list-3-line' },
+                    { id: 'work_order' as const, label: 'Work Order', hint: 'Number: WO-Entity-FY-####', icon: 'ri-file-settings-line' },
                   ]
                 ).map((opt) => (
                   <button
                     key={opt.id}
                     type="button"
                     onClick={() => {
-                      if (opt.id === 'sass') {
-                        setPreviousPurchaseType(purchaseType);
-                        setSassSubscriptionModalStep('mode');
-                        setSassSubscriptionModalOpen(true);
-                        return;
-                      }
                       setPurchaseType(opt.id);
                       setSassSubscriptionMode(null);
                       setSassBillingFrequency(null);
                       setSassSubscriptionStartDate('');
-                      if (opt.id === 'online_purchase') {
-                        setVendorSelection('own');
-                        setPrFlow('standard');
-                        setApprovalUserIds([]);
-                      }
-                      // Service is only valid for Work Order
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
-                      if (opt.id === 'purchase_order' || opt.id === 'online_purchase') {
+                      if (opt.id === 'purchase_order') {
                         setWorkStartDate('');
                         setWorkEndDate('');
                       }
                     }}
-                    className={`min-w-0 w-full text-left px-2.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-colors ${
-                      purchaseType === opt.id
-                        ? 'text-white border-transparent'
-                        : 'bg-white text-gray-700 border-gray-200 hover:border-[#2978B1]'
-                    }`}
-                    style={
-                      purchaseType === opt.id
-                        ? { backgroundColor: BRAND.secondary, borderColor: BRAND.secondary }
-                        : undefined
-                    }
+                    className={`cpr-ptype${purchaseType === opt.id ? ' is-active' : ''}`}
                   >
-                    <span className="block truncate">{opt.label}</span>
-                    <span
-                      className={`block text-[10px] font-normal mt-0.5 truncate ${
-                        purchaseType === opt.id ? 'text-white/85' : 'text-gray-400'
-                      }`}
-                      title={opt.hint}
-                    >
-                      {opt.hint}
+                    <span className="cpr-ptype-ic">
+                      <i className={opt.icon}></i>
+                    </span>
+                    {purchaseType === opt.id ? (
+                      <i className="cpr-ptype-check ri-checkbox-circle-fill" aria-hidden />
+                    ) : null}
+                    <span className="min-w-0">
+                      <span className="block truncate">{opt.label}</span>
+                      <span className="cpr-ptype-hint block truncate" title={opt.hint}>
+                        {opt.hint}
+                      </span>
                     </span>
                   </button>
                 ))}
@@ -2930,6 +2964,19 @@ export default function CreatePRPage() {
                   )}
                 </div>
               )}
+            </div>
+
+            <div data-field="projectDetail">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                Plant
+              </label>
+              <ProjectCombobox
+                projects={projects}
+                selectedName={projectDetail}
+                onSelect={(project) => setProjectDetail(project.name)}
+                onClear={() => setProjectDetail('')}
+                onCreated={rememberProject}
+              />
             </div>
 
             {/* Department */}
@@ -3132,22 +3179,8 @@ export default function CreatePRPage() {
               )}
             </div>
 
-            {/* Plant */}
-            <div data-field="projectDetail">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Plant
-              </label>
-              <ProjectCombobox
-                projects={projects}
-                selectedName={projectDetail}
-                onSelect={(project) => setProjectDetail(project.name)}
-                onClear={() => setProjectDetail('')}
-                onCreated={rememberProject}
-              />
-            </div>
-
             {/* Special Notes */}
-            <div className="md:col-span-2 lg:col-span-3" data-field="specialNotes">
+            <div className="sm:col-span-2" data-field="specialNotes">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Special Notes
               </label>
@@ -3182,7 +3215,7 @@ export default function CreatePRPage() {
 
             {purchaseType === 'online_purchase' ? (
               <>
-                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
                   <p className="text-sm font-semibold text-teal-900">Online Purchase approval path</p>
                   <p className="text-xs text-teal-800 mt-1 leading-relaxed">
                     Select L1 / User Approver → Mugesh L1 → Srivaths (L2) → Mugesh Invoice Upload →
@@ -3190,7 +3223,7 @@ export default function CreatePRPage() {
                     approved once). SCM RFQ is skipped.
                   </p>
                 </div>
-                <div className="md:col-span-2" data-field="approvalUserId">
+                <div className="sm:col-span-2" data-field="approvalUserId">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
@@ -3215,7 +3248,7 @@ export default function CreatePRPage() {
 
             {purchaseType === 'sass' ? (
               <>
-                <div className="md:col-span-2 lg:col-span-3 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
+                <div className="sm:col-span-2 rounded-xl border border-teal-200 bg-teal-50/60 px-4 py-3">
                   <p className="text-sm font-semibold text-teal-900">Cloud Subscription approval path</p>
                   <p className="text-xs text-teal-800 mt-1">
                     {String(user?.email || '')
@@ -3236,7 +3269,7 @@ export default function CreatePRPage() {
                     )}
                   </p>
                 </div>
-                <div className="md:col-span-2" data-field="approvalUserId">
+                <div className="sm:col-span-2" data-field="approvalUserId">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                     L1 Manager / User Approver <span className="text-red-500">*</span>
                   </label>
@@ -3262,30 +3295,7 @@ export default function CreatePRPage() {
               </>
             ) : purchaseType === 'online_purchase' ? null : (
               <>
-            {/* Request Flow */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Flow <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={prFlow}
-                onChange={(e) => {
-                  const next = e.target.value === 'functional' ? 'functional' : 'standard';
-                  setPrFlow(next);
-                }}
-                className="w-full min-w-0 max-w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white cursor-pointer"
-              >
-                <option value="standard">Standard</option>
-                <option value="functional">Functional</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1.5">
-                {prFlow === 'standard'
-                  ? 'Standard: current L1 / L2 / Mugesh / RFQ path (Own vendor or SCM vendor).'
-                  : 'Functional: shortened path — quotes on Create PR for Own vendor, selected user approval, then SCM RFQ / Final RFQ.'}
-              </p>
-            </div>
-
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Vendor Selection <span className="text-red-500">*</span>
               </label>
@@ -3309,7 +3319,7 @@ export default function CreatePRPage() {
             </div>
 
             {prFlow === 'functional' && (
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                   Select User Approval <span className="text-red-500">*</span>
                 </label>
@@ -3335,13 +3345,17 @@ export default function CreatePRPage() {
 
           </div>
         </div>
+          </div>
+        )}
 
+        {activeTab === 'items' && (
+          <div className="space-y-4">
         {/* ── Section 2: Line Items ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden" data-field="lineItems">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/60">
+        <div className={PM_CARD} data-field="lineItems">
+          <div className="cpr-sec-head relative z-[1] flex items-center justify-between border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
-                <i className="ri-shopping-cart-line text-white text-sm"></i>
+              <div className={PM_ICON_CHIP_SOLID}>
+                <i className="ri-shopping-cart-line text-sm"></i>
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">Line Items</h2>
@@ -3354,7 +3368,7 @@ export default function CreatePRPage() {
                 type="button"
                 onClick={openAddLineItem}
                 disabled={Boolean(lineEditor)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-xs font-semibold rounded-xl hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-[#1E88E5] text-white text-xs font-semibold rounded-xl hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <i className="ri-add-line"></i>
                 Add Line Item
@@ -3663,9 +3677,11 @@ export default function CreatePRPage() {
             </div>
           </div>
         </div>
+          </div>
+        )}
 
-        {showInlineVendorQuotes && (
-          <div data-field="rfqVendors">
+        {activeTab === 'vendors' && showInlineVendorQuotes && (
+          <div className="space-y-4" data-field="rfqVendors">
           <FunctionalOwnRfqSection
             vendors={vendorMaster}
             rows={rfqVendors}
@@ -3702,6 +3718,8 @@ export default function CreatePRPage() {
           </div>
         )}
 
+        {activeTab === 'scm' && (
+          <div className="space-y-4">
         {askBillingOnCreatePr ? (
           <PrBillingDeliverySection
             value={{
@@ -3760,10 +3778,10 @@ export default function CreatePRPage() {
         )}
 
         {/* ── Section 4: Business Justification ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
-              <i className="ri-article-line text-white text-sm"></i>
+        <div className={PM_CARD} data-field="businessJustification">
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+            <div className={PM_ICON_CHIP_SOLID}>
+              <i className="ri-article-line text-sm"></i>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Business Justification</h2>
@@ -3789,10 +3807,10 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 5: Attachments ── */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 bg-gray-50/60">
-            <div className="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-lg">
-              <i className="ri-attachment-2 text-white text-sm"></i>
+        <div className={PM_CARD}>
+          <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
+            <div className={PM_ICON_CHIP_SOLID}>
+              <i className="ri-attachment-2 text-sm"></i>
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900">FSD Document (Functional Specification Document)</h2>
@@ -3848,21 +3866,47 @@ export default function CreatePRPage() {
             )}
           </div>
         </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            disabled={activeTab === createPrTabs[0]?.id}
+            onClick={() => {
+              const idx = createPrTabs.findIndex((t) => t.id === activeTab);
+              if (idx > 0) setActiveTab(createPrTabs[idx - 1].id);
+            }}
+            className={`${PM_BTN_SECONDARY} disabled:opacity-40`}
+          >
+            <i className="ri-arrow-left-line"></i>
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={activeTab === createPrTabs[createPrTabs.length - 1]?.id}
+            onClick={() => {
+              const idx = createPrTabs.findIndex((t) => t.id === activeTab);
+              if (idx >= 0 && idx < createPrTabs.length - 1) setActiveTab(createPrTabs[idx + 1].id);
+            }}
+            className={`${PM_BTN_PRIMARY} disabled:opacity-40`}
+          >
+            Next
+            <i className="ri-arrow-right-line"></i>
+          </button>
+        </div>
 
         {/* ── Action Buttons ── */}
         {submitError && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{submitError}</div>
         )}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4">
-          <div className="flex items-center justify-center sm:justify-start gap-2 text-sm text-gray-500">
+        <div className={`${PM_CARD} flex flex-col gap-3 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6`}>
+          <div className="relative z-[1] flex items-center justify-center gap-2 text-sm text-slate-500 sm:justify-start">
             <i className="ri-shield-check-line text-emerald-500"></i>
             <span>Autosave keeps the same PR# (incl. quotation files). Create New PR starts blank.</span>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            <Link
-              to={backTo}
-              className="w-full sm:w-auto px-5 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer whitespace-nowrap text-center"
-            >
+          <div className="relative z-[1] flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            <Link to={backTo} className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap text-center sm:w-auto`}>
               Cancel
             </Link>
             {isAdminEditFlow || isPendingEditFlow ? (
@@ -3873,8 +3917,7 @@ export default function CreatePRPage() {
                   void savePR(false);
                 }}
                 disabled={isSubmitting}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-                style={{ background: BRAND_PRIMARY_GRADIENT, border: 'none' }}
+                className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
               >
                 <i className="ri-save-line"></i>
                 {isSubmitting ? 'Saving…' : 'Save Changes'}
@@ -3884,7 +3927,7 @@ export default function CreatePRPage() {
             <button
               onClick={handleSaveDraft}
               disabled={isSubmitting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors text-sm font-semibold cursor-pointer whitespace-nowrap disabled:opacity-60"
+              className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap sm:w-auto`}
             >
               <i className="ri-save-line"></i>
               {isSubmitting && submitAction === 'draft' ? 'Saving…' : 'Save Draft'}
@@ -3892,8 +3935,7 @@ export default function CreatePRPage() {
             <button
               onClick={handleSubmitPR}
               disabled={isSubmitting}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 text-white rounded-xl transition-opacity hover:opacity-90 text-sm font-semibold cursor-pointer whitespace-nowrap shadow-sm disabled:opacity-60"
-              style={{ background: BRAND_PRIMARY_GRADIENT }}
+              className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
             >
               <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
               {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
@@ -3902,6 +3944,7 @@ export default function CreatePRPage() {
             )}
           </div>
         </div>
+      </div>
       </div>
 
       {/* ── Delete Line Item Confirm ── */}
@@ -4170,6 +4213,7 @@ export default function CreatePRPage() {
                           setApprovalUserIds((prev) => prev.slice(0, 1));
                           setWorkStartDate('');
                           setWorkEndDate('');
+                          setProjectDetail('');
                           setSassSubscriptionModalOpen(false);
                           return;
                         }
@@ -4227,6 +4271,7 @@ export default function CreatePRPage() {
                       setApprovalUserIds((prev) => prev.slice(0, 1));
                       setWorkStartDate('');
                       setWorkEndDate('');
+                      setProjectDetail('');
                       setSassSubscriptionModalOpen(false);
                     }}
                     className="w-full py-2.5 rounded-xl bg-teal-600 text-white text-sm font-semibold disabled:opacity-40"

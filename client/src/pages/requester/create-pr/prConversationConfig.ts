@@ -81,8 +81,6 @@ export const PR_HEADER_QUESTIONS: PrQuestionConfig[] = [
     options: [
       { value: 'purchase_order', label: 'Purchase Order' },
       { value: 'work_order', label: 'Work Order' },
-      { value: 'sass', label: 'Cloud Subscription' },
-      { value: 'online_purchase', label: 'Online Purchase' },
     ],
   },
   {

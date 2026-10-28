@@ -331,6 +331,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_pr',
     'nav.rfq_entry',
     'nav.track_pr',
+    'nav.tasks',
     'nav.requester_vendor_po_acceptance',
     'nav.grn',
     'nav.requester_vendor_invoice',
@@ -457,7 +458,6 @@ export function ensureNavigation(
 
   // Requester always gets core menus + fulfillment (GRN, invoice, vendor acceptance) + Masters
   if (role === 'Requester') {
-    merged = merged.filter((n) => n.code !== 'nav.tasks');
     const codes = new Set(merged.map((n) => n.code));
     merged = [...merged];
     for (const code of [
@@ -465,6 +465,7 @@ export function ensureNavigation(
       'nav.create_pr',
       'nav.rfq_entry',
       'nav.track_pr',
+      'nav.tasks',
       'nav.requester_vendor_po_acceptance',
       'nav.grn',
       'nav.requester_vendor_invoice',

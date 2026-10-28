@@ -40,7 +40,7 @@ export default function SearchCreateField({
   onCreate,
   createExtraPlaceholder,
   onOpen,
-  portal = false,
+  portal = true,
 }: Props) {
   const boxRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -199,7 +199,7 @@ export default function SearchCreateField({
               ref={menuRef}
               className={`${
                 portal ? 'fixed z-[80]' : 'absolute z-30 mt-1 w-full'
-              } max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg`}
+              } overflow-y-auto rounded-2xl border border-[#d7e6ea] bg-white py-1 shadow-[0_16px_40px_-18px_rgba(13,95,110,0.45)]`}
               style={
                 portal && menuPos
                   ? { top: menuPos.top, left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxH }
@@ -221,12 +221,15 @@ export default function SearchCreateField({
                   key={opt.id}
                   type="button"
                   onClick={() => apply(opt)}
-                  className={`w-full text-left px-3 py-2.5 text-sm hover:bg-slate-50 cursor-pointer ${
-                    selectedId === opt.id ? 'bg-slate-100 font-semibold text-slate-900' : 'text-gray-800'
+                  className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2.5 text-left text-sm hover:bg-[#e6f6f8] ${
+                    selectedId === opt.id ? 'bg-[#e6f6f8] font-semibold text-[#0f6b7a]' : 'text-gray-800'
                   }`}
                 >
-                  <span className="block truncate">{opt.label}</span>
-                  {opt.subLabel ? <span className="block text-[11px] text-gray-400">{opt.subLabel}</span> : null}
+                  <span className="min-w-0">
+                    <span className="block truncate">{opt.label}</span>
+                    {opt.subLabel ? <span className="block text-[11px] text-gray-400">{opt.subLabel}</span> : null}
+                  </span>
+                  {selectedId === opt.id ? <i className="ri-check-line shrink-0 text-[#0f6b7a]" /> : null}
                 </button>
               ))}
               {canAdd && (
