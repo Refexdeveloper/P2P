@@ -395,7 +395,7 @@ export default function TaskDetailDrawer({
       <div className="dfx-overlay absolute inset-0" onClick={requestClose} />
       <aside className="dfx-panel relative flex h-full w-full max-w-2xl flex-col overflow-hidden">
         {/* Hero header */}
-        <header className="dfx-hero dfx-hero--plain relative shrink-0 px-5 pb-5 pt-5 sm:px-7">
+        <header className="dfx-hero dfx-hero--plain relative shrink-0 px-3 pb-3 pt-3 sm:px-7 sm:pb-5 sm:pt-5">
           <div className="dfx-bubbles" aria-hidden="true">
             <i /><i /><i /><i /><i />
           </div>
@@ -480,7 +480,7 @@ export default function TaskDetailDrawer({
           </div>
         ) : (
           <>
-            <div className="dfx-tabs-wrap shrink-0 px-3 sm:px-7">
+            <div className="dfx-tabs-wrap shrink-0 px-2 sm:px-7">
               <div ref={tabsRef} className="dfx-tabs" role="tablist">
                 <span
                   className="dfx-tab-ind"
@@ -505,7 +505,7 @@ export default function TaskDetailDrawer({
             </div>
 
             <div className="dfx-body min-h-0 flex-1 overflow-y-auto">
-              <div className="dfx-pane space-y-4 px-5 py-5 sm:px-7">
+              <div className="dfx-pane space-y-3 px-3 py-3 sm:space-y-4 sm:px-7 sm:py-5">
                 {activeTab === 'details' && (
                   <div key="details" className="space-y-4">
                     {String(task.sendBackRemarks || '').trim() ? (
@@ -834,7 +834,7 @@ export default function TaskDetailDrawer({
 
         {/* Footer — pinned so L1/L2 always see Approve / Send Back / Reject */}
         {showActions && (
-          <footer className="dfx-foot is-actions shrink-0 px-4 py-3 sm:px-7 sm:py-4">
+          <footer className="dfx-foot is-actions shrink-0 px-3 py-2.5 sm:px-7 sm:py-4">
             <button
               type="button"
               disabled={loading}
