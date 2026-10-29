@@ -29,6 +29,7 @@ import {
   buildPoPreviewForPo,
   sendVendorAcceptanceMail,
   submitManualVendorAcceptance,
+  updateVendorAcceptanceDocument,
   getVendorAcceptanceByToken,
   submitVendorAcceptanceByToken,
   resolveVendorAcceptanceFile,
@@ -1068,6 +1069,15 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buye
   try {
     const data = await submitManualVendorAcceptance(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Vendor acceptance recorded manually' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/:id/vendor-acceptance/document', requireRoles('Requester', 'Super Admin'), async (req, res) => {
+  try {
+    const data = await updateVendorAcceptanceDocument(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Vendor PO document updated' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

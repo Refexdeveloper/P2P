@@ -1198,6 +1198,14 @@ export const poApi = {
       `/api/po/${poId}/vendor-acceptance/manual`,
       { method: 'POST', body: JSON.stringify(body) }
     ),
+  updateVendorAcceptanceDocument: (
+    poId: number,
+    body: { fileName: string; fileData: string; remarks?: string }
+  ) =>
+    request<{ data: Record<string, unknown>; message: string }>(
+      `/api/po/${poId}/vendor-acceptance/document`,
+      { method: 'POST', body: JSON.stringify(body) }
+    ),
   getVendorAcceptanceByToken: (token: string) =>
     request<{ data: Record<string, unknown> }>(`/api/po/vendor-accept/${encodeURIComponent(token)}`),
   submitVendorAcceptanceByToken: (

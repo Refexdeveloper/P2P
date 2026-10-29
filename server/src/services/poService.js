@@ -6911,6 +6911,50 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
   return getPurchaseOrderById(poId);
 }
 
+/** Requester replaces the uploaded vendor PO document after acceptance is already recorded. */
+export async function updateVendorAcceptanceDocument(user, poId, body = {}) {
+  if (!['Requester', 'Super Admin'].includes(user.role)) {
+    throw new Error('Only the requester can edit the vendor PO document');
+  }
+
+  const [rows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
+  if (!rows.length) throw new Error('PO not found');
+  const row = rows[0];
+  const acceptanceStatus = String(row.vendor_acceptance_status || '').toLowerCase();
+  if (!['accepted', 'rejected', 'partial'].includes(acceptanceStatus)) {
+    throw new Error('Vendor acceptance is not completed yet');
+  }
+  await assertVendorAcceptanceActor(user, row);
+
+  const fileInfo = await saveVendorAcceptanceFile(poId, body.fileName, body.fileData);
+  if (!fileInfo.filePath) throw new Error('Upload the replacement vendor PO document');
+
+  const remarks = String(body.remarks || '').trim();
+  await pool.query(
+    `UPDATE purchase_orders SET
+       vendor_acceptance_file_name = ?,
+       vendor_acceptance_file_path = ?,
+       vendor_acceptance_remarks = COALESCE(NULLIF(?, ''), vendor_acceptance_remarks),
+       updated_at = NOW()
+     WHERE id = ?`,
+    [fileInfo.fileName, fileInfo.filePath, remarks, poId]
+  );
+
+  if (row.pr_id) {
+    await pool.query(
+      `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+       VALUES (?, 'PO_VENDOR_ACCEPTANCE', ?, 'updated', ?)`,
+      [
+        row.pr_id,
+        user.id,
+        `Vendor PO document replaced by ${user.name || user.role}: ${fileInfo.fileName}`,
+      ]
+    );
+  }
+
+  return getPurchaseOrderById(poId);
+}
+
 export async function getVendorAcceptanceByToken(token) {
   const clean = String(token || '').trim();
   if (!clean) throw new Error('Invalid acceptance link');

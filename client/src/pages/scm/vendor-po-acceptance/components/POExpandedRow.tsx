@@ -66,6 +66,7 @@ type Props = {
   onSendMail: () => void;
   onManual: () => void;
   onViewPdf: () => void;
+  onEditDocument?: () => void;
   busy?: boolean;
 };
 
@@ -94,7 +95,7 @@ function Field({ label, value, className = '' }: { label: string; value: string;
   );
 }
 
-export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, busy }: Props) {
+export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, onEditDocument, busy }: Props) {
   const navigate = useNavigate();
   const pending = !po.vendorAcceptanceStatus || po.vendorAcceptanceStatus === 'pending';
   const accepted =
@@ -179,6 +180,16 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                       Manual Entry
                     </button>
                   </>
+                )}
+                {completed && onEditDocument && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={onEditDocument}
+                    className="cursor-pointer rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    <i className="ri-edit-line mr-1"></i> Change file
+                  </button>
                 )}
                 {accepted && isWorkOrder && (
                   <button
@@ -345,9 +356,31 @@ export default function POExpandedRow({ po, onSendMail, onManual, onViewPdf, bus
                           >
                             Download
                           </button>
+                          {onEditDocument ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={onEditDocument}
+                              className="cursor-pointer rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] disabled:opacity-50"
+                            >
+                              <i className="ri-edit-line mr-1"></i> Change file
+                            </button>
+                          ) : null}
                         </div>
                       ) : (
-                        <p className="mt-2 text-sm text-slate-500">No acceptance file was uploaded for this response.</p>
+                        <div className="mt-2">
+                          <p className="text-sm text-slate-500">No acceptance file was uploaded for this response.</p>
+                          {onEditDocument ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={onEditDocument}
+                              className="mt-2 cursor-pointer rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                              <i className="ri-edit-line mr-1"></i> Upload document
+                            </button>
+                          ) : null}
+                        </div>
                       )}
                     </div>
                   </div>

@@ -56,6 +56,11 @@ export default function VendorPOAcceptancePage() {
   const location = useLocation();
   const isRequesterView = location.pathname.startsWith('/requester/');
   const { user } = useAuth();
+  const canChangeAcceptedFile =
+    isRequesterView ||
+    user?.role === 'Requester' ||
+    user?.role === 'Super Admin' ||
+    Boolean(user?.isSuperAdmin);
   const [rows, setRows] = useState<AcceptancePo[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('pending');
@@ -70,6 +75,7 @@ export default function VendorPOAcceptancePage() {
   const [file, setFile] = useState<File | null>(null);
   const [sendMailFor, setSendMailFor] = useState<AcceptancePo | null>(null);
   const [sendMailComments, setSendMailComments] = useState('');
+  const [editingDocument, setEditingDocument] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToast({ text, type });
@@ -145,9 +151,20 @@ export default function VendorPOAcceptancePage() {
   };
 
   const openManual = (po: AcceptancePo) => {
+    setEditingDocument(false);
     setManualFor(po);
     setManualAction('accept');
     setRemarks('');
+    setDeliveryDate('');
+    setFile(null);
+  };
+
+  const openEditDocument = (po: AcceptancePo) => {
+    const status = po.vendorAcceptanceStatus;
+    setEditingDocument(true);
+    setManualFor(po);
+    setManualAction(status === 'rejected' ? 'reject' : status === 'partial' ? 'partial' : 'accept');
+    setRemarks(po.vendorAcceptanceRemarks || '');
     setDeliveryDate('');
     setFile(null);
   };
@@ -163,6 +180,30 @@ export default function VendorPOAcceptancePage() {
 
   const submitManual = async () => {
     if (!manualFor) return;
+    if (editingDocument) {
+      if (!file) {
+        showToast('Upload the replacement vendor PO document', 'error');
+        return;
+      }
+      setBusyId(manualFor.id);
+      try {
+        const fileData = await fileToBase64(file);
+        const res = await poApi.updateVendorAcceptanceDocument(manualFor.id, {
+          fileName: file.name,
+          fileData,
+          remarks: remarks.trim() || undefined,
+        });
+        setManualFor(null);
+        setEditingDocument(false);
+        await load();
+        showToast(res.message || 'Vendor PO document updated', 'success');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to update document', 'error');
+      } finally {
+        setBusyId(null);
+      }
+      return;
+    }
     if (!remarks.trim()) {
       showToast('Remarks are required', 'error');
       return;
@@ -383,7 +424,7 @@ export default function VendorPOAcceptancePage() {
                               className="relative h-px bg-[#f7fafb] p-0 before:pointer-events-none before:absolute before:inset-x-0 before:-bottom-3 before:-top-3 before:z-0 before:bg-[#f7fafb]"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <div className={`relative z-[1] flex h-full flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
+                              <div className={`relative z-[1] flex h-full flex-wrap items-center justify-end gap-1.5 rounded-r-2xl border border-l-0 bg-white py-4 pl-3 pr-4 transition-[border-color,box-shadow] sm:rounded-r-[18px] sm:py-5 ${rowBorder} ${rowShadow}`}>
                                 {pending ? (
                                   <>
                                     <button
@@ -403,20 +444,33 @@ export default function VendorPOAcceptancePage() {
                                       Manual Entry
                                     </button>
                                   </>
-                                ) : accepted ? (
-                                  po.purchaseType === 'work_order' ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => navigate('/requester/vendor-invoice')}
-                                      className="cursor-pointer whitespace-nowrap rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white"
-                                    >
-                                      Upload invoice
-                                    </button>
-                                  ) : (
-                                    <span className="text-xs font-semibold text-emerald-700">Accepted</span>
-                                  )
                                 ) : (
-                                  <span className="text-xs text-slate-500">Completed</span>
+                                  <>
+                                    {canChangeAcceptedFile && (
+                                      <button
+                                        type="button"
+                                        disabled={busyId === po.id}
+                                        onClick={() => openEditDocument(po)}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361] disabled:opacity-50"
+                                      >
+                                        <i className="ri-edit-line mr-1"></i>
+                                        Change file
+                                      </button>
+                                    )}
+                                    {accepted && po.purchaseType === 'work_order' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => navigate('/requester/vendor-invoice')}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white"
+                                      >
+                                        Upload invoice
+                                      </button>
+                                    ) : !isRequesterView ? (
+                                      <span className="text-xs font-semibold text-slate-500">
+                                        {accepted ? 'Accepted' : 'Completed'}
+                                      </span>
+                                    ) : null}
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -428,6 +482,7 @@ export default function VendorPOAcceptancePage() {
                               onSendMail={() => openSendMail(po)}
                               onManual={() => openManual(po)}
                               onViewPdf={() => viewPdf(po.id)}
+                              onEditDocument={canChangeAcceptedFile && !pending ? () => openEditDocument(po) : undefined}
                             />
                           )}
                         </Fragment>
@@ -490,50 +545,65 @@ export default function VendorPOAcceptancePage() {
       {manualFor && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-bold text-gray-900">Manual vendor acceptance</h3>
+            <h3 className="text-lg font-bold text-gray-900">
+              {editingDocument ? 'Change vendor PO file' : 'Manual vendor acceptance'}
+            </h3>
             <p className="text-sm text-gray-500 mt-1">
               {manualFor.poNumber} — {manualFor.vendorName}
             </p>
+            {editingDocument && manualFor.vendorAcceptanceFileName ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Current file: {manualFor.vendorAcceptanceFileName}
+              </p>
+            ) : null}
 
-            <div className="mt-4 flex gap-2">
-              {(['accept', 'partial', 'reject'] as const).map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  onClick={() => setManualAction(a)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
-                    manualAction === a
-                      ? 'bg-[#0f6b7a] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {a}
-                </button>
-              ))}
-            </div>
+            {!editingDocument && (
+              <div className="mt-4 flex gap-2">
+                {(['accept', 'partial', 'reject'] as const).map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => setManualAction(a)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize ${
+                      manualAction === a
+                        ? 'bg-[#0f6b7a] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+            )}
 
-            <label className="block mt-4 text-xs font-semibold text-gray-600 mb-1">Remarks *</label>
+            <label className="block mt-4 text-xs font-semibold text-gray-600 mb-1">
+              Remarks {editingDocument ? '' : '*'}
+            </label>
             <textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               rows={3}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0f6b7a]/20"
-              placeholder="Vendor confirmation notes…"
+              placeholder={editingDocument ? 'Optional note about this replacement…' : 'Vendor confirmation notes…'}
             />
 
-            {manualAction !== 'reject' && (
+            {editingDocument || manualAction !== 'reject' ? (
               <>
+                {!editingDocument && (
+                  <>
+                    <label className="block mt-3 text-xs font-semibold text-gray-600 mb-1">
+                      Confirmed delivery date
+                    </label>
+                    <input
+                      type="date"
+                      value={deliveryDate}
+                      onChange={(e) => setDeliveryDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </>
+                )}
                 <label className="block mt-3 text-xs font-semibold text-gray-600 mb-1">
-                  Confirmed delivery date
-                </label>
-                <input
-                  type="date"
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <label className="block mt-3 text-xs font-semibold text-gray-600 mb-1">
-                  Upload acceptance / signed document *
+                  {editingDocument ? 'Replacement vendor PO document *' : 'Upload acceptance / signed document *'}
                 </label>
                 <input
                   type="file"
@@ -542,12 +612,15 @@ export default function VendorPOAcceptancePage() {
                   className="w-full text-sm"
                 />
               </>
-            )}
+            ) : null}
 
             <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setManualFor(null)}
+                onClick={() => {
+                  setManualFor(null);
+                  setEditingDocument(false);
+                }}
                 className="px-4 py-2 text-sm border border-gray-200 rounded-lg"
               >
                 Cancel
@@ -558,9 +631,9 @@ export default function VendorPOAcceptancePage() {
                 onClick={submitManual}
                 className="px-4 py-2 text-sm font-semibold bg-[#0f6b7a] text-white rounded-lg disabled:opacity-50"
               >
-                Save &amp; continue
+                {editingDocument ? 'Save document' : 'Save & continue'}
               </button>
-      </div>
+            </div>
           </div>
         </div>
       )}
