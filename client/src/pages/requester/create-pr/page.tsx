@@ -2031,11 +2031,13 @@ export default function CreatePRPage() {
         if (Number(quote.round) > maxR) continue;
         const price = Number(quote.quotedPrice);
         if (!Number.isFinite(price) || price < 0) continue;
+        if (String(quote.quotedPrice ?? '').trim() === '') continue;
         const locals = localQuoteFiles(quote);
         const saved = savedQuoteFiles(quote);
         const hasNewFile = locals.length > 0;
         const hasSavedFile = saved.length > 0 || Boolean(quote.savedFileName || quote.savedSubmissionId);
-        if (!hasNewFile && !hasSavedFile) continue;
+        // Q1 always needs a file. Later rounds can be a revised price only.
+        if (!hasNewFile && !hasSavedFile && Number(quote.round) <= 1) continue;
         const entry: Record<string, unknown> = {
           round: quote.round,
           quotedPrice: price,

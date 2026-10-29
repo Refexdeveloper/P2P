@@ -324,10 +324,12 @@ export default function FunctionalOwnRfqSection({
   const editingQuote = editingQuotes.find((q) => q.round === quoteRound);
 
   const updateQuote = (key: string, round: number, patch: Partial<FunctionalRfqQuote>) => {
+    const slotCount = Math.min(4, Math.max(visibleRounds, round, 1));
+    if (slotCount > visibleRounds) onMaxRoundsChange(slotCount);
     const patchList = (list: FunctionalRfqVendorRow[]) =>
       list.map((r) =>
         r.key === key
-          ? { ...r, quotes: syncQuotes(r.quotes, visibleRounds).map((q) => (q.round === round ? { ...q, ...patch } : q)) }
+          ? { ...r, quotes: syncQuotes(r.quotes, slotCount).map((q) => (q.round === round ? { ...q, ...patch } : q)) }
           : r
       );
     const source = rows.some((r) => r.key === key)
@@ -464,9 +466,11 @@ export default function FunctionalOwnRfqSection({
   };
 
   const nextRequoteRound = (row: FunctionalRfqVendorRow) => {
-    const filled = row.quotes.filter((q) => Number(q.quotedPrice) > 0).map((q) => q.round);
+    const filled = row.quotes
+      .filter((q) => String(q.quotedPrice ?? '').trim() !== '' && Number(q.quotedPrice) >= 0)
+      .map((q) => q.round);
     const latest = filled.length ? Math.max(...filled) : 0;
-    return Math.min(4, latest + 1 || 1);
+    return Math.min(4, latest + 1);
   };
 
   const pendingNames = rows
@@ -494,7 +498,7 @@ export default function FunctionalOwnRfqSection({
             pendingNames.length > 2 ? ` and ${pendingNames.length - 2} more` : ''
           } — click "Add quote" next to the vendor.`
         : !recommendedKey
-          ? 'All quotes are in. Compare the prices below and click "Choose" on the best vendor.'
+          ? 'All Q1 quotes are in. Compare them below, use Next round for a revised Q2 price, then click Choose.'
           : `${recommendedName} is selected. You can continue to the next step.`;
 
   const handleQuoteFiles = (picked: File[]) => {
@@ -641,11 +645,15 @@ export default function FunctionalOwnRfqSection({
               </p>
               {rows.map((row, idx) => {
                 const round1 = row.quotes.find((q) => q.round === 1);
+                const priced = row.quotes.filter(
+                  (q) => String(q.quotedPrice ?? '').trim() !== '' && Number(q.quotedPrice) >= 0
+                );
                 const hasQuote =
                   Number(round1?.quotedPrice) >= 0 &&
                   String(round1?.quotedPrice || '').trim() !== '' &&
                   quoteHasQuotationFile(round1);
                 const fileCount = localQuoteFiles(round1).length + savedQuoteFiles(round1).length;
+                const editRound = Math.min(4, Math.max(1, focusTab || 1));
                 return (
                   <div key={row.key} className={`vr-vendor${hasQuote ? ' is-quoted' : ''}`}>
                     <span className="vr-vendor-no">{idx + 1}</span>
@@ -664,7 +672,9 @@ export default function FunctionalOwnRfqSection({
                       {hasQuote ? (
                         <>
                           <i className="ri-checkbox-circle-fill" />
-                          {moneyFmt(Number(round1?.quotedPrice))}
+                          {priced
+                            .map((q) => `Q${q.round} ${moneyFmt(Number(q.quotedPrice))}`)
+                            .join(' · ') || moneyFmt(Number(round1?.quotedPrice))}
                           {fileCount > 0 ? ` · ${fileCount} file${fileCount === 1 ? '' : 's'}` : ''}
                         </>
                       ) : (
@@ -676,11 +686,11 @@ export default function FunctionalOwnRfqSection({
                     <div className="vr-vendor-acts">
                       <button
                         type="button"
-                        onClick={() => openQuote(row, 1)}
+                        onClick={() => openQuote(row, hasQuote ? editRound : 1)}
                         className={`vr-btn sm ${hasQuote ? 'ghost' : 'primary'}`}
                       >
                         <i className={hasQuote ? 'ri-edit-line' : 'ri-add-line'} />
-                        {hasQuote ? 'Edit quote' : 'Add quote'}
+                        {hasQuote ? (visibleRounds > 1 ? `Edit Q${editRound}` : 'Edit quote') : 'Add quote'}
                       </button>
                       <button
                         type="button"
@@ -713,7 +723,9 @@ export default function FunctionalOwnRfqSection({
               <span className="vr-badge">2</span>
               <div className="min-w-0 flex-1">
                 <h2>Compare quotes and choose the winner</h2>
-                <p>Each vendor&apos;s quoted price is shown here. Edit a quote, then choose the winner.</p>
+                <p>
+                  Q1 is the first quote. Use Next round to add Q2 when a vendor revises the price, then choose the winner.
+                </p>
               </div>
               <span className="vr-count">
                 {quotedCount} of {rows.length} quotes entered
@@ -752,7 +764,8 @@ export default function FunctionalOwnRfqSection({
             <RfqVendorQuoteTable
             rows={comparisonRows}
             currency={moneyCode}
-            singleQuote
+            maxRounds={visibleRounds}
+            roundCeiling={4}
             recommendedId={
               recommendedKey
                 ? comparisonRows.find((r) => r.id === recommendedKey)?.invitationId ?? null
@@ -809,6 +822,15 @@ export default function FunctionalOwnRfqSection({
                 onRecommendedChange?.({ key: null, justification: '' });
               }
             }}
+            onNextRound={(next) => {
+              applyRows(rows, Math.min(4, Math.max(1, Number(next) || visibleRounds + 1)));
+            }}
+            onRemoveRound={removeRound}
+            onSendBack={(tableRow) => {
+              const row = rows.find((r) => r.key === tableRow.id);
+              if (!row) return;
+              openQuote(row, nextRequoteRound(row));
+            }}
           />
         </div>
       )}
@@ -822,7 +844,7 @@ export default function FunctionalOwnRfqSection({
               </span>
               <div className="min-w-0 flex-1">
                 <h3>Quote from {editingSource.name}</h3>
-                <p>Enter the price this vendor quoted and attach their quotation file.</p>
+                <p>Round Q{quoteRound}. Enter the price this vendor quoted and attach their quotation file.</p>
               </div>
               <button type="button" onClick={closeQuote} className="vr-icon-btn" aria-label="Close">
                 <i className="ri-close-line" />
@@ -830,6 +852,24 @@ export default function FunctionalOwnRfqSection({
             </div>
 
             <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              {Math.max(visibleRounds, quoteRound) > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from({ length: Math.min(4, Math.max(visibleRounds, quoteRound)) }, (_, i) => i + 1).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setQuoteRound(r)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold ${
+                        quoteRound === r
+                          ? 'bg-[#1E88E5] text-white'
+                          : 'bg-[#E3F2FD] text-[#1565C0] hover:bg-[#BBDEFB]'
+                      }`}
+                    >
+                      Q{r}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* File */}
               <section>
                 <p className="vr-sec-title">
