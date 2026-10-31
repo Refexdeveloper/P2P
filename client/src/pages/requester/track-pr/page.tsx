@@ -1311,16 +1311,16 @@ export default function TrackPRPage() {
                                   <i className="ri-eye-line"></i>
                                 </button>
                                 {isL1Manager &&
-                                  isDraftTrackPr(pr) &&
+                                  (isDraftTrackPr(pr) || pr.status === 'returned') &&
                                   Number(pr.requesterId) === Number(user?.id) && (
                                   <button
                                     type="button"
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
-                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
-                                    title="Edit this draft and submit it"
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                    title={pr.status === 'returned' ? 'Edit this returned PR and resubmit it' : 'Edit this draft and submit it'}
                                   >
                                     <i className="ri-edit-line"></i>
-                                    Edit
+                                    {pr.status === 'returned' ? 'Edit & Resubmit' : 'Edit'}
                                   </button>
                                 )}
                                 {isL1Manager && l1CanSend(pr) && (
@@ -1345,10 +1345,12 @@ export default function TrackPRPage() {
                                   <button
                                     type="button"
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
-                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                    className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
                                   >
                                     <i className="ri-edit-line"></i>
-                                    Edit
+                                    {pr.status === 'returned' && Number(pr.requesterId) === Number(user?.id)
+                                      ? 'Edit & Resubmit'
+                                      : 'Edit'}
                                   </button>
                                 )}
                                 {isAdminEditor && pr.status !== 'draft' && (
@@ -1688,6 +1690,17 @@ export default function TrackPRPage() {
                                                 <p className="text-xs text-red-800">
                                                   {pr.returnReason}
                                                 </p>
+                                                {pr.status === 'returned' &&
+                                                  Number(pr.requesterId) === Number(user?.id) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
+                                                      className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#0f6b7a] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                                    >
+                                                      <i className="ri-edit-line"></i>
+                                                      Edit &amp; Resubmit
+                                                    </button>
+                                                  )}
                                               </div>
                                             </div>
                                           </div>

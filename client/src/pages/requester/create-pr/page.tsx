@@ -378,10 +378,10 @@ export default function CreatePRPage() {
   };
 
   const isReturned = prStatus === 'RETURNED';
-  /** L1 editing a draft they raised — same Save Draft / Submit PR actions as a requester. */
+  /** Editing a draft or returned PR you raised — same Save Draft / Submit (Resubmit) actions as a requester. */
   const isOwnDraftEdit =
     isEditMode &&
-    String(prStatus).toUpperCase() === 'DRAFT' &&
+    ['DRAFT', 'RETURNED'].includes(String(prStatus).toUpperCase()) &&
     Number(prRequesterId) > 0 &&
     Number(prRequesterId) === Number(user?.id);
   /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
@@ -1916,6 +1916,26 @@ export default function CreatePRPage() {
       if (!hasRound1 && !existingRfqHasQuotes) {
         newErrors.rfqVendors = 'Add at least one vendor with a round-1 quoted price and quotation file';
       }
+      const maxR = Math.min(4, Math.max(1, Number(rfqMaxRounds) || 1));
+      const missingFile = rfqVendors
+        .flatMap((row) =>
+          row.quotes
+            .filter(
+              (q) =>
+                q.round > 1 &&
+                q.round <= maxR &&
+                String(q.quotedPrice ?? '').trim() !== '' &&
+                !quoteHasQuotationFile(q)
+            )
+            .map((q) => `${row.name || 'Vendor'} Q${q.round}`)
+        );
+      if (missingFile.length) {
+        newErrors.rfqVendors =
+          newErrors.rfqVendors ||
+          `Upload the quotation file for ${missingFile.slice(0, 3).join(', ')}${
+            missingFile.length > 3 ? ` and ${missingFile.length - 3} more` : ''
+          }`;
+      }
       if (
         !rfqRecommendedKey &&
         !rfqRecommendedMeta.vendorId &&
@@ -2036,8 +2056,7 @@ export default function CreatePRPage() {
         const saved = savedQuoteFiles(quote);
         const hasNewFile = locals.length > 0;
         const hasSavedFile = saved.length > 0 || Boolean(quote.savedFileName || quote.savedSubmissionId);
-        // Q1 always needs a file. Later rounds can be a revised price only.
-        if (!hasNewFile && !hasSavedFile && Number(quote.round) <= 1) continue;
+        if (!hasNewFile && !hasSavedFile) continue;
         const entry: Record<string, unknown> = {
           round: quote.round,
           quotedPrice: price,

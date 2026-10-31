@@ -4,7 +4,7 @@ import DashboardLayout from '../../components/feature/DashboardLayout';
 import StatusBadge from '../../components/base/StatusBadge';
 import PriorityBadge from '../../components/base/PriorityBadge';
 import ApprovalModal from './components/ApprovalModal';
-import TaskDetailDrawer from './components/TaskDetailDrawer';
+import TaskDetailDrawer, { type ApprovalProgress } from './components/TaskDetailDrawer';
 import TaskStats, { type TaskStatCard, type TaskStatFilter } from './components/TaskStats';
 import { taskApi, prApi, poApi, cloudSubscriptionApi } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -307,6 +307,7 @@ export default function TasksPage() {
     requiredDate: string;
     currentApprover: string;
     currentStepOwner?: { name?: string; role?: string } | null;
+    approvalProgress?: ApprovalProgress | null;
     statusUI?: string;
     justification: string;
     sendBackRemarks?: string;
@@ -560,6 +561,7 @@ export default function TasksPage() {
           if (typeof ca === 'string' && ca.trim()) return { name: ca.trim(), role: '' };
           return { name: '', role: '' };
         })(),
+        approvalProgress: (pr.approvalProgress as ApprovalProgress | null | undefined) || null,
         statusUI: String(pr.statusUI || pr.statusFrontend || '').trim(),
         justification: String(pr.justification || 'No justification provided.'),
         sendBackRemarks: String(pr.sendBackRemarks || ''),

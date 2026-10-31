@@ -65,6 +65,9 @@ interface PRDetail {
   entityCode?: string;
   priority: string;
   requiredDate: string;
+  purchaseType?: string;
+  workStartDate?: string;
+  workEndDate?: string;
   submittedDate: string;
   totalAmount: number;
   justification: string;
@@ -594,6 +597,9 @@ export default function PRBucketExpandedRow({
               entityCode: String(d.entityCode || ''),
               priority: String(d.priority || d.priorityLower || ''),
               requiredDate: String(d.requiredDate || ''),
+              purchaseType: String(d.purchaseType || ''),
+              workStartDate: String(d.workStartDate || ''),
+              workEndDate: String(d.workEndDate || ''),
               submittedDate: String(d.submittedDate || ''),
               totalAmount: Number(d.totalAmount || 0),
               justification: String(d.justification || ''),
@@ -951,6 +957,15 @@ export default function PRBucketExpandedRow({
                       ['Project Detail', pr.projectDetail],
                       ['Priority', pr.priority],
                       ['Required Date', pr.requiredDate || '—'],
+                      ...(pr.purchaseType === 'work_order' ||
+                      /work order/i.test(poSummary?.purchaseTypeLabel || '') ||
+                      pr.workStartDate ||
+                      pr.workEndDate
+                        ? [
+                            ['Work Start Date', pr.workStartDate || '—'] as [string, string],
+                            ['Work End Date', pr.workEndDate || '—'] as [string, string],
+                          ]
+                        : []),
                       ['Payment Terms', pr.paymentTerms || '—'],
                       ['Submitted', pr.submittedDate || '—'],
                       ['Total Amount', formatCurrency(pr.totalAmount)],

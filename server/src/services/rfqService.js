@@ -1201,7 +1201,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
             );
           }
         }
-      } else if (Number(quote.round) <= 1) {
+      } else {
         continue;
       }
       const [ins] = await pool.query(

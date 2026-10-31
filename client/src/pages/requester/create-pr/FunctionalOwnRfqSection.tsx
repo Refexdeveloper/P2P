@@ -882,7 +882,7 @@ export default function FunctionalOwnRfqSection({
                   return (
                     <>
                       <label
-                        className={`vr-drop${hasAny ? ' has-files' : ''}${quoteRound === 1 && !hasAny ? ' is-required' : ''}`}
+                        className={`vr-drop${hasAny ? ' has-files' : ''}${!hasAny ? ' is-required' : ''}`}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
                           e.preventDefault();
@@ -999,7 +999,7 @@ export default function FunctionalOwnRfqSection({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <label className="vr-field-label">
-                      Quoted price {quoteRound === 1 ? <span className="text-rose-500">*</span> : null}
+                      Quoted price <span className="text-rose-500">*</span>
                     </label>
                     <div className="vr-input-wrap">
                       <span className="vr-prefix">{moneySym}</span>
@@ -1056,13 +1056,7 @@ export default function FunctionalOwnRfqSection({
 
             <div className="vr-modal-foot">
               <span className="vr-foot-note">
-                {quoteRound === 1 ? (
-                  <>
-                    <span className="text-rose-500">*</span> Round 1 needs a price and a file
-                  </>
-                ) : (
-                  'Changes are kept when you save the PR'
-                )}
+                <span className="text-rose-500">*</span> Round Q{quoteRound} needs a price and a file
               </span>
               <button type="button" onClick={closeQuote} className="vr-btn ghost">
                 Cancel
@@ -1070,12 +1064,12 @@ export default function FunctionalOwnRfqSection({
               <button
                 type="button"
                 onClick={() => {
-                  if (quoteRound === 1 && !(Number.isFinite(Number(editingQuote.quotedPrice)) && Number(editingQuote.quotedPrice) >= 0 && editingQuote.quotedPrice !== '')) {
-                    setLocalError('Round 1 needs a quoted price (0 is allowed)');
+                  if (!(Number.isFinite(Number(editingQuote.quotedPrice)) && Number(editingQuote.quotedPrice) >= 0 && String(editingQuote.quotedPrice ?? '').trim() !== '')) {
+                    setLocalError(`Round Q${quoteRound} needs a quoted price (0 is allowed)`);
                     return;
                   }
-                  if (quoteRound === 1 && !quoteHasQuotationFile(editingQuote) && !existingQuoteNote) {
-                    setLocalError('Round 1 needs a quotation file');
+                  if (!quoteHasQuotationFile(editingQuote) && !(quoteRound === 1 && existingQuoteNote)) {
+                    setLocalError(`Round Q${quoteRound} needs a quotation file`);
                     return;
                   }
                   setLocalError('');

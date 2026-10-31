@@ -738,6 +738,14 @@ export default function TrackPoExpandedRow({
     ['Incoterms', String(po?.incoterms || '—')],
     ['Mode of Shipment', String(po?.modeOfShipment || po?.poTermsDetails?.modeOfShipment || '—')],
     ['Required / Delivery', String(po?.expectedDeliveryDate || pr?.requiredDate || row.requiredDate || '—')],
+    ...(String(po?.purchaseType || row.purchaseType || pr?.purchaseType || '') === 'work_order' ||
+    pr?.workStartDate ||
+    pr?.workEndDate
+      ? [
+          ['Work Start Date', String(pr?.workStartDate || '—')],
+          ['Work End Date', String(pr?.workEndDate || '—')],
+        ]
+      : []),
     ['Created By', String(po?.createdBy || '—')],
     ['Created / Submitted', String(po?.createdAt || pr?.submittedDate || row.createdAt || '—')],
     ['Status', String(po?.status || pr?.statusUI || row.statusLabel || '—')],

@@ -35,6 +35,25 @@ interface VendorQuoteVendor {
   rounds: VendorQuoteRound[];
 }
 
+export interface ApprovalProgress {
+  current: { stage: string; owner: string; role?: string; pendingSince?: string | null } | null;
+  remaining: Array<{ stage: string; owner: string }>;
+  completed?: boolean;
+}
+
+function pendingDuration(sinceIso?: string | null): string {
+  if (!sinceIso) return '';
+  const since = new Date(sinceIso).getTime();
+  if (!Number.isFinite(since)) return '';
+  const mins = Math.max(0, Math.floor((Date.now() - since) / 60000));
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor((mins % 1440) / 60);
+  const rest = mins % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${rest}m`;
+  return `${rest}m`;
+}
+
 interface ApprovalStep {
   step: string;
   approver: string;
@@ -74,6 +93,7 @@ interface PRTask {
   currentApprover: string;
   /** Real pending-task owner (name + role), separate from stage label in currentApprover */
   currentStepOwner?: { name?: string; role?: string } | null;
+  approvalProgress?: ApprovalProgress | null;
   justification: string;
   sendBackRemarks?: string;
   vendorSelection?: 'own' | 'scm';
@@ -157,7 +177,15 @@ function historyTone(status: string) {
   }
   if (s.includes('reject')) return { tone: 'red', icon: 'ri-close-line' };
   if (s.includes('return') || s.includes('rework')) return { tone: 'orange', icon: 'ri-arrow-go-back-line' };
-  if (s.includes('approv') || s.includes('complet') || s.includes('submit'))
+  if (
+    s.includes('approv') ||
+    s.includes('complet') ||
+    s.includes('submit') ||
+    s.includes('accept') ||
+    s.includes('verif') ||
+    s.includes('updat') ||
+    s.includes('partial')
+  )
     return { tone: 'green', icon: 'ri-check-line' };
   return { tone: 'teal', icon: 'ri-time-line' };
 }
@@ -206,7 +234,24 @@ export default function TaskDetailDrawer({
       .replace(/\b\w/g, (c) => c.toUpperCase());
   const ownerName = String(task.currentStepOwner?.name || '').trim();
   const ownerRole = String(task.currentStepOwner?.role || '').trim();
-  const currentStepEntry = showCurrentStep
+  const progress = task.approvalProgress || null;
+  const progressCurrent = progress?.current || null;
+  const pendingFor = pendingDuration(progressCurrent?.pendingSince);
+  const upcomingSteps = progress?.remaining || [];
+  const currentStepEntry = progressCurrent
+    ? {
+        stage: progressCurrent.stage,
+        step: progressCurrent.stage,
+        approver: progressCurrent.owner || 'Awaiting assignment',
+        role: progressCurrent.role || '',
+        date: progressCurrent.pendingSince || 'Now',
+        status: 'current',
+        remarks: String(task.sendBackRemarks || '').trim()
+          ? String(task.sendBackRemarks).trim()
+          : `Waiting on ${progressCurrent.owner || 'the assigned owner'}${pendingFor ? ` for ${pendingFor}` : ''}`,
+        isCurrent: true as const,
+      }
+    : showCurrentStep && !progress
     ? {
         stage: stepLabel,
         step: stepLabel,
@@ -222,7 +267,7 @@ export default function TaskDetailDrawer({
         isCurrent: true as const,
       }
     : null;
-  const approvalHistory = currentStepEntry ? [currentStepEntry, ...pastHistory] : pastHistory;
+  const approvalHistory = currentStepEntry ? [...pastHistory, currentStepEntry] : pastHistory;
   const [hasQuotes, setHasQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState<DrawerTab>('details');
   const [filePreview, setFilePreview] = useState<{
@@ -314,7 +359,10 @@ export default function TaskDetailDrawer({
     {
       id: 'history',
       label: 'History',
-      count: approvalHistory.length > 0 ? approvalHistory.length : undefined,
+      count:
+        approvalHistory.length + upcomingSteps.length > 0
+          ? approvalHistory.length + upcomingSteps.length
+          : undefined,
     },
   ];
   const tabKey = tabs.map((t) => t.id).join('|');
@@ -758,8 +806,48 @@ export default function TaskDetailDrawer({
                   </div>
                 )}
 
+                {activeTab === 'history' && progress && (
+                  <div className="mb-3 rounded-2xl border border-[#BBDEFB] bg-[#F3F9FF] px-3.5 py-3">
+                    {progressCurrent ? (
+                      <>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#1565C0]">
+                          Currently pending
+                        </p>
+                        <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+                          {progressCurrent.stage}
+                          <span className="font-normal text-slate-500"> · with </span>
+                          {progressCurrent.owner}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                          {pendingFor ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800">
+                              <i className="ri-time-line mr-1" />
+                              Pending for {pendingFor}
+                            </span>
+                          ) : null}
+                          {progressCurrent.pendingSince ? (
+                            <span className="rounded-full bg-white px-2 py-0.5 text-slate-600">
+                              Since {formatDateTime(progressCurrent.pendingSince)}
+                            </span>
+                          ) : null}
+                          <span className="rounded-full bg-white px-2 py-0.5 text-slate-600">
+                            {upcomingSteps.length
+                              ? `${upcomingSteps.length} stage${upcomingSteps.length === 1 ? '' : 's'} remaining`
+                              : 'Last stage'}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-sm font-semibold text-emerald-700">
+                        <i className="ri-checkbox-circle-line mr-1" />
+                        All approval stages are complete
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {activeTab === 'history' &&
-                  (approvalHistory.length === 0 ? (
+                  (approvalHistory.length === 0 && upcomingSteps.length === 0 ? (
                     <div className="dfx-empty">
                       <i className="ri-history-line" />
                       <p>No approval history yet</p>
@@ -807,7 +895,7 @@ export default function TaskDetailDrawer({
                                   </p>
                                 </div>
                                 <span className="dfx-tl-date">
-                                  {isCurrent ? 'Now' : formatDateTime(step.date)}
+                                  {isCurrent ? (pendingFor ? `Pending ${pendingFor}` : 'Now') : formatDateTime(step.date)}
                                 </span>
                               </div>
                               {step.remarks ? (
@@ -825,6 +913,31 @@ export default function TaskDetailDrawer({
                           </li>
                         );
                       })}
+                      {upcomingSteps.map((step, idx) => (
+                        <li
+                          key={`upcoming-${step.stage}-${idx}`}
+                          className="dfx-tl-item tone-teal opacity-70"
+                          style={{ '--i': approvalHistory.length + idx } as CSSProperties}
+                        >
+                          <span className="dfx-tl-dot">
+                            <i className="ri-time-line" />
+                          </span>
+                          <div className="dfx-tl-card border-dashed">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="break-words text-sm font-semibold text-slate-700">
+                                  {step.stage}
+                                  <span className="ml-2 inline-flex align-middle rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                    Upcoming
+                                  </span>
+                                </p>
+                                <p className="break-words text-xs text-slate-500">{step.owner}</p>
+                              </div>
+                              <span className="dfx-tl-date">Step {idx + 1} of {upcomingSteps.length}</span>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
                     </ol>
                   ))}
               </div>

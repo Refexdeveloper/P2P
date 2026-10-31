@@ -64,6 +64,7 @@ import {
   SASS_MUGESH_NAME,
   SASS_MUGESH_EMAIL,
   SASS_L2_EMAIL,
+  SASS_L2_NAME,
 } from './sassWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
@@ -469,10 +470,10 @@ function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purch
     HOD_REVIEW: 'L1 Manager Approval',
     PR_MANAGER_REVIEW: 'L2 Manager Approval',
     CFO_REVIEW: 'Mugesh Approval',
-    RFQ_REQUESTER_SUBMIT: 'RFQ Submitted � Vendor Final',
+    RFQ_REQUESTER_SUBMIT: 'RFQ Submitted - Vendor Final',
     RFQ_MANAGER_REVIEW: 'Vendor Final Approval (Manager)',
-    RFQ_L2_REVIEW: 'Vendor Final � L2 Manager',
-    RFQ_CFO_REVIEW: 'Vendor Final � Mugesh Approval',
+    RFQ_L2_REVIEW: 'Vendor Final - L2 Manager',
+    RFQ_CFO_REVIEW: 'Vendor Final - Mugesh Approval',
     RFQ_SCM_BUYER_SELECTION: 'SCM Vendor Selection',
     BUSINESS_REVIEW: 'SCM Manager Approval',
     SCM_PO_CREATE: 'PO Create',
@@ -486,6 +487,12 @@ function formatPrApprovalStage(stage, prFlow = 'standard', purchaseType = 'purch
     PO_UPDATED: 'PO Updated',
     PO_CANCELLED: 'PO Cancellation',
     PO_RETRIEVED: 'PO Retrieved as Draft',
+    PO_VENDOR_ACCEPTANCE: 'Vendor PO Acceptance',
+    GRN_SUBMITTED: 'GRN Submitted',
+    VENDOR_INVOICE_MAIL: 'Vendor Invoice Requested',
+    VENDOR_INVOICE_UPLOAD: 'Vendor Invoice Upload',
+    SASS_INVOICE_UPLOAD: 'Invoice Upload',
+    PAYMENT_COMPLETED: 'Payment Completed',
   };
   return (
     labels[stage] ||
@@ -551,9 +558,48 @@ async function getApprovalHistory(prId, prFlow = 'functional', purchaseType = 'p
       role: 'SCM Buyer',
       date: formatDateTime(cfg.finalized_at),
       status: 'Approved',
-      remarks: `SCM Buyer Vendor Selection${cfg.vendor_name ? ` � recommended vendor: ${cfg.vendor_name}` : ''}`,
+      remarks: `SCM Buyer Vendor Selection${cfg.vendor_name ? ` - recommended vendor: ${cfg.vendor_name}` : ''}`,
       sortAt: new Date(cfg.finalized_at).getTime(),
     });
+  }
+
+  // Vendor invoice upload on the PO path is stored on the invoice, not in pr_approvals
+  if (!stages.has('VENDOR_INVOICE_UPLOAD') && !stages.has(STAGE.SASS_INVOICE_UPLOAD)) {
+    const [invRows] = await pool
+      .query(
+        `SELECT i.invoice_number, i.submitted_at, i.vendor_invoice_mode, i.approval_history
+         FROM invoices i
+         JOIN purchase_orders po ON po.id = i.po_id
+         WHERE po.pr_id = ? AND i.submitted_at IS NOT NULL
+         ORDER BY i.submitted_at ASC`,
+        [prId]
+      )
+      .catch(() => [[]]);
+    for (const inv of invRows) {
+      let uploader = inv.vendor_invoice_mode === 'email' ? 'Vendor' : '';
+      let uploaderRole = inv.vendor_invoice_mode === 'email' ? 'Vendor' : '';
+      try {
+        const log = typeof inv.approval_history === 'string' ? JSON.parse(inv.approval_history) : inv.approval_history;
+        const hit = Array.isArray(log)
+          ? [...log].reverse().find((h) => /invoice (uploaded|entry)/i.test(String(h?.action || '')))
+          : null;
+        if (hit?.performedBy) {
+          uploader = hit.performedBy;
+          uploaderRole = hit.role || uploaderRole;
+        }
+      } catch {
+        /* keep defaults */
+      }
+      history.push({
+        stage: formatPrApprovalStage('VENDOR_INVOICE_UPLOAD'),
+        user: uploader || 'Requester',
+        role: uploaderRole || 'Requester',
+        date: formatDateTime(inv.submitted_at),
+        status: 'Submitted',
+        remarks: `Invoice ${inv.invoice_number || ''} uploaded`.replace(/\s+/g, ' ').trim(),
+        sortAt: new Date(inv.submitted_at).getTime(),
+      });
+    }
   }
 
   history.sort((a, b) => a.sortAt - b.sortAt);
@@ -1903,7 +1949,263 @@ export async function getPurchaseRequestById(id) {
     [id]
   );
   if (!rows.length) return null;
-  return enrichPR(rows[0]);
+  const pr = await enrichPR(rows[0]);
+  try {
+    pr.approvalProgress = await buildApprovalProgress(rows[0], pr);
+  } catch (err) {
+    console.warn('approvalProgress skipped:', err.message);
+    pr.approvalProgress = null;
+  }
+  return pr;
+}
+
+function toIsoOrNull(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * Where the PR is pending now, since when, and which stages are still ahead (with owner names).
+ * Only used on the single-PR view so list endpoints stay lean.
+ */
+async function buildApprovalProgress(row, pr) {
+  const status = String(row.status || '').toUpperCase();
+  const purchaseType = row.purchase_type || 'purchase_order';
+  const isSass = isSassPurchaseType(purchaseType);
+  const isOnline = isOnlinePurchaseType(purchaseType);
+  const isFunctional = row.pr_flow === 'functional';
+  const isOwn = row.vendor_selection === 'own';
+  const isWorkOrder = String(purchaseType).toLowerCase() === 'work_order';
+  const requesterName = row.requester_name || 'Requester';
+
+  const [taskRows] = await pool.query(
+    `SELECT wt.id, wt.task_type, wt.assigned_role, wt.assigned_user_id, wt.created_at,
+            u.name AS user_name, u.email AS user_email
+     FROM workflow_tasks wt
+     LEFT JOIN users u ON u.id = wt.assigned_user_id
+     WHERE wt.pr_id = ? AND wt.status = 'pending'
+     ORDER BY wt.id DESC
+     LIMIT 5`,
+    [row.id]
+  );
+  const task = taskRows[0] || null;
+
+  const chainIds = functionalApprovalChainFromPr(row);
+  const chainUsers = new Map();
+  if (chainIds.length) {
+    const [userRows] = await pool.query(
+      `SELECT id, name, email FROM users WHERE id IN (${chainIds.map(() => '?').join(',')})`,
+      chainIds
+    );
+    for (const u of userRows) chainUsers.set(Number(u.id), u);
+  }
+  const chainName = (id) => {
+    const u = chainUsers.get(Number(id));
+    return u?.name || u?.email?.split('@')[0] || 'Selected approver';
+  };
+
+  const scmBuyerName = pr.scmBuyer?.name || 'SCM Buyer';
+  let scmManagerName = pr.scmManager?.name || '';
+  if (!scmManagerName) {
+    const mgr = await resolveScmManagerUser().catch(() => null);
+    scmManagerName = mgr?.name || 'SCM Manager';
+  }
+  const l1Name = pr.l1Manager?.name || 'L1 Manager';
+
+  /** Planned path in order. key is used to find the current step. */
+  const plan = [];
+  const add = (key, stage, owner) => plan.push({ key, stage, owner: owner || '—' });
+  const addChain = (labelFirst) => {
+    chainIds.forEach((id, i) => {
+      const name = chainName(id);
+      const stage =
+        i === 0 && labelFirst
+          ? labelFirst
+          : name === SASS_MUGESH_NAME || chainUsers.get(Number(id))?.email === SASS_MUGESH_EMAIL
+            ? 'Mugesh Approval'
+            : chainUsers.get(Number(id))?.email === SASS_L2_EMAIL
+              ? 'L2 Approval (Srivaths)'
+              : `User Approval ${chainIds.length > 1 ? i + 1 : ''}`.trim();
+      add(`chain:${id}`, stage, name);
+    });
+  };
+
+  if (isSass) {
+    addChain('L1 Manager Approval');
+    const chainEmails = [...chainUsers.values()].map((u) => String(u.email || '').toLowerCase());
+    if (!isSassMugeshRequester({ requester_name: requesterName })) {
+      if (!chainEmails.includes(SASS_MUGESH_EMAIL.toLowerCase())) add('cfo', 'Mugesh Approval', SASS_MUGESH_NAME);
+      if (!chainEmails.includes(SASS_L2_EMAIL.toLowerCase())) add('l2', 'L2 Approval (Srivaths)', SASS_L2_NAME);
+    }
+    add('invoice', 'Invoice Upload', SASS_MUGESH_NAME);
+    add('accounts', 'Accounts Verification', 'Accounts Team');
+  } else if (isOnline) {
+    addChain('User Approval');
+    add('cfo', 'Mugesh L1 Approval', SASS_MUGESH_NAME);
+    add('l2', 'Srivaths L2 Approval', SASS_L2_NAME);
+    add('invoice', 'Invoice Upload', SASS_MUGESH_NAME);
+  } else {
+    if (isFunctional) {
+      addChain('User Approval');
+      add('scm_rfq', 'SCM Final RFQ', scmBuyerName);
+    } else if (isOwn) {
+      add('hod', 'L1 Manager Approval', l1Name);
+      add('rfq_entry', 'RFQ Entry (Requester)', requesterName);
+      add('vendor_final', 'Vendor Final Approval', l1Name);
+    } else {
+      add('hod', 'L1 Manager Approval', l1Name);
+      add('l2', 'L2 Manager Approval', 'L2 Manager');
+      if (row.require_cfo_approval == null || Number(row.require_cfo_approval) === 1) {
+        add('cfo', 'CFO Approval', 'CFO');
+      }
+      add('scm_rfq', 'SCM Vendor Selection', scmBuyerName);
+      add('scm_manager', 'SCM Manager Approval', scmManagerName);
+    }
+    add(
+      'create_po',
+      'Create PO',
+      row.po_creation_by === 'requester' ? requesterName : scmBuyerName
+    );
+    add('po_sign', 'SCM Manager PO Sign', scmManagerName);
+    add('buyer_verify', 'Buyer Final Verify', scmBuyerName);
+    add('vendor_acceptance', 'Vendor PO Acceptance', requesterName);
+    if (!isWorkOrder) add('grn', 'GRN (Goods Receipt)', requesterName);
+    add('invoice_entry', 'Vendor Invoice Upload', requesterName);
+    add('po_accounts', 'Accounts Verification', 'Accounts Team');
+  }
+
+  // Post-PO facts: when each of acceptance / GRN / invoice landed (used for "pending since")
+  let poFacts = null;
+  if (pr.poId) {
+    const [[poRow]] = await pool.query(
+      `SELECT status, vendor_acceptance_status, vendor_accepted_at, updated_at, created_at
+       FROM purchase_orders WHERE id = ? LIMIT 1`,
+      [pr.poId]
+    );
+    const [[grnRow]] = await pool
+      .query(`SELECT MAX(created_at) AS at FROM grn_headers WHERE po_id = ?`, [pr.poId])
+      .catch(() => [[{}]]);
+    const [[invRow]] = await pool
+      .query(
+        `SELECT status, submitted_at, created_at FROM invoices WHERE po_id = ? ORDER BY id DESC LIMIT 1`,
+        [pr.poId]
+      )
+      .catch(() => [[null]]);
+    poFacts = { po: poRow || null, grnAt: grnRow?.at || null, inv: invRow || null };
+  }
+
+  const taskType = String(task?.task_type || '').toUpperCase();
+  const taskRole = String(task?.assigned_role || '');
+  let currentKey = null;
+
+  if (status === 'PENDING_HOD_APPROVAL') {
+    const byUser = task?.assigned_user_id && plan.find((p) => p.key === `chain:${task.assigned_user_id}`);
+    const taskEmail = String(task?.user_email || '').toLowerCase();
+    if (byUser) currentKey = byUser.key;
+    else if (taskEmail === SASS_MUGESH_EMAIL.toLowerCase() && plan.some((p) => p.key === 'cfo')) currentKey = 'cfo';
+    else if (taskEmail === SASS_L2_EMAIL.toLowerCase() && plan.some((p) => p.key === 'l2')) currentKey = 'l2';
+    else currentKey = plan.find((p) => p.key.startsWith('chain:'))?.key || 'hod';
+  } else if (status === 'PENDING_PR_MANAGER_APPROVAL') {
+    currentKey = 'l2';
+  } else if (status === 'PENDING_CFO_APPROVAL') {
+    currentKey = 'cfo';
+  } else if (status === 'AWAITING_INVOICE') {
+    currentKey = 'invoice';
+  } else if (
+    status === 'PENDING_RFQ_MANAGER_APPROVAL' ||
+    status === 'PENDING_RFQ_L2_APPROVAL' ||
+    status === 'PENDING_RFQ_CFO_APPROVAL'
+  ) {
+    currentKey = 'vendor_final';
+  } else if (status === 'PENDING_BUSINESS_APPROVAL') {
+    currentKey = plan.some((p) => p.key === 'scm_manager') ? 'scm_manager' : 'create_po';
+  } else if (status === 'PENDING_SCM_PO') {
+    currentKey = 'create_po';
+  } else if (status === 'APPROVED') {
+    if (isSass || isOnline) {
+      const inv = pr.sassInvoice;
+      const invStatus = String(inv?.status || '').toLowerCase();
+      if (isSass && inv?.id && !['approved', 'approved_for_payment', 'paid', 'verified'].includes(invStatus)) {
+        currentKey = 'accounts';
+      }
+    } else if (taskType === 'RFQ_ENTRY') {
+      currentKey = taskRole === 'Requester' && plan.some((p) => p.key === 'rfq_entry') ? 'rfq_entry' : 'scm_rfq';
+    } else if (taskType === 'RFQ_POST_APPROVAL') {
+      currentKey = taskRole === 'SCM Buyer' ? 'create_po' : plan.some((p) => p.key === 'vendor_final') ? 'vendor_final' : 'create_po';
+    } else if (taskType === 'PO_REVISION') {
+      currentKey = 'create_po';
+    } else if (taskType === 'PO_MUGESH_SIGN' || taskType === 'PO_SIGN') {
+      currentKey = 'po_sign';
+    } else if (taskType === 'PO_BUYER_VERIFY') {
+      currentKey = 'buyer_verify';
+    } else if (taskType === 'PO_VENDOR_ACCEPTANCE') {
+      currentKey = 'vendor_acceptance';
+    } else if (pr.poId) {
+      const poStatus = String(poFacts?.po?.status || pr.poStatus || '').toLowerCase();
+      const invStatus = String(poFacts?.inv?.status || '').toLowerCase();
+      if (['draft', 'pending_approval', 'pending_sign', 'pending'].includes(poStatus)) currentKey = 'po_sign';
+      else if (poStatus === 'signed' || poStatus === 'pending_buyer_verify') currentKey = 'buyer_verify';
+      else if (poStatus === 'sent_to_vendor') currentKey = 'vendor_acceptance';
+      else if (poStatus === 'awaiting_grn') currentKey = isWorkOrder ? 'invoice_entry' : 'grn';
+      else if (poStatus === 'grn_completed' || poStatus === 'invoice_entry') {
+        currentKey =
+          poFacts?.inv?.submitted_at && ['pending_verification', 'pending_manager_approval', 'on_hold', 'discrepancy'].includes(invStatus)
+            ? 'po_accounts'
+            : 'invoice_entry';
+      } else if (poStatus === 'pending_accounts_approval') currentKey = 'po_accounts';
+    } else if (isFunctional || !isOwn) {
+      currentKey = 'scm_rfq';
+    }
+  }
+
+  const terminal = ['REJECTED', 'RETURNED', 'DRAFT'].includes(status);
+  const currentIdx = currentKey ? plan.findIndex((p) => p.key === currentKey) : -1;
+
+  let current = null;
+  if (terminal) {
+    current =
+      status === 'DRAFT'
+        ? null
+        : {
+            stage: status === 'REJECTED' ? 'Rejected' : 'Sent back to requester',
+            owner: requesterName,
+            role: 'Requester',
+            pendingSince: toIsoOrNull(row.updated_at),
+          };
+  } else if (currentIdx >= 0) {
+    const step = plan[currentIdx];
+    const ownerFromTask = task?.user_name || '';
+    const factSince = {
+      grn: poFacts?.po?.vendor_accepted_at,
+      invoice_entry: poFacts?.grnAt || poFacts?.po?.vendor_accepted_at,
+      po_accounts: poFacts?.inv?.submitted_at,
+    }[step.key];
+    current = {
+      stage: step.stage,
+      owner: ownerFromTask || step.owner,
+      role: taskRole || '',
+      pendingSince: toIsoOrNull(task?.created_at || factSince || poFacts?.po?.updated_at || row.updated_at),
+    };
+  } else if (task) {
+    current = {
+      stage: pr.statusUI || taskType.replace(/_/g, ' ') || 'Pending',
+      owner: task.user_name || taskRole || 'Pending owner',
+      role: taskRole || '',
+      pendingSince: toIsoOrNull(task.created_at),
+    };
+  }
+
+  const remaining =
+    terminal || currentIdx < 0
+      ? []
+      : plan.slice(currentIdx + 1).map((p) => ({ stage: p.stage, owner: p.owner }));
+
+  return {
+    current,
+    remaining,
+    completed: !terminal && !current,
+  };
 }
 
 function hodAssignedTaskSql(user) {
