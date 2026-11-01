@@ -493,6 +493,11 @@ function normalizeManualContextInput(body = {}) {
     justification: String(prRaw.justification || '').trim(),
     requestType: String(prRaw.requestType || body.requestType || 'Opex').trim(),
     priority: String(prRaw.priority || body.priority || 'Medium').trim(),
+    plantId: Number(prRaw.plantId ?? body.plantId) || null,
+    plantCode: String(prRaw.plantCode || body.plantCode || '').trim(),
+    plantName: String(prRaw.plantName || body.plantName || '').trim(),
+    plantBillingLocation: String(prRaw.plantBillingLocation || '').trim(),
+    plantSiteAddress: String(prRaw.plantSiteAddress || '').trim(),
   };
 
   let comparisonRounds = [];
@@ -899,7 +904,7 @@ async function enrichPO(row) {
   }
   const lineItems = await getLineItems(row.id);
 
-  const vendor = await lookupVendorMaster(row.vendor_email, row.vendor_name);
+  const vendor = await lookupVendorMaster(row.vendor_email, row.vendor_name, { vendorId: row.vendor_id });
   const vendorView = mergeVendorOntoPo(
     {
       vendorName: row.vendor_name,
@@ -933,6 +938,7 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
+    vendorId: Number(row.vendor_id) || Number(vendor?.id) || null,
     vendorName: vendorView.vendorName,
     vendorEmail: vendorView.vendorEmail,
     vendorAddress: vendorView.vendorAddress,
@@ -1332,9 +1338,17 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   // Skip placeholders ("Vendor") and short tokens so a different company is not substituted.
   if (name && !isPlaceholderVendorName(name)) {
     const [byName] = await pool.query(
-      `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
+      `${select} WHERE LOWER(TRIM(name)) = LOWER(?) ORDER BY (status = 'active') DESC, id ASC LIMIT 25`,
       [name]
     );
+    if (byName.length > 1) {
+      // Same name, different vendor codes — pick the one whose email / GST matches the PO
+      const gstKey = gst.replace(/\s+/g, '').toUpperCase();
+      const hit =
+        (email && byName.find((row) => String(row.email || '').trim().toLowerCase() === email.toLowerCase())) ||
+        (gstKey && byName.find((row) => String(row.gst_number || '').replace(/\s+/g, '').toUpperCase() === gstKey));
+      if (hit) return hit;
+    }
     if (byName[0]) return byName[0];
 
     const key = vendorNameKey(name);
@@ -1363,6 +1377,17 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
     if (byEmail[0]) return byEmail[0];
   }
   return {};
+}
+
+/** Remember exactly which Vendor Master row was chosen (same-name vendors have different codes). */
+async function persistPoVendorId(db, poId, vendorId) {
+  const id = Number(vendorId) || 0;
+  if (!poId || !id) return;
+  try {
+    await db.query(`UPDATE purchase_orders SET vendor_id = ? WHERE id = ?`, [id, poId]);
+  } catch (err) {
+    console.warn('PO vendor_id not saved:', err.message);
+  }
 }
 
 export async function overlayVendorMasterOnPo(po) {
@@ -1543,6 +1568,7 @@ async function resolvePoDraftContent(prId, body) {
     prTitle: pr.title,
     department: pr.department,
     requester: pr.requester,
+    vendorId: Number(vendorMaster?.id) || Number(body?.vendorId) || null,
     vendorName: mergedVendor.vendorName,
     vendorEmail: mergedVendor.vendorEmail,
     vendorAddress: mergedVendor.vendorAddress,
@@ -1744,6 +1770,7 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     prTitle: subject || 'Manual Purchase Order',
     department: String(department || '').trim(),
     requester: String(requester || '').trim() || 'SCM Buyer',
+    vendorId: Number(vendorMaster?.id) || Number(body.vendorId) || null,
     vendorName,
     vendorEmail,
     vendorAddress: mergedVendor.vendorAddress,
@@ -1803,6 +1830,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
       await overlayVendorMasterOnPo(
         await resolveManualPoDraftContent({
           ...body,
+          vendorId: body.vendorId || rows[0].vendor_id || undefined,
           poNumber: normalizeRequestedPoNumber(body.poNumber) || rows[0].po_number,
           vendorName: body.vendorName || rows[0].vendor_name,
           vendorEmail: body.vendorEmail || rows[0].vendor_email,
@@ -1820,6 +1848,7 @@ export async function buildPoPreviewForPo(user, poId, body) {
     await overlayVendorMasterOnPo(
       await resolvePoDraftContent(rows[0].pr_id, {
         ...body,
+        vendorId: body.vendorId || rows[0].vendor_id || undefined,
         poNumber: normalizeRequestedPoNumber(body.poNumber) || rows[0].po_number,
         poDate: body.poDate || body.po_date || formatDate(rows[0].po_date) || formatDate(rows[0].created_at),
         terms: body.terms ?? body.termsClauses,
@@ -1993,6 +2022,7 @@ export async function createPurchaseOrder(user, prId, body) {
     );
 
     const poId = result.insertId;
+    await persistPoVendorId(conn, poId, draft.vendorId);
     for (const item of lineItems) {
       const total = lineItemTotal(item.quantity, item.unitPrice);
       const taxPercentage = Math.min(100, Math.max(0, Number(item.taxPercentage) || 0));
@@ -2233,6 +2263,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     );
 
     const poId = result.insertId;
+    await persistPoVendorId(conn, poId, draft.vendorId);
     const storedComparisonRounds = await persistManualComparisonRounds(
       poId,
       manualContextInput.comparisonRounds
@@ -2397,6 +2428,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
       ...payload,
       skipLetterheadMaster: true,
       poNumber: normalizeRequestedPoNumber(payload.poNumber) || existing?.po_number || null,
+      vendorId: payload.vendorId || existing?.vendor_id || undefined,
       vendorName: vendor.vendor_name,
       vendorEmail: vendor.vendor_email,
       poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
@@ -2416,6 +2448,7 @@ async function resolveDraftSaveContent({ prId, existing, body }) {
         ...payload,
         skipLetterheadMaster: true,
         poNumber: normalizeRequestedPoNumber(payload.poNumber) || existing?.po_number || null,
+        vendorId: payload.vendorId || existing?.vendor_id || undefined,
         vendorName: payload.vendorName || existing?.vendor_name,
         vendorEmail: payload.vendorEmail || existing?.vendor_email,
         poDate: payload.poDate || payload.po_date || formatDate(existing?.po_date) || formatDate(existing?.created_at),
@@ -2743,6 +2776,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       await persistDraftLineItems(conn, savedPoId, lineItems);
     }
 
+    await persistPoVendorId(conn, savedPoId, resolved.vendorId);
     await conn.commit();
 
     const manualContextInput = normalizeManualContextInput(body);
@@ -2766,9 +2800,10 @@ export async function savePurchaseOrderDraft(user, body = {}) {
         : [];
       const storedVendorQuotes = storedComparisonRounds.flatMap((roundRow) => roundRow.vendorQuotes);
       const manualContextJson = JSON.stringify({
-        prDetails: manualContextInput.prDetails?.title
-          ? manualContextInput.prDetails
-          : existingCtx.prDetails || manualContextInput.prDetails,
+        prDetails:
+          body.manualPrDetails || manualContextInput.prDetails?.title
+            ? manualContextInput.prDetails
+            : existingCtx.prDetails || manualContextInput.prDetails,
         comparisonRounds: storedComparisonRounds,
         vendorQuotes: storedVendorQuotes,
         selectedEntityId:
@@ -3456,11 +3491,19 @@ export async function getPurchaseOrderById(poId) {
  * - Fallback: single default row from PO vendor + grand total
  */
 export async function getPurchaseOrderVendorComparison(user, poId) {
-  const po = await getPurchaseOrderById(Number(poId));
-  if (!po) throw new Error('PO not found');
-
   const allowed = ['SCM Manager', 'SCM Buyer', 'Super Admin'].includes(user?.role);
   if (!allowed) throw new Error('Unauthorized');
+
+  // PR-linked: only the PR id is needed — skip the full PO enrich
+  const [[lite]] = await pool.query(`SELECT id, pr_id FROM purchase_orders WHERE id = ? LIMIT 1`, [Number(poId)]);
+  if (!lite) throw new Error('PO not found');
+  if (lite.pr_id) {
+    const { getVendorComparisonMatrix } = await import('./rfqService.js');
+    return getVendorComparisonMatrix(user, lite.pr_id);
+  }
+
+  const po = await getPurchaseOrderById(Number(poId));
+  if (!po) throw new Error('PO not found');
 
   if (po.prId) {
     const { getVendorComparisonMatrix } = await import('./rfqService.js');
@@ -4597,6 +4640,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
         ...body,
+        vendorId: body.vendorId || existing.vendor_id || undefined,
         poNumber: normalizeRequestedPoNumber(body.poNumber) || existing.po_number,
         poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         currency: body.currency ?? existing.currency,
@@ -4607,6 +4651,7 @@ export async function updatePurchaseOrder(user, poId, body) {
       })
     : await resolveManualPoDraftContent({
         ...body,
+        vendorId: body.vendorId || existing.vendor_id || undefined,
         poNumber: normalizeRequestedPoNumber(body.poNumber) || existing.po_number,
         poDate: body.poDate || body.po_date || formatDate(existing.po_date) || formatDate(existing.created_at),
         vendorName: body.vendorName || existing.vendor_name,
@@ -4660,6 +4705,7 @@ export async function updatePurchaseOrder(user, poId, body) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    await persistPoVendorId(conn, poId, draft.vendorId);
 
     const referencePoNumber =
       body.referencePoNumber !== undefined
@@ -4766,6 +4812,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         manualContextInput.comparisonRounds.length > 0 ||
         manualContextInput.vendorQuotes.length > 0 ||
         Boolean(manualContextInput.prDetails?.title) ||
+        Boolean(body.manualPrDetails) ||
         body.selectedEntityId != null ||
         body.entityId != null;
       if (hasIncomingComparison) {
@@ -4787,9 +4834,10 @@ export async function updatePurchaseOrder(user, poId, body) {
           : [];
         const storedVendorQuotes = storedComparisonRounds.flatMap((r) => r.vendorQuotes || []);
         const manualContextJson = JSON.stringify({
-          prDetails: manualContextInput.prDetails?.title
-            ? manualContextInput.prDetails
-            : existingCtx.prDetails || manualContextInput.prDetails,
+          prDetails:
+            body.manualPrDetails || manualContextInput.prDetails?.title
+              ? manualContextInput.prDetails
+              : existingCtx.prDetails || manualContextInput.prDetails,
           comparisonRounds: storedComparisonRounds,
           vendorQuotes: storedVendorQuotes,
           selectedEntityId:

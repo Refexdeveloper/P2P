@@ -223,6 +223,7 @@ const MIGRATIONS = [
   // Cloud Run disk is ephemeral — keep SCM Manager signature bytes on the PO
   `ALTER TABLE purchase_orders ADD COLUMN signature_image_data LONGBLOB NULL`,
   `ALTER TABLE purchase_orders ADD COLUMN manual_context_json JSON NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN vendor_id INT NULL`,
   `CREATE TABLE IF NOT EXISTS po_site_lookups (
     id INT AUTO_INCREMENT PRIMARY KEY,
     lookup_type ENUM('site_address', 'site_contact', 'project_manager') NOT NULL,

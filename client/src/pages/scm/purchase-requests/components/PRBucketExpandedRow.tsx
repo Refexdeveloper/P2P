@@ -309,6 +309,7 @@ export default function PRBucketExpandedRow({
   const [error, setError] = useState('');
   const [pr, setPr] = useState<PRDetail | null>(null);
   const [comparison, setComparison] = useState<VendorComparisonData | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [cancellation, setCancellation] = useState<CancellationInfo | null>(null);
   const [poSummary, setPoSummary] = useState<PoSummary | null>(null);
   const [addressInfo, setAddressInfo] = useState<AddressContactInfo>(EMPTY_ADDRESS);
@@ -319,6 +320,8 @@ export default function PRBucketExpandedRow({
   const [pdfLoading, setPdfLoading] = useState(false);
   const currentPdfUrlRef = useRef<string | null>(null);
   const referencePdfUrlRef = useRef<string | null>(null);
+  /** PDF rendering is slow on the server — only fetch when the PDF / Reference tab is opened. */
+  const relatedDocsRef = useRef<{ poId: number; refNo: string; loaded: boolean } | null>(null);
   const isManualDoc = !(prId > 0);
 
   /** Keep expand panel pinned to the visible table viewport (no horizontal scroll of details). */
@@ -511,6 +514,7 @@ export default function PRBucketExpandedRow({
 
   useEffect(() => {
     let cancelled = false;
+    relatedDocsRef.current = null;
     const load = async () => {
       setLoading(true);
       setError('');
@@ -522,9 +526,21 @@ export default function PRBucketExpandedRow({
       setReferencePdfUrl(null);
       try {
         if (prId > 0) {
-          const [prRes, cmpRes, poRes] = await Promise.allSettled([
+          setComparison(null);
+          setComparisonLoading(true);
+          rfqApi
+            .getComparison(prId)
+            .then((res) => {
+              if (!cancelled) setComparison(res.data);
+            })
+            .catch(() => {
+              if (!cancelled) setComparison(null);
+            })
+            .finally(() => {
+              if (!cancelled) setComparisonLoading(false);
+            });
+          const [prRes, poRes] = await Promise.allSettled([
             prApi.get(prId),
-            rfqApi.getComparison(prId),
             poId ? poApi.get(poId) : Promise.resolve({ data: {} }),
           ]);
 
@@ -560,12 +576,6 @@ export default function PRBucketExpandedRow({
             setAddressInfo(addressFromPr(d));
           } else {
             throw prRes.reason instanceof Error ? prRes.reason : new Error('Failed to load PR');
-          }
-
-          if (cmpRes.status === 'fulfilled') {
-            setComparison(cmpRes.value.data);
-          } else {
-            setComparison(null);
           }
 
           if (poId && poRes.status === 'fulfilled') {
@@ -612,35 +622,42 @@ export default function PRBucketExpandedRow({
             setCancellation(null);
           }
           if (poId) {
-            const refNo =
-              poRes.status === 'fulfilled'
-                ? String((poRes.value.data as Record<string, unknown>).referencePoNumber || '')
-                : '';
-            await loadRelatedDocs(poId, refNo, () => cancelled);
+            relatedDocsRef.current = {
+              poId,
+              refNo:
+                poRes.status === 'fulfilled'
+                  ? String((poRes.value.data as Record<string, unknown>).referencePoNumber || '')
+                  : '',
+              loaded: false,
+            };
           }
         } else if (poId) {
           setComparison(null);
+          setComparisonLoading(true);
+          poApi
+            .getComparison(poId)
+            .then((res) => {
+              if (!cancelled) setComparison(res.data);
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              if (!cancelled) setComparisonLoading(false);
+            });
           try {
-            const [poRes, cmpRes] = await Promise.allSettled([
-              poApi.get(poId),
-              poApi.getComparison(poId),
-            ]);
+            const [poRes] = await Promise.allSettled([poApi.get(poId)]);
             if (cancelled) return;
             if (poRes.status !== 'fulfilled') {
               throw poRes.reason instanceof Error ? poRes.reason : new Error('Failed to load PO');
             }
             applyPoPayload(poRes.value.data as Record<string, unknown>);
-            if (cmpRes.status === 'fulfilled') {
-              setComparison(cmpRes.value.data);
-            }
-            await loadRelatedDocs(
+            relatedDocsRef.current = {
               poId,
-              String((poRes.value.data as Record<string, unknown>).referencePoNumber || ''),
-              () => cancelled
-            );
+              refNo: String((poRes.value.data as Record<string, unknown>).referencePoNumber || ''),
+              loaded: false,
+            };
           } catch (poErr) {
             if (cancelled) return;
-            await loadRelatedDocs(poId, '', () => cancelled);
+            relatedDocsRef.current = { poId, refNo: '', loaded: false };
             throw poErr;
           }
         } else {
@@ -655,10 +672,19 @@ export default function PRBucketExpandedRow({
     load();
     return () => {
       cancelled = true;
+      relatedDocsRef.current = null;
       revokePdfUrl(currentPdfUrlRef);
       revokePdfUrl(referencePdfUrlRef);
     };
   }, [prId, poId, poNumber, title, statusLabel]);
+
+  useEffect(() => {
+    if (loading || (tab !== 'pdf' && tab !== 'reference')) return;
+    const docs = relatedDocsRef.current;
+    if (!docs || docs.loaded) return;
+    docs.loaded = true;
+    void loadRelatedDocs(docs.poId, docs.refNo, () => relatedDocsRef.current !== docs);
+  }, [tab, loading]);
 
   const tabs = [
     { key: 'details' as const, label: isManualDoc ? 'WO / PO Details' : 'PR Details', icon: 'ri-information-line' },
@@ -980,7 +1006,12 @@ export default function PRBucketExpandedRow({
               )}
 
               {!loading && !error && tab === 'vendors' && (
-                comparison ? (
+                comparisonLoading && !comparison ? (
+                  <div className="py-8 text-center text-sm text-slate-500">
+                    <i className="ri-loader-4-line mr-2 animate-spin text-lg text-[#0f6b7a]"></i>
+                    Loading vendor comparison…
+                  </div>
+                ) : comparison ? (
                   <div className="min-w-0 w-full max-w-full">
                     <VendorComparisonMatrix data={comparison} compact />
                   </div>

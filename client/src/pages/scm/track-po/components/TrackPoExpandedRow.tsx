@@ -408,59 +408,49 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
       setLoading(true);
       setError('');
       try {
-        const tasks: Promise<unknown>[] = [];
-        if (row.prId) tasks.push(prApi.get(row.prId));
-        if (row.poId) tasks.push(poApi.get(row.poId));
-        if (row.prId) tasks.push(rfqApi.getComparison(row.prId));
-        else if (row.poId) tasks.push(poApi.getComparison(row.poId));
-        if (row.poId) tasks.push(poApi.fulfillment(row.poId));
+        setComparison(null);
+        setGrn(null);
+        setInvoice(null);
+        // Comparison and GRN / invoice fill in when they arrive — the details panel never waits for them
+        const cmpReq = row.prId
+          ? rfqApi.getComparison(row.prId)
+          : row.poId
+            ? poApi.getComparison(row.poId)
+            : null;
+        cmpReq
+          ?.then((res) => {
+            if (!cancelled) setComparison((res as { data: VendorComparisonData }).data || null);
+          })
+          .catch(() => undefined);
+        if (row.poId) {
+          poApi
+            .fulfillment(row.poId)
+            .then((res) => {
+              if (cancelled) return;
+              const data = (res as { data: { grn?: unknown; invoice?: unknown } }).data;
+              setGrn((data?.grn as FulfillmentGrn | null) || null);
+              setInvoice((data?.invoice as FulfillmentInvoice | null) || null);
+            })
+            .catch(() => undefined);
+        }
 
-        const results = await Promise.allSettled(tasks);
+        const [prRes, poRes] = await Promise.allSettled([
+          row.prId ? prApi.get(row.prId) : Promise.resolve(null),
+          row.poId ? poApi.get(row.poId) : Promise.resolve(null),
+        ]);
         if (cancelled) return;
 
-        let prData: Record<string, unknown> | null = null;
-        let poData: Record<string, unknown> | null = null;
-        let cmpData: VendorComparisonData | null = null;
-        let fulfillment: { grn: FulfillmentGrn | null; invoice: FulfillmentInvoice | null } = {
-          grn: null,
-          invoice: null,
-        };
-        let idx = 0;
-
-        if (row.prId) {
-          const prRes = results[idx++];
-          if (prRes.status === 'fulfilled') {
-            prData = (prRes.value as { data: Record<string, unknown> }).data;
-          }
-        }
-        if (row.poId) {
-          const poRes = results[idx++];
-          if (poRes.status === 'fulfilled') {
-            poData = (poRes.value as { data: Record<string, unknown> }).data;
-          }
-        }
-        if (row.prId || row.poId) {
-          const cmpRes = results[idx++];
-          if (cmpRes.status === 'fulfilled') {
-            cmpData = (cmpRes.value as { data: VendorComparisonData }).data;
-          }
-        }
-        if (row.poId) {
-          const fulRes = results[idx++];
-          if (fulRes.status === 'fulfilled') {
-            const data = (fulRes.value as { data: typeof fulfillment }).data;
-            fulfillment = {
-              grn: (data?.grn as FulfillmentGrn | null) || null,
-              invoice: (data?.invoice as FulfillmentInvoice | null) || null,
-            };
-          }
-        }
+        const prData =
+          prRes.status === 'fulfilled' && prRes.value
+            ? ((prRes.value as { data: Record<string, unknown> }).data ?? null)
+            : null;
+        const poData =
+          poRes.status === 'fulfilled' && poRes.value
+            ? ((poRes.value as { data: Record<string, unknown> }).data ?? null)
+            : null;
 
         setPr(prData);
         setPo(poData);
-        setComparison(cmpData);
-        setGrn(fulfillment.grn);
-        setInvoice(fulfillment.invoice);
 
         const poHist = normalizeHistory(poData?.approvalHistory);
         const prHist = normalizeHistory(prData?.approvalHistory);

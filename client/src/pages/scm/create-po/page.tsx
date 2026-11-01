@@ -513,13 +513,23 @@ function normalizeVendorMatchKey(value: string) {
 
 function matchVendorFromMaster(
   vendors: VendorRecord[],
-  opts: { name?: string; email?: string; gst?: string }
+  opts: { id?: string | number | null; name?: string; email?: string; gst?: string }
 ) {
+  const id = String(opts.id ?? '').trim();
+  if (id) {
+    const byId = vendors.find((v) => String(v.id) === id);
+    if (byId) return byId;
+  }
   const name = normalizeVendorMatchKey(opts.name || '');
   const email = String(opts.email || '').trim().toLowerCase();
   const gst = String(opts.gst || '').replace(/\s+/g, '').toUpperCase();
   if (name && !['vendor', 'vendor name', 'imported vendor', 'na', 'nil', 'none', 'tbd'].includes(name)) {
-    const byName = vendors.find((v) => normalizeVendorMatchKey(v.name) === name);
+    // Several vendors can share a name (different vendor codes) — prefer the one whose email / GST also matches
+    const sameName = vendors.filter((v) => normalizeVendorMatchKey(v.name) === name);
+    const byName =
+      (email && sameName.find((v) => String(v.email || '').trim().toLowerCase() === email)) ||
+      (gst && sameName.find((v) => String(v.gstNumber || '').replace(/\s+/g, '').toUpperCase() === gst)) ||
+      sameName[0];
     if (byName) return byName;
     if (name.length >= 8) {
       const byPartial = vendors.find((v) => {
@@ -1623,7 +1633,7 @@ export default function CreatePOPage() {
     if (!recommended) return;
     if (recommended.vendorName.trim()) setManualVendorName(recommended.vendorName.trim());
     if (recommended.vendorEmail.trim()) setManualVendorEmail(recommended.vendorEmail.trim());
-    if (recommended.vendorId) setManualVendorId(recommended.vendorId);
+    setManualVendorId(String(recommended.vendorId || ''));
     if (recommended.paymentTerms) setPaymentTerms(recommended.paymentTerms);
     setVendorMeta((prev) => ({
       ...prev,
@@ -1996,6 +2006,7 @@ export default function CreatePOPage() {
         setManualPoNoPr(true);
         setManualVendorName(String(po.vendorName || ''));
         setManualVendorEmail(String(po.vendorEmail || ''));
+        if (po.vendorId) setManualVendorId(String(po.vendorId));
         const manualContext = (po.manualContext || {}) as {
           prDetails?: Partial<ManualPrDetails>;
           comparisonRounds?: Array<Record<string, unknown>>;
@@ -2505,6 +2516,7 @@ export default function CreatePOPage() {
       ? manualVendorEmail.trim() || importedVendorEmail.trim() || vendorMeta.email.trim() || undefined
       : importedVendorEmail.trim() || pr?.vendorEmail || vendorMeta.email.trim() || undefined;
     const masterVendor = matchVendorFromMaster(masterVendors, {
+      id: isManualPoFlow ? manualVendorId : undefined,
       name: vendorNameForPo,
       email: vendorEmailFromForm,
     });
@@ -2609,6 +2621,7 @@ export default function CreatePOPage() {
         payload.vendorName || vendorMeta.name || pr?.recommendedVendor || ''
       ).trim();
       let masterHit = matchVendorFromMaster(masterVendors, {
+        id: payload.vendorId as string | number | undefined,
         name: vendorNameLive,
         email: String(payload.vendorEmail || vendorMeta.email || ''),
       });
