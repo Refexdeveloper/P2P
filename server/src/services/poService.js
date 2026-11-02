@@ -25,6 +25,7 @@ import {
   tempDraftPoNumber,
 } from './documentNumberService.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
+import { ownFulfillmentSql, userOwnsFulfillment } from '../utils/fulfillmentScope.js';
 import {
   resolveScmBuyerUser,
   getScmBuyerNotifyEmails,
@@ -6419,19 +6420,15 @@ export async function assertVendorAcceptanceActor(user, poRow) {
   if (user.role === 'Super Admin' || user.role === 'SCM Manager') return;
   if (user.role === 'SCM Buyer' && canEditAnyScmPurchaseOrder(user)) return;
 
-  const requesterId = await getPoRequesterId(poRow);
-  if (requesterId && user.role === 'Requester') {
-    if (requesterId === user.id) return;
-    throw new Error('This vendor acceptance task is assigned to another requester');
-  }
-
   if (user.role === 'SCM Buyer') {
     const prId = Number(poRow?.pr_id ?? poRow?.prId ?? 0);
     if (!prId && Number(poRow?.created_by) === user.id) return;
     throw new Error('Vendor acceptance is assigned to the PR requester');
   }
 
-  throw new Error('Unauthorized');
+  // Requester, L1 Manager (menu granted in User Permissions), …: own PR or a task assigned to them
+  if (await userOwnsFulfillment(user, Number(poRow?.id))) return;
+  throw new Error('This vendor acceptance task is assigned to another person');
 }
 
 async function upsertVendorAcceptanceTask(prId, requesterId) {
@@ -6687,14 +6684,7 @@ export async function reassignVendorAcceptanceTasksToRequesters() {
 }
 
 export async function listVendorAcceptancePOs(user) {
-  if (
-    user.role !== 'Requester' &&
-    user.role !== 'SCM Buyer' &&
-    user.role !== 'SCM Manager' &&
-    user.role !== 'Super Admin'
-  ) {
-    throw new Error('Unauthorized');
-  }
+  if (!user?.id) throw new Error('Unauthorized');
 
   let sql = `
     SELECT po.* FROM purchase_orders po
@@ -6705,12 +6695,14 @@ export async function listVendorAcceptancePOs(user) {
     )
   `;
   const params = [];
-  if (user.role === 'Requester') {
-    sql += ` AND pr.requester_id = ?`;
-    params.push(user.id);
-  } else if (user.role === 'SCM Buyer' && !canEditAnyScmPurchaseOrder(user)) {
-    sql += ` AND (pr.requester_id IS NOT NULL OR po.created_by = ?)`;
-    params.push(user.id);
+  if (user.role === 'SCM Buyer') {
+    if (!canEditAnyScmPurchaseOrder(user)) {
+      sql += ` AND (pr.requester_id IS NOT NULL OR po.created_by = ?)`;
+      params.push(user.id);
+    }
+  } else if (user.role !== 'SCM Manager' && user.role !== 'Super Admin') {
+    sql += ownFulfillmentSql('pr', 'po');
+    params.push(user.id, user.id);
   }
   sql += ` ORDER BY
     CASE COALESCE(po.vendor_acceptance_status, 'pending')
@@ -6741,9 +6733,7 @@ async function assertVendorAcceptancePending(poId) {
 }
 
 export async function sendVendorAcceptanceMail(user, poId, body = {}) {
-  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('Unauthorized');
-  }
+  if (!user?.id) throw new Error('Unauthorized');
 
   const scmComments = String(body.comments || body.remarks || body.scmComments || '').trim();
 
@@ -6837,9 +6827,7 @@ export async function sendVendorAcceptanceMail(user, poId, body = {}) {
 }
 
 export async function submitManualVendorAcceptance(user, poId, body = {}) {
-  if (!['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('Unauthorized');
-  }
+  if (!user?.id) throw new Error('Unauthorized');
 
   const row = await assertVendorAcceptancePending(poId);
   await assertVendorAcceptanceActor(user, row);
@@ -6913,7 +6901,7 @@ export async function submitManualVendorAcceptance(user, poId, body = {}) {
 
 /** Requester replaces the uploaded vendor PO document after acceptance is already recorded. */
 export async function updateVendorAcceptanceDocument(user, poId, body = {}) {
-  if (!['Requester', 'Super Admin'].includes(user.role)) {
+  if (['SCM Buyer', 'SCM Manager'].includes(user.role)) {
     throw new Error('Only the requester can edit the vendor PO document');
   }
 

@@ -9,6 +9,11 @@ import { sendVendorInvoiceRequestNotification } from './emailService.js';
 import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { listPrAttachments } from './prAttachmentService.js';
 import { isSassPurchaseType } from './sassWorkflow.js';
+import { ownFulfillmentSql, userOwnsFulfillment } from '../utils/fulfillmentScope.js';
+
+/** Roles that see every GRN / invoice. Everyone else (Requester, L1 Manager via menu permission, …) sees their own. */
+const GRN_ALL_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Functional Team', 'Accounts Payable', 'Accounts Manager'];
+const INVOICE_ALL_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Accounts Payable', 'Accounts Manager'];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOAD_ROOT = path.resolve(__dirname, '../../uploads');
@@ -349,9 +354,9 @@ export async function listPendingGrnPos(user = null) {
        AND po.status = 'awaiting_grn'
        AND g.id IS NULL`;
 
-  if (user?.role === 'Requester') {
-    sql += ` AND pr.requester_id = ?`;
-    params.push(user.id);
+  if (user && !GRN_ALL_ROLES.includes(user.role)) {
+    sql += ownFulfillmentSql('pr', 'po');
+    params.push(user.id, user.id);
   }
 
   sql += ` ORDER BY po.updated_at DESC, po.id DESC`;
@@ -439,9 +444,9 @@ export async function listGrns(user = null) {
      LEFT JOIN users u ON u.id = pr.requester_id
      WHERE 1=1`;
 
-  if (user?.role === 'Requester') {
-    sql += ` AND pr.requester_id = ?`;
-    params.push(user.id);
+  if (user && !GRN_ALL_ROLES.includes(user.role)) {
+    sql += ownFulfillmentSql('pr', 'po');
+    params.push(user.id, user.id);
   }
 
   sql += ` ORDER BY g.id DESC`;
@@ -518,6 +523,9 @@ export async function submitGrn(user, body) {
   }
   if (po.status !== 'awaiting_grn') {
     throw new Error('PO is not awaiting GRN');
+  }
+  if (!GRN_ALL_ROLES.includes(user?.role) && !(await userOwnsFulfillment(user, poId))) {
+    throw new Error('This GRN is assigned to another person');
   }
 
   const [existing] = await pool.query(`SELECT id FROM grn_headers WHERE po_id = ? LIMIT 1`, [poId]);
@@ -705,9 +713,9 @@ export async function listInvoices(user, { forPayment = false } = {}) {
   }
 
   let requesterFilter = '';
-  if (user.role === 'Requester') {
-    requesterFilter = ` AND pr.requester_id = ?`;
-    params.push(user.id);
+  if (!INVOICE_ALL_ROLES.includes(user.role)) {
+    requesterFilter = ownFulfillmentSql('pr', 'po');
+    params.push(user.id, user.id);
   }
 
   const [rows] = await pool.query(
@@ -1190,19 +1198,8 @@ const INVOICE_ENTRY_PRIVILEGED_ROLES = [
 async function assertInvoiceEntryAccess(user, poId) {
   if (!user?.id) throw new Error('Unauthorized');
   if (INVOICE_ENTRY_PRIVILEGED_ROLES.includes(user.role)) return;
-  if (user.role === 'Requester') {
-    const [own] = await pool.query(
-      `SELECT pr.requester_id FROM purchase_orders po
-       JOIN purchase_requests pr ON pr.id = po.pr_id
-       WHERE po.id = ? LIMIT 1`,
-      [poId]
-    );
-    if (Number(own[0]?.requester_id) !== Number(user.id)) {
-      throw new Error('This invoice is assigned to another requester');
-    }
-    return;
-  }
-  throw new Error('Not allowed');
+  if (await userOwnsFulfillment(user, poId)) return;
+  throw new Error('This invoice is assigned to another person');
 }
 
 /** Email vendor a public invoice-submit link (Requester for own POs, or SCM/Accounts). */

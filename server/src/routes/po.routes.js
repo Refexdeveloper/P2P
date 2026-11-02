@@ -46,6 +46,7 @@ import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.
 import { listPoDocuments, addPoDocument, getPoDocumentFile } from '../services/poDocumentService.js';
 import { getPurchaseRequestById } from '../services/prService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
+import { VENDOR_ACCEPTANCE_PERMS } from '../utils/fulfillmentScope.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
 import {
   resolveScmManagerUser,
@@ -298,6 +299,11 @@ const PO_READ_ROLES = [
   'Accounts Payable',
   'Accounts Manager',
 ];
+/** Vendor PO Acceptance: role list OR the menu granted in User Permissions (e.g. L1 Manager). */
+const canVendorAcceptance = requireRolesOrPermissions(
+  ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'],
+  VENDOR_ACCEPTANCE_PERMS
+);
 const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, [
   'nav.cfo_insights',
   'nav.invoice_verification',
@@ -650,7 +656,7 @@ router.get('/pending-buyer-verify', requireRoles('SCM Buyer', 'Requester'), asyn
   }
 });
 
-router.get('/vendor-acceptance', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/vendor-acceptance', canVendorAcceptance, async (req, res) => {
   try {
     const data = await listVendorAcceptancePOs(req.user);
     res.json({ data });
@@ -1052,7 +1058,7 @@ router.post('/:id/final-verify/send-back', requireRoles('SCM Buyer'), async (req
   }
 });
 
-router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/:id/vendor-acceptance/send-mail', canVendorAcceptance, async (req, res) => {
   try {
     const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id), req.body || {});
     const to = data.mailTo || data.requesterEmail || 'requester';
@@ -1065,7 +1071,7 @@ router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM B
   }
 });
 
-router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/:id/vendor-acceptance/manual', canVendorAcceptance, async (req, res) => {
   try {
     const data = await submitManualVendorAcceptance(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Vendor acceptance recorded manually' });
@@ -1074,7 +1080,7 @@ router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buye
   }
 });
 
-router.post('/:id/vendor-acceptance/document', requireRoles('Requester', 'Super Admin'), async (req, res) => {
+router.post('/:id/vendor-acceptance/document', canVendorAcceptance, async (req, res) => {
   try {
     const data = await updateVendorAcceptanceDocument(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Vendor PO document updated' });
