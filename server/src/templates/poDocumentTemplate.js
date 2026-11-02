@@ -1039,8 +1039,17 @@ export function buildTermOverflowPackRows(terms, po) {
   return rows;
 }
 
+/** Work Order annexure names, matching the "Annexures" row in the WO body. */
+const WO_ANNEXURE_I_NAME = 'Commercial Terms & Conditions';
+const WO_ANNEXURE_II_NAME = 'General Terms & Conditions for Working at Site';
+
+function annexureSectionName(docLabel, woName) {
+  return /work\s*order/i.test(String(docLabel || '')) ? woName : docLabel;
+}
+
 function annexureTheadHtml(docLabel, continued = false) {
-  const title = `ANNEXURE-I — ${escapeHtml(docLabel).toUpperCase()}${continued ? ' — Continued' : ''}`;
+  const name = annexureSectionName(docLabel, WO_ANNEXURE_I_NAME);
+  const title = `ANNEXURE-I — ${escapeHtml(name).toUpperCase()}${continued ? ' — Continued' : ''}`;
   return `
             ${annexureColgroupHtml()}
             <thead>
@@ -1063,7 +1072,8 @@ function isLongWoDocument(po) {
 }
 
 function annexureIiTheadHtml(docLabel, continued = false) {
-  const title = `ANNEXURE-II — ${escapeHtml(docLabel).toUpperCase()}${continued ? ' — Continued' : ''}`;
+  const name = annexureSectionName(docLabel, WO_ANNEXURE_II_NAME);
+  const title = `ANNEXURE-II — ${escapeHtml(name).toUpperCase()}${continued ? ' — Continued' : ''}`;
   return `
             ${annexureColgroupHtml()}
             <thead>
