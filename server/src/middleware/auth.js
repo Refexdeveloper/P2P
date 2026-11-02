@@ -96,6 +96,30 @@ export function requirePermissions(...permissionCodes) {
 }
 
 /**
+ * Like requireRolesOrPermissions, but a user who only has the menu permission (e.g. an L1 Manager
+ * granted Vendor PO Acceptance / GRN / Vendor Invoice) is handled as a Requester, so services
+ * scope the data to items assigned to them (their own PRs / POs).
+ */
+export function requireRolesOrPermissionsAsRequester(roles = [], permissionCodes = []) {
+  return async (req, res, next) => {
+    try {
+      if (isSuperAdmin(req.user?.role)) return next();
+      if (roles.length && rolesAllow(roles, req.user)) return next();
+      if (permissionCodes.length) {
+        const codes = await getUserPermissionCodes(req.user.id, req.user.role, req.user.email);
+        if (permissionCodes.some((code) => codes.includes(code))) {
+          req.user = { ...req.user, role: 'Requester', grantedFromRole: req.user.role };
+          return next();
+        }
+      }
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    } catch {
+      return res.status(403).json({ message: 'Insufficient permissions' });
+    }
+  };
+}
+
+/**
  * Allow if JWT role is in `roles` OR user was granted any of `permissionCodes`
  * (Admin → User Permissions menus). Super Admin always allowed.
  */

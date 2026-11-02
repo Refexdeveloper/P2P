@@ -601,7 +601,7 @@ export async function submitGrn(user, body) {
       {
         action: 'Invoice base created from GRN',
         performedBy: user.name,
-        role: user.role,
+        role: user.grantedFromRole || user.role,
         date: formatDateTime(new Date()),
         notes: `GRN ${grnNumber} submitted — awaiting invoice upload`,
       },
@@ -769,7 +769,7 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
     {
       action: mode === 'manual' ? 'Manual invoice entry' : 'Invoice uploaded',
       performedBy: user?.name || 'Vendor',
-      role: user?.role || 'Vendor',
+      role: user?.grantedFromRole || user?.role || 'Vendor',
       date: formatDateTime(new Date()),
       notes: body.remarks || `Uploaded ${fileName}`,
     },
@@ -920,7 +920,7 @@ export async function verifyInvoice(user, invoiceId, { action, remarks }) {
     {
       action: actionLabel,
       performedBy: user.name,
-      role: user.role,
+      role: user.grantedFromRole || user.role,
       date: formatDateTime(new Date()),
       notes: remarks || '',
     },
@@ -965,7 +965,7 @@ export async function managerApproveInvoice(user, invoiceId, { action = 'approve
     {
       action: approve ? 'Manager Approved' : 'Manager Rejected',
       performedBy: user.name,
-      role: user.role,
+      role: user.grantedFromRole || user.role,
       date: formatDateTime(new Date()),
       notes: remarks || '',
     },
@@ -1011,7 +1011,7 @@ export async function uploadPayment(user, invoiceId, body) {
     {
       action: 'Payment uploaded',
       performedBy: user.name,
-      role: user.role,
+      role: user.grantedFromRole || user.role,
       date: formatDateTime(new Date()),
       notes: body.remarks || `UTR ${body.utrReference}`,
     },
@@ -1196,7 +1196,7 @@ export async function sendVendorInvoiceMail(user, invoiceId) {
     {
       action: 'Vendor invoice mail sent',
       performedBy: user.name,
-      role: user.role,
+      role: user.grantedFromRole || user.role,
       date: formatDateTime(new Date()),
       notes: `Mail to ${inv.vendor_email}`,
     },

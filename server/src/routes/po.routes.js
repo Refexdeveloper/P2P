@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
+import {
+  authenticate,
+  requireRoles,
+  requireRolesOrPermissions,
+  requireRolesOrPermissionsAsRequester,
+} from '../middleware/auth.js';
 import {
   getPoCreateContext,
   createPurchaseOrder,
@@ -138,6 +143,11 @@ const PO_READ_ROLES = [
   'Accounts Payable',
   'Accounts Manager',
 ];
+/** Vendor PO Acceptance — roles, or the menu granted in User Permissions (scoped to own POs). */
+const canVendorAcceptance = requireRolesOrPermissionsAsRequester(
+  ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['nav.requester_vendor_po_acceptance', 'nav.vendor_po_acceptance']
+);
 const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, [
   'nav.track_po',
   'nav.create_po',
@@ -503,7 +513,7 @@ router.get('/pending-buyer-verify', requireRoles('SCM Buyer'), async (req, res) 
   }
 });
 
-router.get('/vendor-acceptance', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.get('/vendor-acceptance', canVendorAcceptance, async (req, res) => {
   try {
     const data = await listVendorAcceptancePOs(req.user);
     res.json({ data });
@@ -829,7 +839,7 @@ router.post('/:id/final-verify/send-back', requireRoles('SCM Buyer'), async (req
   }
 });
 
-router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/:id/vendor-acceptance/send-mail', canVendorAcceptance, async (req, res) => {
   try {
     const data = await sendVendorAcceptanceMail(req.user, Number(req.params.id));
     res.json({
@@ -841,7 +851,7 @@ router.post('/:id/vendor-acceptance/send-mail', requireRoles('Requester', 'SCM B
   }
 });
 
-router.post('/:id/vendor-acceptance/manual', requireRoles('Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'), async (req, res) => {
+router.post('/:id/vendor-acceptance/manual', canVendorAcceptance, async (req, res) => {
   try {
     const data = await submitManualVendorAcceptance(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Vendor acceptance recorded manually' });

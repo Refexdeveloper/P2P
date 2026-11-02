@@ -1,5 +1,10 @@
 import { Router } from 'express';
-import { authenticate, requireRoles, requireRolesOrPermissions } from '../middleware/auth.js';
+import {
+  authenticate,
+  requireRoles,
+  requireRolesOrPermissions,
+  requireRolesOrPermissionsAsRequester,
+} from '../middleware/auth.js';
 import {
   listPendingGrnPos,
   listGrnReceiverUsers,
@@ -25,6 +30,16 @@ const router = Router();
 const GRN_ROLES = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Functional Team', 'Requester'];
 const ACCOUNTS_ROLES = ['Accounts Payable', 'Accounts Manager', 'Super Admin', 'SCM Manager'];
 const INVOICE_ENTRY_ROLES = ['SCM Buyer', 'Super Admin', 'Accounts Payable', 'Accounts Manager', 'Requester'];
+/** Menus granted from Admin → User Permissions (e.g. to an L1 Manager) */
+const GRN_CODES = ['nav.grn'];
+const INVOICE_CODES = ['nav.requester_vendor_invoice', 'nav.vendor_invoice'];
+const grnAccess = requireRolesOrPermissionsAsRequester(GRN_ROLES, GRN_CODES);
+const grnReadAccess = requireRolesOrPermissionsAsRequester([...GRN_ROLES, ...ACCOUNTS_ROLES], GRN_CODES);
+const invoiceReadAccess = requireRolesOrPermissionsAsRequester(
+  [...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'],
+  INVOICE_CODES
+);
+const invoiceEntryAccess = requireRolesOrPermissionsAsRequester(INVOICE_ENTRY_ROLES, INVOICE_CODES);
 
 /** Public vendor invoice submit (token link from email) */
 router.get('/vendor-invoice/:token', async (req, res) => {
@@ -56,7 +71,7 @@ router.get('/dashboard', requireRoles(...ACCOUNTS_ROLES), async (req, res) => {
   }
 });
 
-router.get('/grn/pending-pos', requireRoles(...GRN_ROLES), async (req, res) => {
+router.get('/grn/pending-pos', grnAccess, async (req, res) => {
   try {
     const data = await listPendingGrnPos(req.user);
     res.json({ data });
@@ -65,7 +80,7 @@ router.get('/grn/pending-pos', requireRoles(...GRN_ROLES), async (req, res) => {
   }
 });
 
-router.get('/grn/users', requireRoles(...GRN_ROLES), async (_req, res) => {
+router.get('/grn/users', grnAccess, async (_req, res) => {
   try {
     const data = await listGrnReceiverUsers();
     res.json({ data });
@@ -74,7 +89,7 @@ router.get('/grn/users', requireRoles(...GRN_ROLES), async (_req, res) => {
   }
 });
 
-router.get('/grn', requireRoles(...GRN_ROLES, ...ACCOUNTS_ROLES), async (req, res) => {
+router.get('/grn', grnReadAccess, async (req, res) => {
   try {
     const data = await listGrns(req.user);
     res.json({ data });
@@ -83,7 +98,7 @@ router.get('/grn', requireRoles(...GRN_ROLES, ...ACCOUNTS_ROLES), async (req, re
   }
 });
 
-router.post('/grn', requireRoles(...GRN_ROLES), async (req, res) => {
+router.post('/grn', grnAccess, async (req, res) => {
   try {
     const data = await submitGrn(req.user, req.body);
     res.json({ data, message: data.message });
@@ -109,7 +124,7 @@ router.get(
   }
 );
 
-router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'), async (req, res) => {
+router.get('/invoices', invoiceReadAccess, async (req, res) => {
   try {
     const forPayment = req.query.forPayment === 'true';
     const data = await listInvoices(req.user, { forPayment });
@@ -119,7 +134,7 @@ router.get('/invoices', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'
   }
 });
 
-router.get('/invoices/:id', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Requester'), async (req, res) => {
+router.get('/invoices/:id', invoiceReadAccess, async (req, res) => {
   try {
     const data = await getInvoiceById(Number(req.params.id));
     res.json({ data });
@@ -128,7 +143,7 @@ router.get('/invoices/:id', requireRoles(...ACCOUNTS_ROLES, 'SCM Buyer', 'Reques
   }
 });
 
-router.post('/invoices/:id/send-mail', requireRoles(...INVOICE_ENTRY_ROLES), async (req, res) => {
+router.post('/invoices/:id/send-mail', invoiceEntryAccess, async (req, res) => {
   try {
     const data = await sendVendorInvoiceMail(req.user, Number(req.params.id));
     res.json({ data, message: data.message });
@@ -137,7 +152,7 @@ router.post('/invoices/:id/send-mail', requireRoles(...INVOICE_ENTRY_ROLES), asy
   }
 });
 
-router.post('/invoices/:id/manual', requireRoles(...INVOICE_ENTRY_ROLES), async (req, res) => {
+router.post('/invoices/:id/manual', invoiceEntryAccess, async (req, res) => {
   try {
     const data = await uploadInvoiceDocument(req.user, Number(req.params.id), {
       ...req.body,
@@ -202,7 +217,7 @@ router.get(
   '/invoices/:id/file',
   requireRolesOrPermissions(
     [...ACCOUNTS_ROLES, 'SCM Buyer', 'CFO', 'PR Manager', 'HOD Approver', 'Requester'],
-    ['nav.track_po', 'nav.invoice_verification', 'nav.cfo_insights']
+    ['nav.track_po', 'nav.invoice_verification', 'nav.cfo_insights', ...INVOICE_CODES]
   ),
   async (req, res) => {
   try {
