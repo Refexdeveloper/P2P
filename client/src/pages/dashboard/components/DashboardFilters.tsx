@@ -33,11 +33,69 @@ const fieldClass =
   'h-11 px-3 border border-slate-200 rounded-2xl bg-white text-[13px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 focus:border-[#1E88E5]';
 
 const PO_STATUSES = [
-  { value: '', label: 'All statuses' },
+  { value: '', label: 'All Status' },
   { value: 'Approved', label: 'Approved' },
   { value: 'Pending Approval', label: 'Pending' },
-  { value: 'Rejected', label: 'Rejected' },
 ];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'Approved', label: 'Approved' },
+  { value: 'Pending Approval', label: 'Pending' },
+];
+
+function ClearButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="absolute -right-1.5 -top-1.5 z-[2] flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-white shadow hover:bg-[#E53935]"
+    >
+      <i className="ri-close-line text-[12px] leading-none" />
+    </button>
+  );
+}
+
+/** Select with a small × that clears just this filter. */
+function ClearableSelect({
+  label,
+  value,
+  allLabel,
+  options,
+  minWidth,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  allLabel: string;
+  options: Array<string | { value: string; label: string }>;
+  minWidth: string;
+  onChange: (next: string) => void;
+}) {
+  const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+  return (
+    <div className="shrink-0">
+      <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">{label}</p>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${fieldClass} ${minWidth} ${value ? 'border-[#1E88E5] bg-[#F3F9FF] pr-8' : ''}`}
+          aria-label={label}
+        >
+          <option value="">{allLabel}</option>
+          {items.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {value ? <ClearButton label={`Clear ${label}`} onClick={() => onChange('')} /> : null}
+      </div>
+    </div>
+  );
+}
 
 function countActiveFilters(
   value: DashboardFiltersValue,
@@ -121,17 +179,10 @@ export default function DashboardFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sheetOpen]);
 
-  const extraCount = [value.vendor, value.poStatus, value.amountMin, value.amountMax].filter(Boolean).length;
+  const extraCount = [value.vendor, value.amountMin, value.amountMax].filter(Boolean).length;
   const clearTo = resetValue || EMPTY;
   const activeCount = countActiveFilters(value, clearTo, lockEntity);
 
-  const companyOptions = useMemo(
-    () => [
-      { value: '', label: lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies' },
-      ...entities.map((e) => ({ value: e.id, label: e.name })),
-    ],
-    [entities, lockEntity, lockedEntityLabel]
-  );
   const departmentOptions = useMemo(
     () => [{ value: '', label: 'All Departments' }, ...departments.map((d) => ({ value: d, label: d }))],
     [departments]
@@ -199,14 +250,6 @@ export default function DashboardFilters({
                   fullWidth
                   portalZIndex={10060}
                   themeAccent
-                />
-                <FilterSheetSelect
-                  label="Company"
-                  value={sheetDraft.entityId}
-                  options={companyOptions}
-                  placeholder="All Companies"
-                  disabled={lockEntity}
-                  onChange={(entityId) => setSheetDraft((prev) => ({ ...prev, entityId }))}
                 />
                 <FilterSheetSelect
                   label="Department"
@@ -324,76 +367,51 @@ export default function DashboardFilters({
         />
         <div className="relative z-[1]">
       <div className="flex items-end gap-3 flex-wrap">
-        <PeriodPicker
-          dateFrom={value.dateFrom}
-          dateTo={value.dateTo}
-          onChange={({ dateFrom, dateTo }) => onChange({ ...value, dateFrom, dateTo })}
+        <div className="relative shrink-0">
+          <PeriodPicker
+            dateFrom={value.dateFrom}
+            dateTo={value.dateTo}
+            onChange={({ dateFrom, dateTo }) => onChange({ ...value, dateFrom, dateTo })}
+          />
+          {value.dateFrom !== clearTo.dateFrom || value.dateTo !== clearTo.dateTo ? (
+            <ClearButton
+              label="Reset period"
+              onClick={() => onChange({ ...value, dateFrom: clearTo.dateFrom, dateTo: clearTo.dateTo })}
+            />
+          ) : null}
+        </div>
+        <ClearableSelect
+          label="Department"
+          value={value.department}
+          allLabel="All Departments"
+          options={departments}
+          minWidth="min-w-[150px]"
+          onChange={(department) => onChange({ ...value, department })}
         />
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Company</p>
-          <select
-            value={value.entityId}
-            onChange={(e) => onChange({ ...value, entityId: e.target.value })}
-            disabled={lockEntity}
-            className={`${fieldClass} min-w-[160px] ${lockEntity ? 'bg-slate-50 text-slate-600 cursor-not-allowed' : ''}`}
-            aria-label="Company"
-          >
-            <option value="">{lockEntity ? lockedEntityLabel || 'Assigned entity' : 'All Companies'}</option>
-            {entities.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Department</p>
-          <select
-            value={value.department}
-            onChange={(e) => onChange({ ...value, department: e.target.value })}
-            className={`${fieldClass} min-w-[150px]`}
-            aria-label="Department"
-          >
-            <option value="">All Departments</option>
-            {departments.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Category</p>
-          <select
-            value={value.category}
-            onChange={(e) => onChange({ ...value, category: e.target.value })}
-            className={`${fieldClass} min-w-[140px]`}
-            aria-label="Category"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="shrink-0">
-          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Plant</p>
-          <select
-            value={value.plant}
-            onChange={(e) => onChange({ ...value, plant: e.target.value })}
-            className={`${fieldClass} min-w-[150px] max-w-[220px]`}
-            aria-label="Plant"
-          >
-            <option value="">All Plants</option>
-            {plants.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
+        <ClearableSelect
+          label="Category"
+          value={value.category}
+          allLabel="All Categories"
+          options={categories}
+          minWidth="min-w-[140px]"
+          onChange={(category) => onChange({ ...value, category })}
+        />
+        <ClearableSelect
+          label="Plant"
+          value={value.plant}
+          allLabel="All Plants"
+          options={plants}
+          minWidth="min-w-[150px] max-w-[220px]"
+          onChange={(plant) => onChange({ ...value, plant })}
+        />
+        <ClearableSelect
+          label="Status"
+          value={value.poStatus}
+          allLabel="All Status"
+          options={STATUS_FILTER_OPTIONS}
+          minWidth="min-w-[140px]"
+          onChange={(poStatus) => onChange({ ...value, poStatus })}
+        />
         <div className="relative shrink-0 ml-auto pb-0.5" ref={moreRef}>
           <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5 invisible">More</p>
           <button
@@ -420,19 +438,6 @@ export default function DashboardFilters({
                       {v}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1">PO Status</label>
-                <select
-                  value={draft.poStatus}
-                  onChange={(e) => setDraft({ ...draft, poStatus: e.target.value })}
-                  className={`${fieldClass} w-full`}
-                >
-                  <option value="">All statuses</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Pending Approval">Pending</option>
-                  <option value="Rejected">Rejected</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-2">

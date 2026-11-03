@@ -938,6 +938,9 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
+    plantName:
+      String(pr?.projectDetail || '').trim() ||
+      String(parseManualContextJson(row.manual_context_json)?.prDetails?.plantName || '').trim(),
     vendorId: Number(row.vendor_id) || Number(vendor?.id) || null,
     vendorName: vendorView.vendorName,
     vendorEmail: vendorView.vendorEmail,

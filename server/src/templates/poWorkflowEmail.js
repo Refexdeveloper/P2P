@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatRoleDisplayName } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 const ACTION_META = {
@@ -28,6 +28,37 @@ const ACTION_META = {
   },
 };
 
+function plainText(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function poPlantName(po = {}) {
+  return (
+    String(po.plantName || po.projectDetail || '').trim() ||
+    String(po.manualContext?.prDetails?.plantName || '').trim()
+  );
+}
+
+/** What is being purchased: line item names, first few, then "+N more". */
+function poMaterialText(po = {}) {
+  const items = Array.isArray(po.lineItems) ? po.lineItems : [];
+  const names = [
+    ...new Set(
+      items
+        .map((li) => plainText(li.itemName || li.item_name || li.description).slice(0, 80))
+        .filter(Boolean)
+    ),
+  ];
+  if (!names.length) return '';
+  const shown = names.slice(0, 4).join(', ');
+  return names.length > 4 ? `${shown} +${names.length - 4} more` : shown;
+}
+
 /**
  * PO workflow email (manager approval / buyer final verify).
  * @param {'assign'|'sendback'|'reject'|'verified'} action
@@ -51,6 +82,8 @@ export function buildPoWorkflowEmail({
   const roleDisplay = formatRoleDisplayName(actorRole || '', actorName || null);
   const stage = stageLabel || 'PO Workflow';
   const ssoPortalUrl = wrapPortalUrlWithSso(portalUrl);
+  const plantName = poPlantName(po);
+  const materialText = poMaterialText(po);
 
   const subject = `${meta.subjectPrefix}: ${poNumber} — ${stage}`;
 
@@ -88,9 +121,9 @@ export function buildPoWorkflowEmail({
             <div style="font-size:13px;color:#334155;line-height:1.7;">
               ${prNumber ? `<div><strong>PR:</strong> ${escapeHtml(prNumber)}</div>` : ''}
               <div><strong>Vendor:</strong> ${escapeHtml(po.vendorName || po.vendor_name || '—')}</div>
-              <div><strong>Entity:</strong> ${escapeHtml(formatEntity(po))}</div>
+              <div><strong>Plant:</strong> ${escapeHtml(plantName || '—')}</div>
+              <div><strong>Material:</strong> ${escapeHtml(materialText || '—')}</div>
               <div><strong>Amount:</strong> ${formatCurrency(amount)}</div>
-              <div><strong>Stage:</strong> ${escapeHtml(stage)}</div>
               ${
                 actorName || roleDisplay
                   ? `<div><strong>By:</strong> ${escapeHtml(actorName || '')}${roleDisplay ? ` (${escapeHtml(roleDisplay)})` : ''}</div>`
@@ -134,9 +167,10 @@ export function buildPoWorkflowEmail({
 
   const text = [
     `${meta.subjectPrefix}: ${poNumber}`,
-    `Stage: ${stage}`,
     prNumber ? `PR: ${prNumber}` : '',
     `Vendor: ${po.vendorName || po.vendor_name || '—'}`,
+    `Plant: ${plantName || '—'}`,
+    `Material: ${materialText || '—'}`,
     `Amount: ${formatCurrency(amount)}`,
     actorName ? `By: ${actorName}${roleDisplay ? ` (${roleDisplay})` : ''}` : '',
     remarks ? `Remarks: ${remarks}` : '',
