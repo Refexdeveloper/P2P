@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardLayout from '../../components/feature/DashboardLayout';
 import KPIWidgets from './components/KPIWidgets';
-import EntityPOSummaryTable from './components/EntityPOSummaryTable';
 import RecentPOTable from './components/RecentPOTable';
 import TopVendorsTable from './components/TopVendorsTable';
 import DashboardFilters, { DashboardFiltersValue, EMPTY_DASHBOARD_FILTERS } from './components/DashboardFilters';
@@ -13,6 +12,9 @@ import { parseLooseDate } from './cfoFormat';
 import '../../styles/dashboard-fx.css';
 
 type Insights = Awaited<ReturnType<typeof poApi.cfoInsights>>['data'];
+type CfoOrders = Awaited<ReturnType<typeof poApi.cfoOrders>>['data'];
+
+const ORDERS_PAGE_SIZE = 10;
 
 const EMPTY: Insights = {
   kpis: {
@@ -93,6 +95,10 @@ export default function Dashboard({
   const [entities, setEntities] = useState<Array<{ id: string; name: string }>>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [plants, setPlants] = useState<string[]>([]);
+  const [orders, setOrders] = useState<CfoOrders>({ orders: [], pagination: { page: 1, pageSize: ORDERS_PAGE_SIZE, total: 0, totalPages: 1 } });
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [showTables, setShowTables] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [hidden, setHidden] = useState<Record<string, boolean>>(readHidden);
@@ -112,16 +118,18 @@ export default function Dashboard({
       setLoading(true);
       setError(null);
       try {
-      const [insightsRes, masterEnt, masterDept, masterCat] = await Promise.all([
+      const [insightsRes, masterEnt, masterDept, masterCat, masterPlants] = await Promise.all([
         poApi.cfoInsights({
           department: active.department || undefined,
           category: active.category || undefined,
+          plant: active.plant || undefined,
           dateFrom: active.dateFrom || undefined,
           dateTo: active.dateTo || undefined,
         }),
         masterApi.listEntities({ status: 'active', pageSize: 500 }).catch(() => ({ data: [] as Array<{ id: number; name: string }> })),
         masterApi.listDepartments({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
         masterApi.listCategories({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
+        masterApi.listProjects({ status: 'active' }).catch(() => ({ data: [] as Array<{ name: string }> })),
       ]);
       const next = insightsRes.data || EMPTY;
       setData(next);
@@ -130,6 +138,11 @@ export default function Dashboard({
       );
       setDepartments([...new Set((masterDept.data || []).map((d) => String(d.name || '').trim()).filter(Boolean))]);
       setCategories([...new Set((masterCat.data || []).map((c) => String(c.name || '').trim()).filter(Boolean))]);
+      setPlants(
+        [...new Set((masterPlants.data || []).map((pl) => String(pl.name || '').trim()).filter(Boolean))].sort((a, b) =>
+          a.localeCompare(b)
+        )
+      );
       setUpdatedAt(new Date());
       } catch (err) {
           setData(EMPTY);
@@ -142,7 +155,58 @@ export default function Dashboard({
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.department, filters.category, filters.dateFrom, filters.dateTo]);
+  }, [filters.department, filters.category, filters.plant, filters.dateFrom, filters.dateTo]);
+
+  const ordersFilterKey = JSON.stringify([
+    filters.department,
+    filters.category,
+    filters.plant,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.poStatus,
+    filters.entityId,
+    filters.vendor,
+    filters.amountMin,
+    filters.amountMax,
+  ]);
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [ordersFilterKey]);
+
+  // Every PO for the filters (all entities), loaded page by page from the server
+  useEffect(() => {
+    let cancelled = false;
+    setOrdersLoading(true);
+    poApi
+      .cfoOrders({
+        department: filters.department,
+        category: filters.category,
+        plant: filters.plant,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        status: filters.poStatus,
+        entityId: filters.entityId,
+        vendor: filters.vendor,
+        amountMin: filters.amountMin,
+        amountMax: filters.amountMax,
+        page: ordersPage,
+        pageSize: ORDERS_PAGE_SIZE,
+      })
+      .then((res) => {
+        if (!cancelled && res.data) setOrders(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setOrders((prev) => ({ ...prev, orders: [] }));
+      })
+      .finally(() => {
+        if (!cancelled) setOrdersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersFilterKey, ordersPage]);
 
   useEffect(() => {
     localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(hidden));
@@ -187,23 +251,6 @@ export default function Dashboard({
     if (Number.isFinite(max) && filters.amountMax !== '') list = list.filter((e) => e.totalPOAmount <= max);
     return list;
   }, [data.entityWisePOSummary, data.topVendorsByPOAmount, selectedEntityName, filters]);
-
-  const filteredOrders = useMemo(() => {
-    return data.recentPurchaseOrders.filter((po) => {
-      if (selectedEntityName && po.entity !== selectedEntityName) return false;
-      if (filters.department && (po as { department?: string }).department && (po as { department?: string }).department !== filters.department) {
-        return false;
-      }
-      if (filters.vendor && po.vendorName !== filters.vendor) return false;
-      if (filters.poStatus && po.status !== filters.poStatus) return false;
-      if (!inDateRange(po.poDate, filters.dateFrom, filters.dateTo)) return false;
-      const min = Number(filters.amountMin);
-      const max = Number(filters.amountMax);
-      if (Number.isFinite(min) && filters.amountMin !== '' && po.poAmount < min) return false;
-      if (Number.isFinite(max) && filters.amountMax !== '' && po.poAmount > max) return false;
-      return true;
-    });
-  }, [data.recentPurchaseOrders, selectedEntityName, filters]);
 
   const filteredVendors = useMemo(() => {
     return data.topVendorsByPOAmount.filter((v) => {
@@ -391,6 +438,7 @@ export default function Dashboard({
           entities={companyOptions}
           departments={departments}
           categories={categories}
+          plants={plants}
           vendors={[...new Set(data.topVendorsByPOAmount.map((v) => v.vendorName))]}
           onChange={setFilters}
           lockEntity={Boolean(lockedEntityId)}
@@ -415,12 +463,28 @@ export default function Dashboard({
         {showTables || visible('tables') ? (
           <>
             <div id="cfo-detail-tables" className="mb-4">
-              <EntityPOSummaryTable entities={filteredEntities} />
-        </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-              <RecentPOTable orders={filteredOrders} />
+              <RecentPOTable
+                orders={orders.orders}
+                page={orders.pagination.page}
+                pageSize={orders.pagination.pageSize}
+                total={orders.pagination.total}
+                onPageChange={setOrdersPage}
+                loading={ordersLoading}
+                showPlant
+                title={
+                  filters.poStatus === 'Approved'
+                    ? 'Approved Purchase Orders'
+                    : filters.poStatus === 'Pending Approval'
+                      ? 'Pending Purchase Orders'
+                      : filters.poStatus === 'Rejected'
+                        ? 'Rejected Purchase Orders'
+                        : 'All Purchase Orders'
+                }
+              />
+            </div>
+            <div className="mb-4">
               <TopVendorsTable vendors={filteredVendors} />
-        </div>
+            </div>
           </>
         ) : null}
 

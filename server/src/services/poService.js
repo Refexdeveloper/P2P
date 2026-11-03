@@ -5603,15 +5603,108 @@ function cfoPoStatusLabel(status) {
  * Live CFO Financial Insights: PO KPIs, entity rollups, monthly trend, recent POs, top vendors.
  * Optional filters: department, category, dateFrom, dateTo (applied server-side).
  */
-export async function getCfoPoInsights(user = null, filters = {}) {
+/** Plant on a PO: PR "Plant" (project_detail) or manual PO prDetails.plantName. */
+const CFO_PO_PLANT_EXPR = `COALESCE(
+  NULLIF(TRIM((SELECT pr_pl.project_detail FROM purchase_requests pr_pl WHERE pr_pl.id = po.pr_id LIMIT 1)), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(po.manual_context_json, '$.prDetails.plantName'))), ''),
+  ''
+)`;
+
+/**
+ * CFO dashboard: every PO for the filters, one page at a time.
+ * status: '' | 'Approved' | 'Pending Approval' | 'Rejected'
+ */
+export async function listCfoPurchaseOrders(user = null, filters = {}) {
+  const { joinSql, whereSql, queryParams } = await buildCfoPoFilterSql(user, filters);
+  const page = Math.max(1, Number(filters.page) || 1);
+  const pageSize = Math.min(100, Math.max(5, Number(filters.pageSize) || 10));
+  const where = [`po.status NOT IN ('draft', 'cancelled')${whereSql}`];
+  const params = [...queryParams];
+
+  const status = String(filters.status || '').trim();
+  if (status === 'Approved') where.push(`po.status IN (${sqlInList(CFO_PO_APPROVED_STATUSES)})`);
+  else if (status === 'Pending Approval') where.push(`po.status IN (${sqlInList(CFO_PO_PENDING_STATUSES)})`);
+  else if (status === 'Rejected') where.push(`po.status = 'rejected'`);
+
+  const entityId = Number(filters.entityId) || 0;
+  if (entityId) {
+    where.push('po.entity_id = ?');
+    params.push(entityId);
+  }
+  const vendor = String(filters.vendor || '').trim();
+  if (vendor) {
+    where.push('TRIM(po.vendor_name) = ?');
+    params.push(vendor);
+  }
+  const min = Number(filters.amountMin);
+  if (String(filters.amountMin ?? '') !== '' && Number.isFinite(min)) {
+    where.push('po.grand_total >= ?');
+    params.push(min);
+  }
+  const max = Number(filters.amountMax);
+  if (String(filters.amountMax ?? '') !== '' && Number.isFinite(max)) {
+    where.push('po.grand_total <= ?');
+    params.push(max);
+  }
+  const search = String(filters.search || '').trim();
+  if (search) {
+    where.push('(po.po_number LIKE ? OR po.vendor_name LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  const whereClause = where.join(' AND ');
+  const [[countRow]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM purchase_orders po ${joinSql} WHERE ${whereClause}`,
+    params
+  );
+  const [rows] = await pool.query(
+    `SELECT
+       po.id AS po_id,
+       po.pr_id,
+       po.po_number,
+       po.vendor_name,
+       po.grand_total,
+       po.status,
+       COALESCE(po.po_date, po.created_at) AS po_date,
+       COALESCE(NULLIF(TRIM(e_list.name), ''), NULLIF(TRIM(po.entity), ''), '—') AS entity_name,
+       ${CFO_PO_PLANT_EXPR} AS plant_name
+     FROM purchase_orders po
+     LEFT JOIN entity_masters e_list ON e_list.id = po.entity_id
+     ${joinSql}
+     WHERE ${whereClause}
+     ORDER BY COALESCE(po.po_date, po.created_at) DESC, po.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, (page - 1) * pageSize]
+  );
+
+  return {
+    orders: rows.map((row) => ({
+      poId: Number(row.po_id) || null,
+      prId: Number(row.pr_id) || null,
+      poNumber: row.po_number,
+      entity: row.entity_name,
+      plant: row.plant_name || '',
+      vendorName: row.vendor_name || '—',
+      poAmount: Number(row.grand_total || 0),
+      poDate: formatDate(row.po_date),
+      status: cfoPoStatusLabel(row.status),
+    })),
+    pagination: {
+      page,
+      pageSize,
+      total: Number(countRow?.total || 0),
+      totalPages: Math.max(1, Math.ceil(Number(countRow?.total || 0) / pageSize)),
+    },
+  };
+}
+
+/** Shared CFO filter SQL (entity scope, department, category, plant, period). */
+async function buildCfoPoFilterSql(user, filters = {}) {
   const scope = await resolveUserEntityScope(user);
   const poScope = poEntityScopeSql(scope.entityId);
-  const excludedSql = sqlInList(CFO_PO_EXCLUDED_STATUSES);
-  const pendingSql = sqlInList(CFO_PO_PENDING_STATUSES);
-  const approvedSql = sqlInList(CFO_PO_APPROVED_STATUSES);
-
   const department = String(filters.department || '').trim();
   const category = String(filters.category || '').trim();
+  const plant = String(filters.plant || '').trim();
   const dateFrom = String(filters.dateFrom || '').trim();
   const dateTo = String(filters.dateTo || '').trim();
   const poDateExpr = 'DATE(COALESCE(po.po_date, po.created_at))';
@@ -5635,6 +5728,10 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     )`);
     extraParams.push(category, category);
   }
+  if (plant) {
+    extraWhere.push(` AND ${CFO_PO_PLANT_EXPR} = ?`);
+    extraParams.push(plant);
+  }
   if (dateFrom) {
     extraWhere.push(` AND ${poDateExpr} >= ?`);
     extraParams.push(dateFrom);
@@ -5647,6 +5744,15 @@ export async function getCfoPoInsights(user = null, filters = {}) {
   const joinSql = `${poScope.join} ${extraJoins.join(' ')}`.trim();
   const whereSql = `${poScope.where}${extraWhere.join('')} AND COALESCE(po.purchase_type, 'purchase_order') <> 'sass' AND po.po_number NOT LIKE 'CS-%'`;
   const queryParams = [...poScope.params, ...extraParams];
+  return { scope, joinSql, whereSql, queryParams, department, category, plant, dateFrom, dateTo };
+}
+
+export async function getCfoPoInsights(user = null, filters = {}) {
+  const excludedSql = sqlInList(CFO_PO_EXCLUDED_STATUSES);
+  const pendingSql = sqlInList(CFO_PO_PENDING_STATUSES);
+  const approvedSql = sqlInList(CFO_PO_APPROVED_STATUSES);
+  const { scope, joinSql, whereSql, queryParams, department, category, plant, dateFrom, dateTo } =
+    await buildCfoPoFilterSql(user, filters);
 
   const [[kpi]] = await pool.query(
     `SELECT
@@ -5688,6 +5794,13 @@ export async function getCfoPoInsights(user = null, filters = {}) {
          )
        )`);
     invoiceParams.push(category, category);
+  }
+  if (plant) {
+    invoiceFilters.push(` AND EXISTS (
+         SELECT 1 FROM purchase_orders po
+         WHERE po.id = i.po_id AND ${CFO_PO_PLANT_EXPR} = ?
+       )`);
+    invoiceParams.push(plant);
   }
   if (dateFrom || dateTo) {
     // Align vendor payments with PO period (invoice linked to PO created/dated in range).

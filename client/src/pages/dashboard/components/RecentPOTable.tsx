@@ -7,6 +7,7 @@ type Order = {
   prId?: number | null;
   poNumber: string;
   entity: string;
+  plant?: string;
   vendorName: string;
   poAmount: number;
   poDate: string;
@@ -29,6 +30,9 @@ export default function RecentPOTable({
   pageSize = PAGE_SIZE,
   total,
   onPageChange,
+  loading = false,
+  showPlant = false,
+  title = 'Purchase Orders',
 }: {
   orders: Order[];
   publicView?: boolean;
@@ -36,7 +40,13 @@ export default function RecentPOTable({
   pageSize?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  loading?: boolean;
+  showPlant?: boolean;
+  title?: string;
 }) {
+  const headers = showPlant
+    ? ['PO Number', 'Entity', 'Plant', 'Vendor Name', 'PO Amount', 'PO Date', 'Status']
+    : ['PO Number', 'Entity', 'Vendor Name', 'PO Amount', 'PO Date', 'Status'];
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [localPage, setLocalPage] = useState(1);
   const serverPaged = typeof onPageChange === 'function';
@@ -64,11 +74,13 @@ export default function RecentPOTable({
             <i className="ri-file-list-3-line text-lg" aria-hidden />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-800 sm:text-base">Purchase Orders</h3>
+            <h3 className="text-sm font-semibold text-slate-800 sm:text-base">{title}</h3>
             <p className="text-[11px] text-slate-500 sm:text-xs">
-              {rowTotal
-                ? `${pageStart + 1}–${Math.min(pageStart + pageOrders.length, rowTotal)} of ${rowTotal}`
-                : '0 records'}
+              {loading
+                ? 'Loading…'
+                : rowTotal
+                  ? `${pageStart + 1}–${Math.min(pageStart + pageOrders.length, rowTotal)} of ${rowTotal}`
+                  : '0 records'}
             </p>
           </div>
         </div>
@@ -78,7 +90,7 @@ export default function RecentPOTable({
         <table className="w-full min-w-0 border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
           <thead>
             <tr>
-              {['PO Number', 'Entity', 'Vendor Name', 'PO Amount', 'PO Date', 'Status'].map((h) => (
+              {headers.map((h) => (
                 <th
                   key={h}
                   className={`whitespace-nowrap px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
@@ -94,12 +106,14 @@ export default function RecentPOTable({
             {!orders.length ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={headers.length}
                   className="rounded-2xl border border-transparent bg-white px-5 py-16 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]"
                 >
                   <div className="flex flex-col items-center gap-2">
-                    <i className="ri-file-search-line text-4xl text-slate-200" />
-                    <p className="text-sm text-slate-400">No purchase orders for these filters.</p>
+                    <i className={`${loading ? 'ri-loader-4-line animate-spin' : 'ri-file-search-line'} text-4xl text-slate-200`} />
+                    <p className="text-sm text-slate-400">
+                      {loading ? 'Loading purchase orders…' : 'No purchase orders for these filters.'}
+                    </p>
                   </div>
                 </td>
               </tr>
@@ -126,6 +140,11 @@ export default function RecentPOTable({
                     <td className={`max-w-[180px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${edge}`} title={po.entity}>
                       <p className="truncate text-sm text-[#2C3E50]">{po.entity}</p>
                     </td>
+                    {showPlant ? (
+                      <td className={`max-w-[180px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${edge}`} title={po.plant || ''}>
+                        <p className="truncate text-sm text-[#2C3E50]">{po.plant || '—'}</p>
+                      </td>
+                    ) : null}
                     <td className={`max-w-[220px] border border-x-0 bg-white px-3 py-4 transition-[border-color] sm:py-5 ${edge}`} title={po.vendorName}>
                       <p className="truncate text-sm font-medium text-[#2C3E50]">{po.vendorName}</p>
                     </td>
@@ -144,7 +163,7 @@ export default function RecentPOTable({
                   </tr>
                   {open && po.poId ? (
                     <TrackPoExpandedRow
-                      colSpan={6}
+                      colSpan={headers.length}
                       publicInsights={publicView}
                       row={{
                         prId: Number(po.prId) || 0,

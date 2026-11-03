@@ -37,6 +37,7 @@ import {
   resolveManualQuoteAttachment,
   assertVendorAcceptanceActor,
   getCfoPoInsights,
+  listCfoPurchaseOrders,
   assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
@@ -166,16 +167,46 @@ const canCreatePo = requireRolesOrPermissions(
   ['nav.create_po', 'nav.po_approval']
 );
 
+function cfoQueryFilters(query = {}) {
+  const q = (key) => (typeof query[key] === 'string' ? query[key] : '');
+  return {
+    department: q('department'),
+    category: q('category'),
+    plant: q('plant'),
+    dateFrom: q('dateFrom'),
+    dateTo: q('dateTo'),
+  };
+}
+
 router.get(
   '/stats/cfo',
   requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager'], ['nav.cfo_insights']),
   async (req, res) => {
     try {
-      const data = await getCfoPoInsights(req.user, {
-        department: typeof req.query.department === 'string' ? req.query.department : '',
-        category: typeof req.query.category === 'string' ? req.query.category : '',
-        dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : '',
-        dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : '',
+      const data = await getCfoPoInsights(req.user, cfoQueryFilters(req.query));
+      res.json({ data });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  }
+);
+
+router.get(
+  '/stats/cfo/orders',
+  requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager'], ['nav.cfo_insights']),
+  async (req, res) => {
+    try {
+      const q = (key) => (typeof req.query[key] === 'string' ? req.query[key] : '');
+      const data = await listCfoPurchaseOrders(req.user, {
+        ...cfoQueryFilters(req.query),
+        status: q('status'),
+        entityId: q('entityId'),
+        vendor: q('vendor'),
+        amountMin: q('amountMin'),
+        amountMax: q('amountMax'),
+        search: q('search'),
+        page: q('page'),
+        pageSize: q('pageSize'),
       });
       res.json({ data });
     } catch (err) {

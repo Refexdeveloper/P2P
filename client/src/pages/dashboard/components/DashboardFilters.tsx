@@ -10,6 +10,7 @@ export type DashboardFiltersValue = {
   entityId: string;
   department: string;
   category: string;
+  plant: string;
   vendor: string;
   poStatus: string;
   amountMin: string;
@@ -21,6 +22,7 @@ const EMPTY: DashboardFiltersValue = {
   entityId: '',
   department: '',
   category: '',
+  plant: '',
   vendor: '',
   poStatus: '',
   amountMin: '',
@@ -47,6 +49,7 @@ function countActiveFilters(
   if (!lockEntity && value.entityId && value.entityId !== (base.entityId || '')) n += 1;
   if (value.department) n += 1;
   if (value.category) n += 1;
+  if (value.plant) n += 1;
   if (value.vendor) n += 1;
   if (value.poStatus) n += 1;
   if (value.amountMin) n += 1;
@@ -60,6 +63,7 @@ export default function DashboardFilters({
   entities,
   departments,
   categories,
+  plants = [],
   vendors,
   resetValue,
   onChange,
@@ -70,6 +74,7 @@ export default function DashboardFilters({
   entities: Array<{ id: string; name: string }>;
   departments: string[];
   categories: string[];
+  plants?: string[];
   vendors: string[];
   resetValue?: DashboardFiltersValue;
   onChange: (next: DashboardFiltersValue) => void;
@@ -134,6 +139,10 @@ export default function DashboardFilters({
   const categoryOptions = useMemo(
     () => [{ value: '', label: 'All Categories' }, ...categories.map((c) => ({ value: c, label: c }))],
     [categories]
+  );
+  const plantOptions = useMemo(
+    () => [{ value: '', label: 'All Plants' }, ...plants.map((p) => ({ value: p, label: p }))],
+    [plants]
   );
   const vendorOptions = useMemo(
     () => [{ value: '', label: 'All Vendors' }, ...vendors.map((v) => ({ value: v, label: v }))],
@@ -212,6 +221,13 @@ export default function DashboardFilters({
                   options={categoryOptions}
                   placeholder="All Categories"
                   onChange={(category) => setSheetDraft((prev) => ({ ...prev, category }))}
+                />
+                <FilterSheetSelect
+                  label="Plant"
+                  value={sheetDraft.plant}
+                  options={plantOptions}
+                  placeholder="All Plants"
+                  onChange={(plant) => setSheetDraft((prev) => ({ ...prev, plant }))}
                 />
                 <FilterSheetSelect
                   label="Vendor"
@@ -358,6 +374,22 @@ export default function DashboardFilters({
             {categories.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="shrink-0">
+          <p className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase mb-1.5">Plant</p>
+          <select
+            value={value.plant}
+            onChange={(e) => onChange({ ...value, plant: e.target.value })}
+            className={`${fieldClass} min-w-[150px] max-w-[220px]`}
+            aria-label="Plant"
+          >
+            <option value="">All Plants</option>
+            {plants.map((p) => (
+              <option key={p} value={p}>
+                {p}
               </option>
             ))}
           </select>

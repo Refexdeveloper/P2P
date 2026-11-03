@@ -778,15 +778,54 @@ export const poApi = {
     request<{ data: { id: number | null; name: string; email: string; role: string } }>(
       '/api/po/scm-manager'
     ),
+  cfoOrders: (params: {
+    department?: string;
+    category?: string;
+    plant?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    status?: string;
+    entityId?: string;
+    vendor?: string;
+    amountMin?: string;
+    amountMax?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== '') qs.set(key, String(value));
+    });
+    const q = qs.toString();
+    return request<{
+      data: {
+        orders: Array<{
+          poId: number | null;
+          prId: number | null;
+          poNumber: string;
+          entity: string;
+          plant: string;
+          vendorName: string;
+          poAmount: number;
+          poDate: string;
+          status: string;
+        }>;
+        pagination: { page: number; pageSize: number; total: number; totalPages: number };
+      };
+    }>(`/api/po/stats/cfo/orders${q ? `?${q}` : ''}`);
+  },
   cfoInsights: (params?: {
     department?: string;
     category?: string;
+    plant?: string;
     dateFrom?: string;
     dateTo?: string;
   }) => {
     const qs = new URLSearchParams();
     if (params?.department) qs.set('department', params.department);
     if (params?.category) qs.set('category', params.category);
+    if (params?.plant) qs.set('plant', params.plant);
     if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
     if (params?.dateTo) qs.set('dateTo', params.dateTo);
     const q = qs.toString();
