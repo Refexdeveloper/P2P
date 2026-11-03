@@ -5574,8 +5574,10 @@ const CFO_PO_ENTITY_COLORS = [
 ];
 
 const CFO_PO_EXCLUDED_STATUSES = ['draft', 'cancelled', 'rejected'];
-const CFO_PO_PENDING_STATUSES = ['pending_approval', 'pending_buyer_verify'];
+/** Approved = signed by SCM Manager (incl. waiting for Buyer Final Verify). Pending = waiting for the sign. */
+const CFO_PO_PENDING_STATUSES = ['pending_approval'];
 const CFO_PO_APPROVED_STATUSES = [
+  'pending_buyer_verify',
   'approved',
   'sent_to_vendor',
   'awaiting_grn',
