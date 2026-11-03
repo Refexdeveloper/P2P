@@ -118,7 +118,7 @@ export default function FinancialPoDetailPage() {
               {error}
             </div>
           ) : row ? (
-            <TrackPoExpandedRow row={row} standalone />
+            <TrackPoExpandedRow row={row} standalone hideHistory />
           ) : null}
         </div>
       </div>

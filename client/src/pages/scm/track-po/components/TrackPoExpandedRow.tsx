@@ -55,6 +55,10 @@ type Props = {
   colSpan?: number;
   /** Full-page layout (Financial Insights PO detail) — no table row wrapper */
   standalone?: boolean;
+  /** Opened from Financial Insights (CFO dashboard). */
+  publicInsights?: boolean;
+  /** Hide the Approval History (audit trail) tab — CFO dashboard. */
+  hideHistory?: boolean;
 };
 
 const formatCurrency = (amount: number) =>
@@ -359,7 +363,7 @@ async function loadAuthPreview(doc: DocRow, poId: number | null): Promise<FilePr
   return { url: URL.createObjectURL(sniffed.blob), fileName: doc.fileName, kind: sniffed.kind };
 }
 
-export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false }: Props) {
+export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = false, hideHistory = false }: Props) {
   const expandWrapRef = useRef<HTMLDivElement>(null);
   const [panelWidth, setPanelWidth] = useState<number | null>(null);
   const [tab, setTab] = useState<
@@ -646,11 +650,15 @@ export default function TrackPoExpandedRow({ row, colSpan = 10, standalone = fal
     ...(showInvoiceTab
       ? [{ key: 'invoice' as const, label: 'Invoice', icon: 'ri-file-invoice-line' }]
       : []),
-    {
-      key: 'history' as const,
-      label: `Approval History${history.length ? ` (${history.length})` : ''}`,
-      icon: 'ri-history-line',
-    },
+    ...(hideHistory
+      ? []
+      : [
+          {
+            key: 'history' as const,
+            label: `Approval History${history.length ? ` (${history.length})` : ''}`,
+            icon: 'ri-history-line',
+          },
+        ]),
   ];
 
   useEffect(() => {

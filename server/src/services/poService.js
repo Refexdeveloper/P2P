@@ -5759,7 +5759,9 @@ export async function getCfoPoInsights(user = null, filters = {}) {
        COALESCE(SUM(CASE WHEN po.status NOT IN (${excludedSql}) THEN po.grand_total ELSE 0 END), 0) AS total_po_amount,
        COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_po_amount,
        COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_po_amount,
-       COUNT(CASE WHEN po.status NOT IN (${excludedSql}) THEN 1 END) AS total_po_count
+       COUNT(CASE WHEN po.status NOT IN (${excludedSql}) THEN 1 END) AS total_po_count,
+       COUNT(CASE WHEN po.status IN (${approvedSql}) THEN 1 END) AS approved_po_count,
+       COUNT(CASE WHEN po.status IN (${pendingSql}) THEN 1 END) AS pending_po_count
      FROM purchase_orders po
      ${joinSql}
      WHERE 1=1${whereSql}`,
@@ -5829,7 +5831,9 @@ export async function getCfoPoInsights(user = null, filters = {}) {
        COUNT(*) AS total_po_count,
        COALESCE(SUM(po.grand_total), 0) AS total_po_amount,
        COALESCE(SUM(CASE WHEN po.status IN (${approvedSql}) THEN po.grand_total ELSE 0 END), 0) AS approved_amount,
-       COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount
+       COALESCE(SUM(CASE WHEN po.status IN (${pendingSql}) THEN po.grand_total ELSE 0 END), 0) AS pending_amount,
+       COUNT(CASE WHEN po.status IN (${approvedSql}) THEN 1 END) AS approved_count,
+       COUNT(CASE WHEN po.status IN (${pendingSql}) THEN 1 END) AS pending_count
      FROM purchase_orders po
      LEFT JOIN entity_masters e ON e.id = po.entity_id
      ${joinSql}
@@ -5849,6 +5853,8 @@ export async function getCfoPoInsights(user = null, filters = {}) {
     totalPOAmount: Number(row.total_po_amount || 0),
     approvedAmount: Number(row.approved_amount || 0),
     pendingAmount: Number(row.pending_amount || 0),
+    approvedCount: Number(row.approved_count || 0),
+    pendingCount: Number(row.pending_count || 0),
     color: CFO_PO_ENTITY_COLORS[idx % CFO_PO_ENTITY_COLORS.length],
   }));
 
@@ -5994,6 +6000,8 @@ export async function getCfoPoInsights(user = null, filters = {}) {
       totalVendorPayments: vendorPayments,
       budgetUtilization,
       totalPOCount: Number(kpi?.total_po_count || 0),
+      approvedPOCount: Number(kpi?.approved_po_count || 0),
+      pendingPOCount: Number(kpi?.pending_po_count || 0),
       entityCount: entityWisePOSummary.length,
     },
     entityWisePOSummary,

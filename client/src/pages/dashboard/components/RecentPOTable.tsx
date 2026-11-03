@@ -129,7 +129,7 @@ export default function RecentPOTable({
                   <tr
                     onClick={() => setExpandedKey(open ? null : rowKey)}
                     className="group cursor-pointer"
-                    title="Show PO details, documents, PR, and approval history"
+                    title="Show PO details and documents"
                   >
                     <td className={`whitespace-nowrap rounded-l-2xl border border-r-0 bg-white px-3 py-4 transition-[border-color] sm:rounded-l-[18px] sm:py-5 ${edge} ${shadow}`}>
                       <div className="flex items-center gap-2">
@@ -165,6 +165,7 @@ export default function RecentPOTable({
                     <TrackPoExpandedRow
                       colSpan={headers.length}
                       publicInsights={publicView}
+                      hideHistory
                       row={{
                         prId: Number(po.prId) || 0,
                         poId: po.poId,

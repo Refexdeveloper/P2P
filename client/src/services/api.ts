@@ -839,6 +839,8 @@ export const poApi = {
           totalVendorPayments: number;
           budgetUtilization: number;
           totalPOCount: number;
+          approvedPOCount?: number;
+          pendingPOCount?: number;
           entityCount: number;
         };
         entityWisePOSummary: Array<{
@@ -849,6 +851,8 @@ export const poApi = {
           totalPOAmount: number;
           approvedAmount: number;
           pendingAmount: number;
+          approvedCount?: number;
+          pendingCount?: number;
           color: string;
         }>;
         monthlyPOTrend: Array<Record<string, string | number>>;

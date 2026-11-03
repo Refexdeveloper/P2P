@@ -279,6 +279,12 @@ export default function Dashboard({
     let totalPOAmount = narrowed ? entityTotal : data.kpis.totalPOAmount;
     let approvedPOAmount = narrowed ? entityApproved : data.kpis.approvedPOAmount;
     let pendingPOAmount = narrowed ? entityPending : data.kpis.pendingPOAmount;
+    const approvedPOCount = narrowed
+      ? filteredEntities.reduce((s, e) => s + Number(e.approvedCount || 0), 0)
+      : data.kpis.approvedPOCount;
+    const pendingPOCount = narrowed
+      ? filteredEntities.reduce((s, e) => s + Number(e.pendingCount || 0), 0)
+      : data.kpis.pendingPOCount;
 
     // Date range is applied server-side; avoid re-scaling KPIs from monthly buckets
     // (day/week filters cannot be inferred from month-level trend points).
@@ -294,6 +300,8 @@ export default function Dashboard({
       entityWiseSpend: totalPOAmount,
       approvedPOAmount,
       pendingPOAmount,
+      approvedPOCount,
+      pendingPOCount,
       budgetUtilization: totalPOAmount > 0 ? Math.round((approvedPOAmount / totalPOAmount) * 1000) / 10 : 0,
       entityCount: filteredEntities.length,
     };

@@ -8,6 +8,8 @@ type Kpis = {
   pendingPOAmount: number;
   totalVendorPayments: number;
   budgetUtilization: number;
+  approvedPOCount?: number;
+  pendingPOCount?: number;
 };
 
 export default function KPIWidgets({
@@ -57,8 +59,8 @@ export default function KPIWidgets({
       title: 'Approved PO Amount',
       value: formatCompactInr(kpis.approvedPOAmount),
       amount: kpis.approvedPOAmount,
-      titleAttr: formatFullInr(kpis.approvedPOAmount),
-      subtitle: 'Cleared POs',
+      titleAttr: `${formatFullInr(kpis.approvedPOAmount)} · ${kpis.approvedPOCount ?? 0} POs past Buyer Final Verify`,
+      subtitle: `${kpis.approvedPOCount ?? 0} PO${kpis.approvedPOCount === 1 ? '' : 's'} · Buyer final verified`,
       trend: `${approvedShare.toFixed(0)}% of total`,
       trendPositive: true,
       variant: 'approved',
@@ -69,8 +71,8 @@ export default function KPIWidgets({
       title: 'Pending PO Amount',
       value: formatCompactInr(kpis.pendingPOAmount),
       amount: kpis.pendingPOAmount,
-      titleAttr: formatFullInr(kpis.pendingPOAmount),
-      subtitle: 'Awaiting action',
+      titleAttr: `${formatFullInr(kpis.pendingPOAmount)} · ${kpis.pendingPOCount ?? 0} POs awaiting sign / final verify`,
+      subtitle: `${kpis.pendingPOCount ?? 0} PO${kpis.pendingPOCount === 1 ? '' : 's'} · Awaiting action`,
       trend: `${pendingShare.toFixed(0)}% of total`,
       trendPositive: false,
       variant: 'pending_approval',
