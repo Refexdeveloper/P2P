@@ -349,8 +349,8 @@ export default function TaskDetailDrawer({
 
   const savedQuoteVendors = Array.isArray(task.vendorQuoteRounds) ? task.vendorQuoteRounds : [];
   const showQuotesTab = Boolean(task.prId) && (isSass || isOwnVendor || hasQuotes || savedQuoteVendors.length > 0);
-  const showItemsTab = isInvoiceFlow || !hasQuotes;
-
+  // Always keep Line Items visible — quotations must not replace the PR item list
+  const showItemsTab = true;
 
   const tabs: { id: DrawerTab; label: string; count?: number }[] = [
     { id: 'details', label: 'Details' },

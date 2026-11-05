@@ -1320,6 +1320,16 @@ function findActiveSubmission(inv) {
   return null;
 }
 
+/** Best quote for mail/comparison when active submit is missing (e.g. last sent_back round). */
+function latestComparableSubmission(inv) {
+  const active = findActiveSubmission(inv);
+  if (active) return active;
+  const candidates = (inv?.submissions || [])
+    .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
+    .sort((a, b) => Number(a.round) - Number(b.round));
+  return candidates.length ? candidates[candidates.length - 1] : null;
+}
+
 function activeQuoteErrorMessage(inv) {
   if (!inv) return 'Recommended vendor not found';
   if (inv.status === 'invited') {
@@ -2286,8 +2296,9 @@ async function buildRfqSummary(prId) {
   const currency = normalizeEmailCurrency(prCurrencyRows[0]?.currency);
 
   const recommended = invitations.find((i) => i.id === config.recommendedInvitationId);
-  const latest = findActiveSubmission(recommended) ||
-    recommended?.submissions?.find((s) => s.status === 'submitted');
+  const latest =
+    latestComparableSubmission(recommended) ||
+    recommended?.submissions?.find((s) => s.status === 'submitted' || s.status === 'sent_back');
   const recommendedQuoteLineItems = Array.isArray(latest?.quoteLineItems)
     ? latest.quoteLineItems
     : Array.isArray(latest?.customFields?.quoteLineItems)
@@ -2317,7 +2328,7 @@ async function buildRfqSummary(prId) {
       };
       });
 
-    const active = findActiveSubmission(inv);
+    const active = latestComparableSubmission(inv);
     return {
       id: inv.id,
       name: inv.vendorName,
@@ -2913,7 +2924,7 @@ export async function getVendorComparisonMatrix(user, prId) {
   const currency = normalizeEmailCurrency(pr.currency || pr.currency_code);
 
   const vendors = invitations.map((inv) => {
-    const activeSubmission = findActiveSubmission(inv);
+    const activeSubmission = latestComparableSubmission(inv);
 
     // Include sent_back — Round 1 stays visible after Send Back creates Round 2
     const allRounds = inv.submissions

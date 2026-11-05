@@ -1306,19 +1306,28 @@ async function queuePrSubmitNotifications({
   const prId = pr?.id || pr?.prId;
   let mailPack = { rfqSummary: null, attachments: [] };
   try {
-    mailPack = await Promise.race([
-      loadFunctionalOwnRfqMailPack(
-        prFlow,
-        vendorMode,
-        prId,
-        pr?.purchaseType || pr?.purchase_type
-      ),
-      new Promise((resolve) =>
-        setTimeout(() => resolve({ rfqSummary: null, attachments: [] }), 5000)
-      ),
-    ]);
+    // Await the full pack — a short race previously sent empty mails (no comparison / quotation files)
+    mailPack = await loadFunctionalOwnRfqMailPack(
+      prFlow,
+      vendorMode,
+      prId,
+      pr?.purchaseType || pr?.purchase_type
+    );
   } catch (err) {
     console.warn('PR submit mail pack failed:', err.message);
+  }
+
+  const wantsQuoteMail =
+    isSassPurchaseType(pr?.purchaseType || pr?.purchase_type) ||
+    (prFlow === 'functional' && vendorMode === 'own');
+  if (
+    wantsQuoteMail &&
+    !(mailPack.rfqSummary?.vendors?.length) &&
+    !(mailPack.attachments || []).length
+  ) {
+    console.warn(
+      `PR submit mail pack empty for ${pr?.prNumber || prId} — vendor comparison / quotation files may be missing`
+    );
   }
 
   const approvalOptions = {
