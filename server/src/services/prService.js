@@ -2,7 +2,6 @@ import pool from '../config/db.js';
 import {
   queuePrRaisedNotification,
   queuePrApprovalPendingNotification,
-  sendPrApprovalPendingNotification,
   queuePostRfqActionNotification,
   queueRequesterStepProgressNotification,
   queueStakeholderStepProgressNotifications,
@@ -1303,69 +1302,55 @@ async function queuePrSubmitNotifications({
   nextStep,
   isResubmit = false,
 }) {
+  // Submit/resubmit must return immediately — load quote pack + SMTP in background.
   const prId = pr?.id || pr?.prId;
-  let mailPack = { rfqSummary: null, attachments: [] };
-  try {
-    // Await the full pack — a short race previously sent empty mails (no comparison / quotation files)
-    mailPack = await loadFunctionalOwnRfqMailPack(
-      prFlow,
-      vendorMode,
-      prId,
-      pr?.purchaseType || pr?.purchase_type
-    );
-  } catch (err) {
-    console.warn('PR submit mail pack failed:', err.message);
-  }
-
-  const wantsQuoteMail =
-    isSassPurchaseType(pr?.purchaseType || pr?.purchase_type) ||
-    (prFlow === 'functional' && vendorMode === 'own');
-  if (
-    wantsQuoteMail &&
-    !(mailPack.rfqSummary?.vendors?.length) &&
-    !(mailPack.attachments || []).length
-  ) {
-    console.warn(
-      `PR submit mail pack empty for ${pr?.prNumber || prId} — vendor comparison / quotation files may be missing`
-    );
-  }
-
-  const approvalOptions = {
-    approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
-    approverName: hodAssignment?.hodName || undefined,
-    stageLabel: nextStep,
-    roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
-    rfqSummary: mailPack.rfqSummary,
-    attachments: mailPack.attachments,
-  };
-
-  try {
-    await sendPrApprovalPendingNotification(
-      pr,
-      'HOD Approver',
-      { name: user.name, email: user.email },
-      departmentId,
-      approvalOptions
-    );
-  } catch (err) {
-    console.error('PR submit approver mail failed:', err.message);
-    queuePrApprovalPendingNotification(
-      pr,
-      'HOD Approver',
-      { name: user.name, email: user.email },
-      departmentId,
-      approvalOptions
-    );
-  }
-
   setImmediate(() => {
     (async () => {
+      let mailPack = { rfqSummary: null, attachments: [] };
+      try {
+        mailPack = await loadFunctionalOwnRfqMailPack(
+          prFlow,
+          vendorMode,
+          prId,
+          pr?.purchaseType || pr?.purchase_type
+        );
+      } catch (err) {
+        console.warn('PR submit mail pack failed:', err.message);
+      }
+
+      const wantsQuoteMail =
+        isSassPurchaseType(pr?.purchaseType || pr?.purchase_type) ||
+        (prFlow === 'functional' && vendorMode === 'own');
+      if (
+        wantsQuoteMail &&
+        !(mailPack.rfqSummary?.vendors?.length) &&
+        !(mailPack.attachments || []).length
+      ) {
+        console.warn(
+          `PR submit mail pack empty for ${pr?.prNumber || prId} — vendor comparison / quotation files may be missing`
+        );
+      }
+
+      queuePrApprovalPendingNotification(
+        pr,
+        'HOD Approver',
+        { name: user.name, email: user.email },
+        departmentId,
+        {
+          approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
+          approverName: hodAssignment?.hodName || undefined,
+          stageLabel: nextStep,
+          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
+          rfqSummary: mailPack.rfqSummary,
+          attachments: mailPack.attachments,
+        }
+      );
+
       queuePrRaisedNotification(
         pr,
         { name: user.name, email: user.email },
         isResubmit ? { isResubmit: true } : {}
       );
-      // Requester FYI � PR raised / resubmitted and moved to first approval step
       queueRequesterStepProgressNotification(pr, {
         action: isResubmit ? 'submitted' : 'raised',
         actorRole: 'Requester',
@@ -1917,7 +1902,8 @@ export async function createPurchaseRequest(user, body) {
             ? `User Approval 1 of ${selectedApprovers.length}`
             : 'User Approval'
           : 'L1 Manager Approval';
-      await queuePrSubmitNotifications({
+      // Fire-and-forget — do not await SMTP / quotation pack (keeps Submit fast)
+      void queuePrSubmitNotifications({
         pr,
         user,
         departmentId,
@@ -3744,34 +3730,42 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
         nextFunctionalApprover.id
       );
       const nextLabel = total > 1 ? `User Approval ${step} of ${total}` : 'User Approval';
-      let functionalMailExtras = {};
-      if (isSass || (isFunctional && pr.vendor_selection === 'own')) {
-        try {
-          const { getRfqEmailPack } = await import('./rfqService.js');
-          const pack = await getRfqEmailPack(updatedPr.id);
-          functionalMailExtras = {
-            rfqSummary: pack.rfqSummary,
-            attachments: pack.attachments,
-          };
-        } catch (err) {
-          console.warn('Quote pack for next-approver mail skipped:', err.message);
-        }
-      }
-      queuePrApprovalPendingNotification(
-        updatedPr,
-        'HOD Approver',
-        { name: updatedPr.requester, email: '' },
-        updatedPr.departmentId,
-        {
-          approverEmails: nextAssignee?.hodEmail || nextAssignee?.email
-            ? [nextAssignee.hodEmail || nextAssignee.email]
-            : undefined,
-          approverName: nextAssignee?.hodName || nextAssignee?.name || undefined,
-          stageLabel: nextLabel,
-          roleDisplayName: 'Selected Approver',
-          ...functionalMailExtras,
-        }
-      );
+      const wantQuotePack = isSass || (isFunctional && pr.vendor_selection === 'own');
+      const nextApproverEmails = nextAssignee?.hodEmail || nextAssignee?.email
+        ? [nextAssignee.hodEmail || nextAssignee.email]
+        : undefined;
+      const nextApproverName = nextAssignee?.hodName || nextAssignee?.name || undefined;
+      // Pack load + SMTP must not block Approve
+      setImmediate(() => {
+        (async () => {
+          let functionalMailExtras = {};
+          if (wantQuotePack) {
+            try {
+              const { getRfqEmailPack } = await import('./rfqService.js');
+              const pack = await getRfqEmailPack(updatedPr.id);
+              functionalMailExtras = {
+                rfqSummary: pack.rfqSummary,
+                attachments: pack.attachments,
+              };
+            } catch (err) {
+              console.warn('Quote pack for next-approver mail skipped:', err.message);
+            }
+          }
+          queuePrApprovalPendingNotification(
+            updatedPr,
+            'HOD Approver',
+            { name: updatedPr.requester, email: '' },
+            updatedPr.departmentId,
+            {
+              approverEmails: nextApproverEmails,
+              approverName: nextApproverName,
+              stageLabel: nextLabel,
+              roleDisplayName: 'Selected Approver',
+              ...functionalMailExtras,
+            }
+          );
+        })().catch((err) => console.error('Next functional approver mail failed:', err.message));
+      });
       const { step: doneStep, total: doneTotal } = approvalStepIndex(pr, user.id);
       notifyWorkflowStepProgress(
         nextLabel,
@@ -3786,96 +3780,115 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
             : nextRole === 'PR Manager'
               ? 'L2 Manager Approval'
               : `${nextRole} Approval`;
-      let sassMailExtras = {};
-      if (isSass) {
-        try {
-          const { getRfqEmailPack } = await import('./rfqService.js');
-          const pack = await getRfqEmailPack(updatedPr.id);
-          sassMailExtras = {
-            rfqSummary: pack.rfqSummary,
-            attachments: pack.attachments,
-          };
-        } catch (err) {
-          console.warn('Cloud Subscription quote pack for approval mail skipped:', err.message);
-        }
-      }
-      queuePrApprovalPendingNotification(
-        updatedPr,
-        nextRole,
-        { name: updatedPr.requester, email: '' },
-        updatedPr.departmentId,
-        {
-          approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
-          approverName: nextAssignee?.name || undefined,
-          stageLabel: nextLabel,
-          roleDisplayName:
-            isSass && nextRole === 'CFO'
-              ? 'Mugesh'
-              : isSass && nextRole === 'PR Manager'
-                ? 'L2 Manager'
-                : undefined,
-          ...sassMailExtras,
-        }
-      );
+      const nextRoleEmails = nextAssignee?.email ? [nextAssignee.email] : undefined;
+      const nextRoleName = nextAssignee?.name || undefined;
+      setImmediate(() => {
+        (async () => {
+          let sassMailExtras = {};
+          if (isSass) {
+            try {
+              const { getRfqEmailPack } = await import('./rfqService.js');
+              const pack = await getRfqEmailPack(updatedPr.id);
+              sassMailExtras = {
+                rfqSummary: pack.rfqSummary,
+                attachments: pack.attachments,
+              };
+            } catch (err) {
+              console.warn('Cloud Subscription quote pack for approval mail skipped:', err.message);
+            }
+          }
+          queuePrApprovalPendingNotification(
+            updatedPr,
+            nextRole,
+            { name: updatedPr.requester, email: '' },
+            updatedPr.departmentId,
+            {
+              approverEmails: nextRoleEmails,
+              approverName: nextRoleName,
+              stageLabel: nextLabel,
+              roleDisplayName:
+                isSass && nextRole === 'CFO'
+                  ? 'Mugesh'
+                  : isSass && nextRole === 'PR Manager'
+                    ? 'L2 Manager'
+                    : undefined,
+              ...sassMailExtras,
+            }
+          );
+        })().catch((err) => console.error('Next-role approval mail failed:', err.message));
+      });
       notifyWorkflowStepProgress(nextLabel);
     } else if (rfqEntryRequester?.email) {
-      // Particular requester � RFQ entry step (include FSD / PR documents)
-      let attachments = [];
-      try {
-        const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
-        attachments = await loadPrAttachmentsForMail(updatedPr.id);
-      } catch (err) {
-        console.warn('PR/FSD attachments for RFQ Entry mail skipped:', err.message);
-      }
-      queuePrApprovalPendingNotification(
-        updatedPr,
-        'Requester',
-        { name: rfqEntryRequester.name, email: rfqEntryRequester.email },
-        updatedPr.departmentId,
-        {
-          approverEmails: [rfqEntryRequester.email],
-          approverName: rfqEntryRequester.name,
-          stageLabel: 'RFQ Entry Required',
-          attachments,
-        }
-      );
+      // Particular requester — RFQ entry step (include FSD / PR documents)
+      const rfqEntryTo = {
+        name: rfqEntryRequester.name,
+        email: rfqEntryRequester.email,
+      };
+      setImmediate(() => {
+        (async () => {
+          let attachments = [];
+          try {
+            const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+            attachments = await loadPrAttachmentsForMail(updatedPr.id);
+          } catch (err) {
+            console.warn('PR/FSD attachments for RFQ Entry mail skipped:', err.message);
+          }
+          queuePrApprovalPendingNotification(
+            updatedPr,
+            'Requester',
+            rfqEntryTo,
+            updatedPr.departmentId,
+            {
+              approverEmails: [rfqEntryTo.email],
+              approverName: rfqEntryTo.name,
+              stageLabel: 'RFQ Entry Required',
+              attachments,
+            }
+          );
+        })().catch((err) => console.error('RFQ Entry mail failed:', err.message));
+      });
       notifyWorkflowStepProgress('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isSass) {
-      // Functional Own (and any PR that already has quotation rounds) ? SCM Buyer with files attached
-      // SASS never notifies SCM � Mugesh uploads invoice on the same approval step
+      // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
+      // SASS never notifies SCM — Mugesh uploads invoice on the same approval step
       const scmLabel =
         isFunctional && pr.vendor_selection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry';
-      try {
-        const { queuePostQuotationApprovalMail } = await import('./rfqService.js');
-        await queuePostQuotationApprovalMail(updatedPr, 'SCM Buyer', {
-          rfqEntry: true,
-          stageLabel: scmLabel,
-          approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
-          approverName: 'SCM Buyer',
-        });
-      } catch (err) {
-        console.warn('SCM Buyer RFQ mail pack failed, sending with PR docs only:', err.message);
-        let attachments = [];
-        try {
-          const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
-          attachments = await loadPrAttachmentsForMail(updatedPr.id);
-        } catch (attErr) {
-          console.warn('PR/FSD attachments for SCM RFQ mail skipped:', attErr.message);
-        }
-        queuePrApprovalPendingNotification(
-          updatedPr,
-          'SCM Buyer',
-          { name: updatedPr.requester, email: '' },
-          updatedPr.departmentId,
-          {
-            rfqEntry: true,
-            stageLabel: scmLabel,
-            approverEmails: scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined,
-            approverName: 'SCM Buyer',
-            attachments,
+      const scmBuyerEmails = scmRfqBuyerEmails.length ? scmRfqBuyerEmails : undefined;
+      setImmediate(() => {
+        (async () => {
+          try {
+            const { queuePostQuotationApprovalMail } = await import('./rfqService.js');
+            await queuePostQuotationApprovalMail(updatedPr, 'SCM Buyer', {
+              rfqEntry: true,
+              stageLabel: scmLabel,
+              approverEmails: scmBuyerEmails,
+              approverName: 'SCM Buyer',
+            });
+          } catch (err) {
+            console.warn('SCM Buyer RFQ mail pack failed, sending with PR docs only:', err.message);
+            let attachments = [];
+            try {
+              const { loadPrAttachmentsForMail } = await import('./prAttachmentService.js');
+              attachments = await loadPrAttachmentsForMail(updatedPr.id);
+            } catch (attErr) {
+              console.warn('PR/FSD attachments for SCM RFQ mail skipped:', attErr.message);
+            }
+            queuePrApprovalPendingNotification(
+              updatedPr,
+              'SCM Buyer',
+              { name: updatedPr.requester, email: '' },
+              updatedPr.departmentId,
+              {
+                rfqEntry: true,
+                stageLabel: scmLabel,
+                approverEmails: scmBuyerEmails,
+                approverName: 'SCM Buyer',
+                attachments,
+              }
+            );
           }
-        );
-      }
+        })().catch((err) => console.error('SCM RFQ Entry mail failed:', err.message));
+      });
       notifyWorkflowStepProgress(
         scmLabel,
         isFunctional ? 'User Approval (chain complete)' : `${actingRole} Approval`
@@ -5038,7 +5051,8 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         ? `User Approval 1 of ${chainLen}`
         : 'User Approval'
       : 'L1 Manager Approval';
-    await queuePrSubmitNotifications({
+    // Fire-and-forget — do not await SMTP / quotation pack (keeps Resubmit fast)
+    void queuePrSubmitNotifications({
       pr: updatedPr,
       user,
       departmentId: current.department_id,

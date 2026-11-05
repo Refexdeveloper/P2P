@@ -78,6 +78,7 @@ function getTransporter() {
 
   // Gmail / Google Workspace: port 587 + STARTTLS (secure:false)
   // Pool + rate limit: one connection, avoid parallel handshake storms (slow + rate-limits)
+  // Longer socket timeout — approval mails often attach several quotation PDFs
   transporter = nodemailer.createTransport({
     host,
     port,
@@ -86,15 +87,29 @@ function getTransporter() {
     requireTLS: !secure && port === 587,
     pool: true,
     maxConnections: 1,
-    maxMessages: 100,
+    maxMessages: 50,
     rateDelta: 1000,
-    rateLimit: 8,
-    connectionTimeout: 12_000,
-    greetingTimeout: 12_000,
-    socketTimeout: 30_000,
+    rateLimit: 4,
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 120_000,
   });
 
   return transporter;
+}
+
+/** Drop a broken pooled transport so the next send opens a fresh SMTP session. */
+function resetTransporter() {
+  const old = transporter;
+  transporter = null;
+  smtpReady = false;
+  if (old && typeof old.close === 'function') {
+    try {
+      old.close();
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 /** Serialize outbound mail so Gmail isn't hit with parallel SMTP sessions. */
@@ -555,8 +570,9 @@ export async function sendMailToRecipients(recipients, subject, html, text, atta
     );
     return info;
   } catch (err) {
-    smtpReady = false;
-    // One reconnect + retry — transient SMTP drops often surface as Failed on return/reject mail
+    console.warn(`SMTP send failed (${err.message}); resetting transport and retrying once`);
+    resetTransporter();
+    // One reconnect + retry — Timeout / dropped sockets are common with large quotation packs
     try {
       await ensureSmtpReady();
       const transport = getTransporter();
@@ -574,6 +590,7 @@ export async function sendMailToRecipients(recipients, subject, html, text, atta
       console.log(`Email sent (retry) to ${toList.join(', ')} — ${info.messageId}`);
       return info;
     } catch (err2) {
+      resetTransporter();
       await updateEmailLog(logId, { status: 'failed', errorMessage: err2.message || err.message });
       throw err2;
     }
