@@ -84,6 +84,7 @@ interface TaskItem {
   isRequesterPoL1?: boolean;
   isMugeshSign?: boolean;
   vendorSelection?: 'own' | 'scm';
+  prFlow?: 'standard' | 'functional' | string;
   askBusinessApproval?: boolean;
   requireInvoiceUpload?: boolean;
   purchaseType?: string;
@@ -169,6 +170,7 @@ export default function TasksPage() {
           isRequesterPoL1: Boolean(t.isRequesterPoL1),
           isMugeshSign: Boolean(t.isMugeshSign),
           vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
+          prFlow: String(t.prFlow || '') === 'functional' ? 'functional' : 'standard',
           askBusinessApproval: Boolean(t.askBusinessApproval),
           requireInvoiceUpload: Boolean(t.requireInvoiceUpload),
           purchaseType: t.purchaseType ? String(t.purchaseType) : 'purchase_order',
@@ -312,6 +314,7 @@ export default function TasksPage() {
     justification: string;
     sendBackRemarks?: string;
     vendorSelection?: 'own' | 'scm';
+    prFlow?: 'standard' | 'functional' | string;
     vendorQuoteRounds?: Array<{
       invitationId: number;
       vendorName: string;
@@ -466,6 +469,7 @@ export default function TasksPage() {
       currentApprover: task.currentApprover,
       justification: 'Loading…',
       vendorSelection: task.vendorSelection === 'own' ? 'own' : 'scm',
+      prFlow: task.prFlow === 'functional' ? 'functional' : 'standard',
       purchaseType: task.purchaseType,
       isSass: isSassTask(task),
       requireInvoiceUpload: Boolean(task.requireInvoiceUpload),
@@ -490,16 +494,24 @@ export default function TasksPage() {
       const pr = res.data as Record<string, unknown>;
       const lineItems = ((pr.lineItems as Array<Record<string, unknown>>) || []).map((li) => {
         const qty = Number(li.quantity ?? li.qty);
+        const safeQty = Number.isFinite(qty) && qty > 0 ? qty : 0;
         const unitRaw = String(li.unit || '').trim();
         const description = String(li.description || li.item || '');
         const itemName = String(li.itemName || li.item_name || li.item || description || '');
+        const unitCost = Number(li.unitCost || li.unitPrice || 0);
+        const gst = Number(li.gstPercentage ?? li.gst_percentage ?? 18);
+        const storedTotal = Number(li.total || 0);
+        const computed =
+          safeQty > 0 && unitCost > 0
+            ? Math.round(safeQty * unitCost * (1 + (Number.isFinite(gst) ? gst : 18) / 100) * 100) / 100
+            : 0;
         return {
           itemName,
           description,
-          qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
+          qty: safeQty,
           unit: !unitRaw || /^\d+(\.\d+)?$/.test(unitRaw) ? 'Nos' : unitRaw,
-          unitCost: Number(li.unitCost || li.unitPrice || 0),
-          total: Number(li.total || 0),
+          unitCost,
+          total: storedTotal > 0 ? storedTotal : computed,
         };
       });
       const approvalHistory = ((pr.approvalHistory as Array<Record<string, unknown>>) || []).map((h) => ({
@@ -566,6 +578,7 @@ export default function TasksPage() {
         justification: String(pr.justification || 'No justification provided.'),
         sendBackRemarks: String(pr.sendBackRemarks || ''),
         vendorSelection,
+        prFlow: String(pr.prFlow || task.prFlow || 'standard') === 'functional' ? 'functional' : 'standard',
         purchaseType,
         isSass,
         requireInvoiceUpload: Boolean(task.requireInvoiceUpload),

@@ -40,9 +40,9 @@ const SMTP_DEFAULTS = {
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
-  user: 'support@refexone.com',
-  pass: 'skrmayqcqwvjanne',
-  fromEmail: 'support@refexone.com',
+  user: 'itdev@refex.co.in',
+  pass: 'lxhedxiuezcyrlbh',
+  fromEmail: 'itdev@refex.co.in',
   fromName: 'P2P Procurement',
 };
 

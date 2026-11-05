@@ -97,6 +97,7 @@ interface PRTask {
   justification: string;
   sendBackRemarks?: string;
   vendorSelection?: 'own' | 'scm';
+  prFlow?: 'standard' | 'functional' | string;
   purchaseType?: string;
   isSass?: boolean;
   requireInvoiceUpload?: boolean;
@@ -340,9 +341,10 @@ export default function TaskDetailDrawer({
       .replace(/[\s-]+/g, '_')
   );
   const isInvoiceFlow = isSass || isOnlinePurchase;
-  /** Own Vendor / quoted PRs: show name, description, qty — hide unit cost & total.
-   *  Cloud Subscription keeps full line pricing + quotation files. */
-  const hideLinePricing = !isInvoiceFlow && (isOwnVendor || hasQuotes);
+  const isFunctional = String(task.prFlow || '').toLowerCase() === 'functional';
+  /** Standard Own Vendor / quoted PRs: name, description, qty only.
+   *  Functional + Cloud Subscription keep unit price and line totals. */
+  const hideLinePricing = !isInvoiceFlow && !isFunctional && (isOwnVendor || hasQuotes);
 
   const formatDate = (dateStr: string) => formatDisplayDate(dateStr);
   const formatDateTime = (dateStr: string) => formatDisplayDateTime(dateStr);
