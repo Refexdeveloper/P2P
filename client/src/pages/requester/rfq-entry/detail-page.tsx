@@ -2087,17 +2087,34 @@ export default function RfqEntryDetailPage() {
   };
 
   const quoteFieldValues = (quote: ReturnType<typeof getDisplayQuote>, row?: TableRow) => {
-    const fromQuote = {
-      ...(quote?.fieldValues && typeof quote.fieldValues === 'object' ? quote.fieldValues : {}),
-      ...(quote?.requesterFields && typeof quote.requesterFields === 'object' ? quote.requesterFields : {}),
+    const q = quote as (NonNullable<ReturnType<typeof getDisplayQuote>> & {
+      quoteLineItems?: ManualQuoteLine[];
+      customFields?: Record<string, unknown>;
+    }) | null | undefined;
+    const fromQuote: Record<string, unknown> = {
+      ...(q?.fieldValues && typeof q.fieldValues === 'object' ? q.fieldValues : {}),
+      ...(q?.requesterFields && typeof q.requesterFields === 'object' ? q.requesterFields : {}),
     };
     // Fall back to top-level quote columns when fieldValues is sparse
-    if (quote) {
-      if (fromQuote.quotedPrice == null && quote.quotedPrice != null) fromQuote.quotedPrice = quote.quotedPrice;
+    if (q) {
+      if (fromQuote.quotedPrice == null && q.quotedPrice != null) fromQuote.quotedPrice = q.quotedPrice;
     }
     if (row && fromQuote.quotedPrice == null && row.fieldValues?.quotedPrice != null) {
       fromQuote.quotedPrice = row.fieldValues.quotedPrice;
     }
+    const quoteLines =
+      (Array.isArray(fromQuote.quoteLineItems) && fromQuote.quoteLineItems.length
+        ? fromQuote.quoteLineItems
+        : null) ||
+      (Array.isArray(q?.quoteLineItems) && q.quoteLineItems.length ? q.quoteLineItems : null) ||
+      (Array.isArray(q?.customFields?.quoteLineItems) && (q.customFields.quoteLineItems as unknown[]).length
+        ? q.customFields.quoteLineItems
+        : null) ||
+      (Array.isArray(row?.fieldValues?.quoteLineItems) && (row.fieldValues.quoteLineItems as unknown[]).length
+        ? row.fieldValues.quoteLineItems
+        : null) ||
+      [];
+    fromQuote.quoteLineItems = quoteLines;
     return fromQuote;
   };
 

@@ -145,14 +145,25 @@ function exclusiveFromInclusive(inclusive: number, gstRate = GST_RATE) {
   return { amount, gst: money(gross - amount) };
 }
 
+function coerceQuoteLines(raw: unknown): QuoteLine[] {
+  if (Array.isArray(raw) && raw.length) return raw as QuoteLine[];
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed as QuoteLine[];
+    } catch {
+      /* ignore */
+    }
+  }
+  return [];
+}
+
 function quoteLinesFromValues(values: Record<string, unknown>): QuoteLine[] {
-  const raw =
-    (Array.isArray(values.quoteLineItems) && values.quoteLineItems.length
-      ? values.quoteLineItems
-      : null) ||
-    (Array.isArray(values.lineItems) && values.lineItems.length ? values.lineItems : null) ||
-    [];
-  return raw as QuoteLine[];
+  const fromQuote = coerceQuoteLines(values.quoteLineItems);
+  if (fromQuote.length) return fromQuote;
+  const fromLines = coerceQuoteLines(values.lineItems);
+  if (fromLines.length) return fromLines;
+  return coerceQuoteLines((values as { lines?: unknown }).lines);
 }
 
 function quoteLineLabel(ql: QuoteLine) {
@@ -189,6 +200,18 @@ function lineExGst(ql: QuoteLine, prQty: number) {
   return { rate, amount, qty, gst, gstPercent };
 }
 
+function quoteLineHasAmount(ql: QuoteLine | null | undefined) {
+  if (!ql) return false;
+  const row = lineExGst(ql, Number(ql.quantity) || 1);
+  return row.amount > 0 || row.rate > 0;
+}
+
+function pickBestQuoteLine(candidates: Array<QuoteLine | null | undefined>): QuoteLine | null {
+  const list = candidates.filter(Boolean) as QuoteLine[];
+  if (!list.length) return null;
+  return list.find((l) => quoteLineHasAmount(l)) || list[0] || null;
+}
+
 function findQuoteLine(
   values: Record<string, unknown>,
   lineId: string,
@@ -203,7 +226,6 @@ function findQuoteLine(
   const byId =
     lines.find((l) => String(l.lineItemId ?? '') === String(lineId)) ||
     lines.find((l) => String(l.id ?? '') === String(lineId));
-  if (byId) return byId;
   const byDesc =
     (descKey
       ? lines.find((l) => quoteLineLabel(l) === descKey) ||
@@ -212,24 +234,12 @@ function findQuoteLine(
           return Boolean(label) && (label.includes(descKey) || descKey.includes(label));
         })
       : null) || null;
-  if (byDesc) return byDesc;
-  if (String(lineId).startsWith('extra:')) {
-    const extraKey = String(lineId).slice(6);
-    const byExtra = lines.find(
-      (l) => Boolean(l.extra) && quoteLineLabel(l) === extraKey
-    );
-    if (byExtra) return byExtra;
-  }
-  // Same count / stable order — match by index (common after PR line id remaps)
-  if (
-    lineIndex != null &&
-    lineIndex >= 0 &&
-    lineIndex < lines.length &&
-    !lines[lineIndex]?.extra
-  ) {
-    return lines[lineIndex];
-  }
-  return null;
+  const byExtra = String(lineId).startsWith('extra:')
+    ? lines.find((l) => Boolean(l.extra) && quoteLineLabel(l) === String(lineId).slice(6))
+    : null;
+  const byIndex =
+    lineIndex != null && lineIndex >= 0 && lineIndex < lines.length ? lines[lineIndex] : null;
+  return pickBestQuoteLine([byId, byDesc, byExtra, byIndex]);
 }
 
 /** PR lines + any extra items vendors added on the quotation (not only PR master lines). */
@@ -453,19 +463,26 @@ export default function VendorComparisonMatrix({
     1
   );
 
+  const recommendedFallbackLines = Array.isArray(data.recommendedQuoteLineItems)
+    ? data.recommendedQuoteLineItems
+    : [];
+
   const mergeRoundValues = (
     values: Record<string, unknown> | undefined,
     roundLines?: unknown,
-    vendorLines?: unknown
+    vendorLines?: unknown,
+    useRecommendedFallback = false
   ): Record<string, unknown> => {
     const base = { ...(values || {}) };
-    const fromValues = Array.isArray(base.quoteLineItems) ? base.quoteLineItems : [];
-    const fromRound = Array.isArray(roundLines) ? roundLines : [];
-    const fromVendor = Array.isArray(vendorLines) ? vendorLines : [];
+    const fromValues = coerceQuoteLines(base.quoteLineItems);
+    const fromRound = coerceQuoteLines(roundLines);
+    const fromVendor = coerceQuoteLines(vendorLines);
+    const fromRecommended = useRecommendedFallback ? coerceQuoteLines(recommendedFallbackLines) : [];
     const quoteLineItems =
       (fromValues.length ? fromValues : null) ||
       (fromRound.length ? fromRound : null) ||
       (fromVendor.length ? fromVendor : null) ||
+      (fromRecommended.length ? fromRecommended : null) ||
       fromValues;
     return { ...base, quoteLineItems };
   };
@@ -511,7 +528,8 @@ export default function VendorComparisonMatrix({
         values: mergeRoundValues(
           (r.values || {}) as Record<string, unknown>,
           r.quoteLineItems,
-          roundNum === latestRound ? vendor.quoteLineItems : undefined
+          roundNum === latestRound ? vendor.quoteLineItems : undefined,
+          Boolean(vendor.isRecommended)
         ),
         submissionId: r.submissionId,
         quotationFileName: r.quotationFileName || (roundNum === latestRound ? vendor.quotationFileName : '') || '',
@@ -572,15 +590,41 @@ export default function VendorComparisonMatrix({
     lineIndex?: number
   ) => {
     const ql = findQuoteLine(col.values, lineId, description, lineIndex);
-    if (ql) return lineExGst(ql, prQty);
+    if (ql && quoteLineHasAmount(ql)) return lineExGst(ql, prQty);
+
     const quotedLines = quoteLinesFromValues(col.values);
-    // Only fall back to lump-sum quotedPrice when there is a single PR line and no extras
-    if (!quotedLines.length && lineItems.length === 1 && displayLines.length <= 1) {
-      const inclusive = Number(col.values.quotedPrice) || 0;
+    const pricedLines = quotedLines.filter((l) => quoteLineHasAmount(l));
+    // Round has line prices but this PR row didn't match — try strict index on priced lines
+    if (
+      pricedLines.length &&
+      lineIndex != null &&
+      lineIndex >= 0 &&
+      lineIndex < pricedLines.length
+    ) {
+      return lineExGst(pricedLines[lineIndex], prQty);
+    }
+
+    const inclusive = Number(col.values.quotedPrice) || 0;
+    if (inclusive > 0 && (!pricedLines.length || !ql || !quoteLineHasAmount(ql))) {
       const qty = prQty || 1;
-      const { amount, gst } = exclusiveFromInclusive(inclusive);
+      // Single display row → use full quoted total
+      if (displayLines.length <= 1) {
+        const { amount, gst } = exclusiveFromInclusive(inclusive);
+        return { rate: qty ? money(amount / qty) : amount, amount, qty, gst, gstPercent: GST_RATE * 100 };
+      }
+      // Multi-line with only lump-sum quote → split by PR line value weights
+      const weights = displayLines.map((li) => {
+        const w = Number(li.total) || Number(li.unitCost) * Number(li.quantity) || Number(li.quantity) || 0;
+        return w > 0 ? w : 1;
+      });
+      const weightSum = weights.reduce((s, w) => s + w, 0) || displayLines.length;
+      const idx = Math.max(0, lineIndex ?? 0);
+      const share = inclusive * ((weights[idx] || 1) / weightSum);
+      const { amount, gst } = exclusiveFromInclusive(share);
       return { rate: qty ? money(amount / qty) : amount, amount, qty, gst, gstPercent: GST_RATE * 100 };
     }
+
+    if (ql) return lineExGst(ql, prQty);
     return { rate: 0, amount: 0, qty: prQty, gst: 0, gstPercent: GST_RATE * 100 };
   };
 

@@ -4421,16 +4421,45 @@ export async function getPurchaseOrderVendorComparison(user, poId) {
     { id: 'vendorEmail', label: 'Vendor Email', type: 'text', icon: 'ri-mail-line', showIn: 'commercial' },
   ];
 
+  const poLines = Array.isArray(po.lineItems) ? po.lineItems : [];
+  const synthesizeQuoteLines = (quotedPrice) => {
+    const total = Number(quotedPrice) || 0;
+    if (!poLines.length) return [];
+    const weights = poLines.map((li) => {
+      const w = Number(li.total) || Number(li.unitPrice || li.unitCost) * Number(li.quantity) || Number(li.quantity) || 0;
+      return w > 0 ? w : 1;
+    });
+    const weightSum = weights.reduce((s, w) => s + w, 0) || poLines.length;
+    return poLines.map((li, i) => {
+      const qty = Number(li.quantity) || 1;
+      const share = total > 0 ? total * ((weights[i] || 1) / weightSum) : Number(li.total) || 0;
+      const unit = qty > 0 ? Math.round((share / qty) * 100) / 100 : share;
+      return {
+        lineItemId: li.id,
+        description: li.description || li.itemName || li.item || '',
+        quantity: qty,
+        quotedUnitPrice: unit,
+        quotedTotal: Math.round(share * 100) / 100,
+        gstPercent: Number(li.taxPercentage ?? li.gstPercentage) || 0,
+      };
+    });
+  };
+
   const vendors = [...byVendor.values()].map((v, idx) => {
     const sorted = [...v.quotes].sort((a, b) => (Number(a.round) || 1) - (Number(b.round) || 1));
     const latest = sorted[sorted.length - 1] || {};
     const vendorId = idx + 1;
     const roundsOut = sorted.map((q, rIdx) => {
+      const storedLines = Array.isArray(q.quoteLineItems) ? q.quoteLineItems : [];
+      const quoteLineItems = storedLines.length
+        ? storedLines
+        : synthesizeQuoteLines(q.quotedPrice);
       const values = {
         quotedPrice: Number(q.quotedPrice) || 0,
         leadTime: String(q.leadTime || ''),
         paymentTerms: String(q.paymentTerms || ''),
         vendorEmail: String(q.vendorEmail || v.email || ''),
+        quoteLineItems,
       };
       const files = (Array.isArray(q.files) ? q.files : [])
         .map((f) => ({
@@ -4448,7 +4477,7 @@ export async function getPurchaseOrderVendorComparison(user, poId) {
         hasQuotationFile: files.length > 0,
         submissionId: 0,
         quotationFiles: files,
-        quoteLineItems: [],
+        quoteLineItems,
       };
     });
     const latestValues = roundsOut[roundsOut.length - 1]?.values || {
@@ -4456,6 +4485,7 @@ export async function getPurchaseOrderVendorComparison(user, poId) {
       leadTime: '',
       paymentTerms: '',
       vendorEmail: v.email,
+      quoteLineItems: [],
     };
     return {
       id: vendorId,
@@ -4468,7 +4498,7 @@ export async function getPurchaseOrderVendorComparison(user, poId) {
       latestSubmissionId: null,
       quotationFileName: roundsOut[roundsOut.length - 1]?.quotationFileName || '',
       hasQuotationFile: Boolean(roundsOut[roundsOut.length - 1]?.hasQuotationFile),
-      quoteLineItems: [],
+      quoteLineItems: roundsOut[roundsOut.length - 1]?.quoteLineItems || [],
       rounds: roundsOut,
     };
   });

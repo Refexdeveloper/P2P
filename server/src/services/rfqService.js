@@ -1316,6 +1316,17 @@ function extractCoreVendorValues(body, fieldDefinitions, customFields = {}) {
     const val = merged[field.id];
     if (val !== undefined && val !== '') extra[field.id] = val;
   }
+  // Never drop line-item quotes when merging field defs / existing custom_fields
+  const lineItems =
+    (Array.isArray(body?.customFields?.quoteLineItems) && body.customFields.quoteLineItems.length
+      ? body.customFields.quoteLineItems
+      : null) ||
+    (Array.isArray(body?.quoteLineItems) && body.quoteLineItems.length ? body.quoteLineItems : null) ||
+    (Array.isArray(extra.quoteLineItems) && extra.quoteLineItems.length ? extra.quoteLineItems : null) ||
+    (Array.isArray(customFields.quoteLineItems) && customFields.quoteLineItems.length
+      ? customFields.quoteLineItems
+      : null);
+  if (lineItems) extra.quoteLineItems = lineItems;
   return { core, customFields: extra };
 }
 
