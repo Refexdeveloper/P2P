@@ -2192,6 +2192,40 @@ export interface UserActivityLogRecord {
   createdAt?: string;
 }
 
+export type GlobalSearchPrHit = {
+  id: number;
+  prNumber: string;
+  title: string;
+  status: string;
+  amount: number;
+  purchaseType?: string;
+  requester?: string;
+  department?: string;
+  entity?: string;
+};
+
+export type GlobalSearchPoHit = {
+  id: number;
+  poNumber: string;
+  status: string;
+  amount: number;
+  vendorName?: string;
+  prId?: number;
+  prNumber?: string;
+  title?: string;
+};
+
+export const searchApi = {
+  query: (q: string, limit = 8) => {
+    const qs = new URLSearchParams();
+    qs.set('q', q);
+    qs.set('limit', String(limit));
+    return request<{ data: { query: string; prs: GlobalSearchPrHit[]; pos: GlobalSearchPoHit[] } }>(
+      `/api/search?${qs.toString()}`
+    );
+  },
+};
+
 export const adminApi = {
   listUsers: () => request<{ data: AdminUserRecord[] }>('/api/admin/users'),
   syncUsers: () =>

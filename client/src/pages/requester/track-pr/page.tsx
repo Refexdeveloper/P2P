@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import StatusBadge from '../../../components/base/StatusBadge';
 import PriorityBadge from '../../../components/base/PriorityBadge';
@@ -842,8 +842,10 @@ export default function TrackPRPage() {
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [requestTypeFilter, setRequestTypeFilter] = useState<RequestTypeFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const urlSearch = String(searchParams.get('q') || searchParams.get('search') || '');
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
+  const [debouncedSearch, setDebouncedSearch] = useState(urlSearch);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -988,6 +990,14 @@ export default function TrackPRPage() {
       setDeletingId(null);
     }
   };
+
+  useEffect(() => {
+    const next = String(searchParams.get('q') || searchParams.get('search') || '');
+    if (next && next !== searchQuery) {
+      setSearchQuery(next);
+      setDebouncedSearch(next.trim());
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);

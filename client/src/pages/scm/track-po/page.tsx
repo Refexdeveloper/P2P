@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import PoSampleCsvTable from '../../../components/feature/PoSampleCsvTable';
 import TrackPoExpandedRow from './components/TrackPoExpandedRow';
@@ -250,8 +250,9 @@ export default function TrackPoPage() {
   const [rows, setRows] = useState<TrackRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => String(searchParams.get('search') || searchParams.get('q') || ''));
+  const [debouncedSearch, setDebouncedSearch] = useState(() => String(searchParams.get('search') || searchParams.get('q') || ''));
   const [purchaseTypeFilter, setPurchaseTypeFilter] = useState<PurchaseTypeFilter>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [entityId, setEntityId] = useState<number | ''>('');
@@ -289,6 +290,15 @@ export default function TrackPoPage() {
     mode: 'pending_sign' | 'buyer_verify';
   } | null>(null);
   const mastersLoadedRef = useRef(false);
+
+  useEffect(() => {
+    const next = String(searchParams.get('search') || searchParams.get('q') || '');
+    if (next && next !== search) {
+      setSearch(next);
+      setDebouncedSearch(next.trim());
+      setPage(1);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

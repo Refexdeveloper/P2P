@@ -14,6 +14,7 @@ import masterRoutes from './routes/master.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import accountsRoutes from './routes/accounts.routes.js';
 import cloudSubscriptionRoutes from './routes/cloudSubscription.routes.js';
+import searchRoutes from './routes/search.routes.js';
 import { runStartupMigrations } from './services/dbMigrate.js';
 import { testSmtpConnection, sendTestEmail } from './services/emailService.js';
 import { sendWhatsAppHsm, buildWorkflowWhatsAppParams, normalizeWhatsAppTo, getWhatsAppPublicBaseUrl } from './services/whatsappService.js';
@@ -200,6 +201,7 @@ app.use('/api/masters', masterRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/cloud-subscriptions', cloudSubscriptionRoutes);
+app.use('/api/search', searchRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
