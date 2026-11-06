@@ -22,8 +22,9 @@ const SYSTEM_ITEM_DESC = /^created from create pr by /i;
 const noSpinnerClass =
   '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
-export function lineGstPercent(item?: { gstPercentage?: number } | null): number {
-  if (item?.gstPercentage == null) return 18;
+export function lineGstPercent(item?: { gstPercentage?: number | string | null } | null): number {
+  // Treat null/undefined/blank as default 18 — but keep explicit 0%
+  if (item?.gstPercentage == null || item?.gstPercentage === '') return 18;
   const n = Number(item.gstPercentage);
   if (!Number.isFinite(n) || n < 0) return 18;
   return Math.min(100, n);

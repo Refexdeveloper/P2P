@@ -42,10 +42,13 @@ interface TimelineStage {
 }
 
 interface LineItem {
+  itemName?: string;
   description: string;
   category: string;
   quantity: number;
+  unit?: string;
   unitCost: number;
+  gstPercentage?: number;
   total: number;
 }
 
@@ -58,15 +61,40 @@ interface TrackPR {
   requestCategory?: string;
   projectDetail?: string;
   specialNotes?: string;
+  scopeOfWork?: string;
   department: string;
+  entityName?: string;
+  entityCode?: string;
+  entityCostCenter?: string;
   amount: number;
+  currency?: string;
   status: string;
   statusRaw: string;
   statusUI: string;
   submittedDate: string;
   priority: string;
   requiredDate: string;
+  workStartDate?: string;
+  workEndDate?: string;
   justification: string;
+  purchaseType?: string;
+  purchaseTypeLabel?: string;
+  vendorSelection?: string;
+  prFlow?: string;
+  poCreationBy?: string;
+  billingLocation?: string;
+  billingGstNo?: string;
+  billingAddress?: string;
+  deliveryPoc?: string;
+  deliveryPocEmail?: string;
+  deliveryPocPhone?: string;
+  projectManagerHo?: string;
+  projectManagerContact?: string;
+  projectManagerEmail?: string;
+  placeOfDelivery?: string;
+  expectedDeliveryTimeline?: string;
+  paymentTerms?: string;
+  vendorName?: string;
   lineItems: LineItem[];
   approvalHistory: TimelineStage[];
   returnReason?: string;
@@ -74,7 +102,6 @@ interface TrackPR {
   poNumber?: string;
   poDocumentAvailable?: boolean;
   poSentBack?: boolean;
-  purchaseType?: string;
   attachments: PrAttachmentRecord[];
   requesterId?: number;
   sassInvoice?: {
@@ -694,8 +721,13 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     requestCategory: asText(pr.requestCategory),
     projectDetail: asText(pr.projectDetail),
     specialNotes: asText(pr.specialNotes),
+    scopeOfWork: asText(pr.scopeOfWork),
     department: asText(pr.department),
+    entityName: asText(pr.entityName),
+    entityCode: asText(pr.entityCode),
+    entityCostCenter: asText(pr.entityCostCenter),
     amount: Number(pr.totalAmount ?? pr.amount ?? 0),
+    currency: asText(pr.currency, 'INR'),
     status: mapTrackStatus(rawStatus, statusFrontend),
     statusRaw: rawStatus,
     statusUI: asText(pr.statusUI, statusFrontend),
@@ -703,14 +735,38 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     submittedDate,
     priority: asText(pr.priorityLower || pr.priority, 'medium').toLowerCase(),
     requiredDate: asText(pr.requiredDate, '—'),
+    workStartDate: asText(pr.workStartDate),
+    workEndDate: asText(pr.workEndDate),
     justification: asText(pr.justification, 'No justification provided.'),
+    purchaseType: asText(pr.purchaseType || pr.purchase_type),
+    purchaseTypeLabel: asText(pr.purchaseTypeLabel),
+    vendorSelection: asText(pr.vendorSelection) === 'own' ? 'own' : 'scm',
+    prFlow: asText(pr.prFlow) === 'functional' ? 'functional' : 'standard',
+    poCreationBy: asText(pr.poCreationBy) === 'requester' ? 'requester' : 'scm',
+    billingLocation: asText(pr.billingLocation),
+    billingGstNo: asText(pr.billingGstNo),
+    billingAddress: asText(pr.billingAddress),
+    deliveryPoc: asText(pr.deliveryPoc),
+    deliveryPocEmail: asText(pr.deliveryPocEmail),
+    deliveryPocPhone: asText(pr.deliveryPocPhone),
+    projectManagerHo: asText(pr.projectManagerHo),
+    projectManagerContact: asText(pr.projectManagerContact),
+    projectManagerEmail: asText(pr.projectManagerEmail),
+    placeOfDelivery: asText(pr.placeOfDelivery),
+    expectedDeliveryTimeline: asText(pr.expectedDeliveryTimeline),
+    paymentTerms: asText(pr.paymentTerms),
+    vendorName: asText(pr.vendorName || pr.recommendedVendor),
     lineItems: lineItems.map((li) => {
       const item = li as Record<string, unknown>;
+      const gst = Number(item.gstPercentage ?? item.gst_percentage);
       return {
+        itemName: asText(item.itemName || item.item_name || item.item),
         description: asText(item.description || item.item, '—'),
         category: asText(item.category, '—'),
         quantity: Number(item.quantity || 0),
+        unit: asText(item.unit || item.uom, 'Nos'),
         unitCost: Number(item.unitCost ?? item.unitPrice ?? 0),
+        gstPercentage: Number.isFinite(gst) ? gst : undefined,
         total: Number(item.total || 0),
       };
     }),
@@ -722,7 +778,6 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     poNumber: asText(pr.poNumber),
     poDocumentAvailable: Boolean(pr.poDocumentAvailable),
     poSentBack: Boolean(pr.poSentBack),
-    purchaseType: asText(pr.purchaseType || pr.purchase_type),
     attachments,
     sassInvoice: sassInvoice?.id ? sassInvoice : null,
   };
@@ -1588,10 +1643,20 @@ export default function TrackPRPage() {
                                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         {[
                                           ['PR Number', pr.id, 'ri-hashtag'],
+                                          ['Entity', [pr.entityName, pr.entityCode].filter(Boolean).join(' · ') || '—', 'ri-building-line'],
+                                          ['Cost Center', pr.entityCostCenter || '—', 'ri-funds-box-line'],
                                           ['Department', pr.department || '—', 'ri-building-2-line'],
                                           ['Request Type', pr.requestType || '—', 'ri-price-tag-3-line'],
                                           ['Request Category', pr.requestCategory || '—', 'ri-folder-3-line'],
+                                          ['Purchase Type', pr.purchaseTypeLabel || pr.purchaseType || '—', 'ri-shopping-bag-3-line'],
+                                          ['Currency', pr.currency || 'INR', 'ri-money-dollar-circle-line'],
+                                          ['PR Flow', pr.prFlow === 'functional' ? 'Functional' : 'Standard', 'ri-flow-chart'],
+                                          ['Vendor Path', pr.vendorSelection === 'own' ? 'Own Vendor' : 'SCM Sourcing', 'ri-store-2-line'],
+                                          ['PO Creation By', pr.poCreationBy === 'requester' ? 'Requester' : 'SCM', 'ri-file-paper-2-line'],
+                                          ['Vendor', pr.vendorName || '—', 'ri-store-3-line'],
                                           ['Required Date', pr.requiredDate || '—', 'ri-calendar-event-line'],
+                                          ['Work Start', pr.workStartDate || '—', 'ri-calendar-check-line'],
+                                          ['Work End', pr.workEndDate || '—', 'ri-calendar-close-line'],
                                           ['Total Amount', formatCurrency(pr.amount), 'ri-money-rupee-circle-line'],
                                         ].map(([label, value, icon], fieldIndex) => (
                                           <div key={label} className="tpr-field flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]" style={{ '--i': fieldIndex } as CSSProperties}>
@@ -1622,11 +1687,94 @@ export default function TrackPRPage() {
                                             <div className="mt-1"><PriorityBadge priority={pr.priority} /></div>
                                           </div>
                                         </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)] sm:col-span-2">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-map-pin-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Billing Region / GST</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">
+                                              {pr.billingLocation || '—'}
+                                              {pr.billingGstNo ? ` · ${pr.billingGstNo}` : ''}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)] sm:col-span-2">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-home-office-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Billing Address</p>
+                                            <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold text-[#0f172a]">{pr.billingAddress || '—'}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-contacts-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">POC for Delivery</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{pr.deliveryPoc || '—'}</p>
+                                            {(pr.deliveryPocPhone || pr.deliveryPocEmail) ? (
+                                              <p className="mt-0.5 text-xs text-slate-500">
+                                                {[pr.deliveryPocPhone, pr.deliveryPocEmail].filter(Boolean).join(' · ')}
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-user-star-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Project Manager at HO</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{pr.projectManagerHo || '—'}</p>
+                                            {(pr.projectManagerContact || pr.projectManagerEmail) ? (
+                                              <p className="mt-0.5 text-xs text-slate-500">
+                                                {[pr.projectManagerContact, pr.projectManagerEmail].filter(Boolean).join(' · ')}
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-map-2-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Place of Delivery</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{pr.placeOfDelivery || '—'}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)]">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-truck-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Expected Delivery</p>
+                                            <p className="mt-1 break-words text-sm font-semibold text-[#0f172a]">{pr.expectedDeliveryTimeline || '—'}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-3 rounded-2xl border border-[#e7f3f6] bg-white p-3.5 shadow-[0_8px_20px_-16px_rgba(13,95,110,0.45)] sm:col-span-2">
+                                          <span className="tpr-field-ic">
+                                            <i className="ri-bank-card-line" aria-hidden />
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#6b7684]">Payment Terms</p>
+                                            <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold text-[#0f172a]">{pr.paymentTerms || '—'}</p>
+                                          </div>
+                                        </div>
                                         <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
                                           <div className="pointer-events-none absolute inset-0" style={softWash} />
                                           <div className="relative z-[1]">
                                             <p className={softLabel}>Business Justification</p>
                                             <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{pr.justification || '—'}</p>
+                                          </div>
+                                        </div>
+                                        <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
+                                          <div className="pointer-events-none absolute inset-0" style={softWash} />
+                                          <div className="relative z-[1]">
+                                            <p className={softLabel}>Scope of Work</p>
+                                            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{pr.scopeOfWork || '—'}</p>
                                           </div>
                                         </div>
                                         <div className="relative overflow-hidden rounded-2xl bg-white p-3.5 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] sm:col-span-2">
@@ -1666,10 +1814,15 @@ export default function TrackPRPage() {
                                                 <div className="pointer-events-none absolute inset-0" style={softWash} />
                                                 <div className="relative z-[1] min-w-0 flex-1">
                                                   <p className="text-sm font-semibold text-[#2C3E50]">
-                                                    {item.description}
+                                                    {item.itemName || item.description}
                                                   </p>
+                                                  {item.itemName && item.description && item.itemName !== item.description ? (
+                                                    <p className="mt-0.5 text-xs text-slate-500">{item.description}</p>
+                                                  ) : null}
                                                   <p className="mt-0.5 text-xs text-slate-500">
-                                                    {item.category} · {item.quantity} units
+                                                    {[item.category, `${item.quantity} ${item.unit || 'Nos'}`, item.gstPercentage != null ? `GST ${item.gstPercentage}%` : null]
+                                                      .filter(Boolean)
+                                                      .join(' · ')}
                                                   </p>
                                                 </div>
                                                 <div className="relative z-[1] ml-3 text-right">

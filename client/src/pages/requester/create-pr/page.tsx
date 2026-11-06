@@ -476,7 +476,15 @@ export default function CreatePRPage() {
     setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
     setPoCreationBy(draft.poCreationBy === 'requester' ? 'requester' : 'scm');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
-    setRfqMaxRounds(draft.rfqMaxRounds || 1);
+    const draftRoundCeiling = Math.max(
+      1,
+      Number(draft.rfqMaxRounds) || 1,
+      ...((draft.rfqVendors || []).flatMap((row) =>
+        (row.quotes || []).map((q) => Number(q.round) || 1)
+      ) as number[])
+    );
+    // Never shrink rounds from a stale draft (would drop Q2+ after send-back edit)
+    setRfqMaxRounds((prev) => Math.max(prev || 1, Math.min(4, draftRoundCeiling)));
     setRfqRecommendedKey(draft.rfqRecommendedKey || null);
     setRfqRecommendedMeta({
       vendorId: draft.rfqRecommendedVendorId || undefined,
@@ -502,7 +510,51 @@ export default function CreatePRPage() {
           savedSubmissionId: q.savedSubmissionId || undefined,
         })),
       }));
-      return next.length ? next : prev;
+      if (!next.length) return prev;
+      // If previous state has more rounds/files (hydrated from server), keep those slots
+      return next.map((row) => {
+        const prior =
+          prev.find(
+            (p) =>
+              (p.email && row.email && p.email.toLowerCase() === row.email.toLowerCase()) ||
+              (p.name && row.name && p.name.toLowerCase() === row.name.toLowerCase()) ||
+              p.key === row.key
+          ) || null;
+        if (!prior?.quotes?.length) return row;
+        const byRound = new Map(row.quotes.map((q) => [Number(q.round), q]));
+        const maxR = Math.max(
+          row.quotes.length,
+          prior.quotes.length,
+          ...prior.quotes.map((q) => Number(q.round) || 1),
+          ...row.quotes.map((q) => Number(q.round) || 1)
+        );
+        const quotes = Array.from({ length: Math.min(4, maxR) }, (_, i) => {
+          const round = i + 1;
+          const draftQ = byRound.get(round);
+          const priorQ = prior.quotes.find((q) => Number(q.round) === round);
+          if (!draftQ) return priorQ || { round, quotedPrice: '', leadTime: '', paymentTerms: '', file: null, files: [], savedFiles: [], savedFileName: undefined, savedSubmissionId: undefined };
+          const draftHasFile = Boolean(
+            draftQ.savedFileName ||
+              draftQ.savedSubmissionId ||
+              (draftQ.savedFiles && draftQ.savedFiles.length)
+          );
+          const priorHasFile = Boolean(
+            priorQ?.savedFileName ||
+              priorQ?.savedSubmissionId ||
+              (priorQ?.savedFiles && priorQ.savedFiles.length)
+          );
+          return {
+            ...draftQ,
+            quotedPrice: String(draftQ.quotedPrice || '').trim() || priorQ?.quotedPrice || '',
+            leadTime: String(draftQ.leadTime || '').trim() || priorQ?.leadTime || '',
+            paymentTerms: draftQ.paymentTerms || priorQ?.paymentTerms || '',
+            savedFiles: draftHasFile ? draftQ.savedFiles : priorQ?.savedFiles || draftQ.savedFiles,
+            savedFileName: draftHasFile ? draftQ.savedFileName : priorQ?.savedFileName || draftQ.savedFileName,
+            savedSubmissionId: draftQ.savedSubmissionId || priorQ?.savedSubmissionId,
+          };
+        });
+        return { ...row, quotes };
+      });
     });
     setPriority(draft.priority || 'Medium');
     setCurrency(normalizeCurrency(draft.currency));
@@ -810,12 +862,17 @@ export default function CreatePRPage() {
                 Boolean(local?.savedAt) &&
                 hasMeaningfulCreatePrDraft(local)));
           if (useLocal && localItems) {
-            return localItems.map((item) => ({
-              ...item,
-              gstPercentage: Number.isFinite(Number(item.gstPercentage))
-                ? Number(item.gstPercentage)
-                : 18,
-            }));
+            return localItems.map((item, i) => {
+              const serverGst = Number(fromServer[i]?.gstPercentage);
+              const localGst = Number(item.gstPercentage);
+              // Prefer saved PR GST (incl. 0%) over stale local draft / Item Master 18%
+              const gstPercentage = Number.isFinite(serverGst)
+                ? serverGst
+                : Number.isFinite(localGst)
+                  ? localGst
+                  : 18;
+              return { ...item, gstPercentage };
+            });
           }
           return fromServer.length ? fromServer : prev;
         });
@@ -1408,44 +1465,46 @@ export default function CreatePRPage() {
                   (s) => Number(s.round || 1) <= effectiveMax
                 );
                 const baseQuotes = row.quotes.filter((q) => q.round <= effectiveMax);
-                const merged = baseQuotes.map((q) => {
-                  const sub = subs.find((s) => Number(s.round) === Number(q.round));
-                  if (!sub && !q.file && !q.files?.length) return q;
-                  const locals = localQuoteFiles(q);
+                const byLocal = new Map(baseQuotes.map((q) => [Number(q.round), q]));
+                // Always rebuild every round from server submissions so Q2+ files/amounts
+                // are not dropped when a local draft only had Q1.
+                const quotes = Array.from({ length: effectiveMax }, (_, i) => {
+                  const round = i + 1;
+                  const q = byLocal.get(round);
+                  const sub = subs.find((s) => Number(s.round) === round);
+                  const locals = q ? localQuoteFiles(q) : [];
                   const saved = filesFromSubmission(sub);
-                  const serverHasFile = saved.length > 0;
+                  const serverHasFile = saved.length > 0 || Boolean(sub?.quotationFileName);
                   const remainingLocals = serverHasFile
                     ? locals.filter((f) => !saved.some((s) => s.fileName === f.name))
                     : locals;
+                  const localPrice = String(q?.quotedPrice ?? '').trim();
+                  const localLead = String(q?.leadTime ?? '').trim();
                   return {
-                    ...q,
-                    quotedPrice: q.quotedPrice || (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
-                    leadTime: q.leadTime || (sub?.leadTime != null ? String(sub.leadTime) : ''),
-                    paymentTerms: q.paymentTerms || sub?.paymentTerms || '',
+                    round,
+                    quotedPrice:
+                      localPrice ||
+                      (sub?.quotedPrice != null ? String(sub.quotedPrice) : ''),
+                    leadTime:
+                      localLead || (sub?.leadTime != null ? String(sub.leadTime) : ''),
+                    paymentTerms: q?.paymentTerms || sub?.paymentTerms || '',
                     file: remainingLocals[0] || null,
                     files: remainingLocals,
-                    savedFiles: saved.length ? saved : q.savedFiles,
-                    savedFileName: saved[0]?.fileName || q.savedFileName,
-                    savedSubmissionId: sub?.id ? Number(sub.id) : q.savedSubmissionId,
+                    savedFiles: saved.length
+                      ? saved
+                      : q?.savedFiles ||
+                        (sub?.quotationFileName
+                          ? [{ id: null, fileName: sub.quotationFileName, isPrimary: true }]
+                          : []),
+                    savedFileName:
+                      saved[0]?.fileName ||
+                      sub?.quotationFileName ||
+                      q?.savedFileName ||
+                      undefined,
+                    savedSubmissionId: sub?.id
+                      ? Number(sub.id)
+                      : q?.savedSubmissionId,
                   };
-                });
-                // Ensure slots only up to effectiveMax (never re-add a deleted higher round)
-                const byRound = new Map(merged.map((q) => [q.round, q]));
-                const quotes = Array.from({ length: effectiveMax }, (_, i) => {
-                  const round = i + 1;
-                  return (
-                    byRound.get(round) || {
-                      round,
-                      quotedPrice: '',
-                      leadTime: '',
-                      paymentTerms: '',
-                      file: null as File | null,
-                      files: [] as File[],
-                      savedFiles: [] as { id?: number | null; fileName: string; isPrimary?: boolean }[],
-                      savedFileName: undefined as string | undefined,
-                      savedSubmissionId: undefined as number | undefined,
-                    }
-                  );
                 });
                 return { ...row, quotes };
               });
@@ -1554,6 +1613,8 @@ export default function CreatePRPage() {
             if (!name) return row;
             const match = items.find((m) => m.name.toLowerCase() === name);
             if (!match) return row;
+            // Keep the PR line GST (incl. 0%). Do not replace with Item Master default 18%.
+            const lineGst = Number(row.gstPercentage);
             return {
               ...row,
               itemId: match.id,
@@ -1561,8 +1622,10 @@ export default function CreatePRPage() {
               description: row.description || match.description || match.name,
               category: row.category || match.categoryName || '',
               unit: match.unit || row.unit || 'Nos',
-              hsnCode: match.hsnCode || '',
-              gstPercentage: Number(match.gstPercentage ?? 18),
+              hsnCode: match.hsnCode || row.hsnCode || '',
+              gstPercentage: Number.isFinite(lineGst)
+                ? lineGst
+                : Number(match.gstPercentage ?? 18),
             };
           })
         );
@@ -2086,8 +2149,10 @@ export default function CreatePRPage() {
           if (!saved.some((f) => f.isPrimary) && quote.savedFileName) {
             entry.replacePrimary = true;
           }
-        } else if (quote.savedFileName) {
-          entry.quotationFileName = quote.savedFileName;
+        } else if (quote.savedFileName || quote.savedSubmissionId || saved.length) {
+          // Keep existing round files on edit/send-back save without re-upload
+          entry.quotationFileName =
+            quote.savedFileName || saved[0]?.fileName || 'quotation.pdf';
           entry.keepExtraFileIds = saved.filter((f) => f.id).map((f) => f.id);
         }
         quotes.push(entry);

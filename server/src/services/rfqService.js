@@ -1000,19 +1000,49 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
               quote,
               existingPrimaryName: existingSub.quotation_file_name || prev?.fileName || null,
             });
-          } else if (prev?.fileName) {
-            // Round existed as file metadata only — keep DB blob (Cloud Run disk is ephemeral).
+          } else if (prev?.fileName || quote.quotationFileData || collectIncomingQuoteFiles(quote).length) {
+            // New round (e.g. Q2) or metadata-only prior file — insert and keep/reuse blobs
+            let fileName = prev?.fileName || quote.quotationFileName || null;
+            let filePath = prev?.filePath || null;
             let fileBuffer = null;
-            if (prev.submissionId) {
+            if (quote.quotationFileName && quote.quotationFileData) {
+              const fileInfo = await saveQuotationFile(
+                inv.id,
+                quote.round,
+                quote.quotationFileName,
+                quote.quotationFileData
+              );
+              if (!fileInfo.filePath && !fileInfo.buffer) {
+                throw new Error(`Failed to save quotation file for ${name} round ${quote.round}`);
+              }
+              fileName = fileInfo.fileName;
+              filePath = fileInfo.filePath;
+              fileBuffer = quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk);
+            } else if (prev?.submissionId) {
               const [blobRows] = await pool.query(
                 `SELECT quotation_file_data FROM vendor_quotation_submissions WHERE id = ?`,
                 [prev.submissionId]
               );
-            fileBuffer = blobRows[0]?.quotation_file_data || null;
-            if (!mysqlBlobToBuffer(fileBuffer)) {
-              fileBuffer = bufferFromDiskPath(prev.filePath);
+              fileBuffer = blobRows[0]?.quotation_file_data || null;
+              if (!mysqlBlobToBuffer(fileBuffer)) {
+                fileBuffer = bufferFromDiskPath(prev.filePath);
+              }
             }
+            if (!fileName && !fileBuffer) {
+              const firstExtra = collectIncomingQuoteFiles(quote)[0];
+              if (firstExtra) {
+                const fileInfo = await saveQuotationFile(
+                  inv.id,
+                  quote.round,
+                  firstExtra.fileName,
+                  firstExtra.fileData
+                );
+                fileName = fileInfo.fileName;
+                filePath = fileInfo.filePath;
+                fileBuffer = quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk);
+              }
             }
+            if (!fileName) continue;
             const [ins] = await pool.query(
               `INSERT INTO vendor_quotation_submissions
                (rfq_invitation_id, round, quoted_price, lead_time_days, payment_terms, compliance, vendor_notes,
@@ -1025,8 +1055,8 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
                 quote.leadTime,
                 quote.paymentTerms,
                 `Entered on Create PR by ${user.name || user.email}`,
-                prev.fileName,
-                prev.filePath,
+                fileName,
+                filePath,
                 quotationBlobForDb(fileBuffer),
                 JSON.stringify({}),
                 JSON.stringify({ enteredBy: user.name, entryMode: 'create-pr' }),
@@ -1037,7 +1067,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
               invitationId: inv.id,
               round: quote.round,
               quote,
-              existingPrimaryName: prev.fileName,
+              existingPrimaryName: fileName,
             });
             if (mysqlBlobToBuffer(fileBuffer) && !useGcsForNewUploads()) {
               await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);

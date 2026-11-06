@@ -35,10 +35,13 @@ function canRequesterEditPr(pr: { status?: string; statusFrontend?: string } | n
 
 interface LineItem {
   id?: number;
+  itemName?: string;
   description: string;
   category: string;
   quantity: number;
+  unit?: string;
   unitCost: number;
+  gstPercentage?: number;
   total: number;
 }
 
@@ -59,6 +62,7 @@ export interface PRDetail {
   requestCategory?: string;
   projectDetail?: string;
   specialNotes?: string;
+  scopeOfWork?: string;
   department: string;
   entityId?: number | null;
   entityName?: string;
@@ -67,6 +71,14 @@ export interface PRDetail {
   priority: string;
   justification: string;
   sendBackRemarks?: string;
+  purchaseType?: string;
+  purchaseTypeLabel?: string;
+  currency?: string;
+  vendorSelection?: string;
+  prFlow?: string;
+  poCreationBy?: string;
+  vendorName?: string;
+  recommendedVendor?: string;
   billingLocation?: string;
   billingGstNo?: string;
   billingAddress?: string;
@@ -80,6 +92,8 @@ export interface PRDetail {
   expectedDeliveryTimeline?: string;
   paymentTerms?: string;
   requiredDate: string;
+  workStartDate?: string;
+  workEndDate?: string;
   totalAmount: number;
   status: string;
   statusFrontend: string;
@@ -432,21 +446,45 @@ export default function PRDetailDrawer({
                     <Field label="Request Category" icon="ri-folder-3-line" index={3}>
                       {pr.requestCategory || '—'}
                     </Field>
-                    <Field label="Payment Terms" icon="ri-bank-card-line" index={4}>
-                      {pr.paymentTerms || '—'}
+                    <Field label="Purchase Type" icon="ri-shopping-bag-3-line" index={4}>
+                      {pr.purchaseTypeLabel || pr.purchaseType || '—'}
                     </Field>
-                    <Field label="Project Detail" icon="ri-briefcase-4-line" index={5} wide>
+                    <Field label="Currency" icon="ri-money-dollar-circle-line" index={5}>
+                      {pr.currency || 'INR'}
+                    </Field>
+                    <Field label="PR Flow" icon="ri-flow-chart" index={6}>
+                      {pr.prFlow === 'functional' ? 'Functional' : 'Standard'}
+                    </Field>
+                    <Field label="Vendor Path" icon="ri-store-2-line" index={7}>
+                      {pr.vendorSelection === 'own' ? 'Own Vendor' : 'SCM Sourcing'}
+                    </Field>
+                    <Field label="PO Creation By" icon="ri-file-paper-2-line" index={8}>
+                      {pr.poCreationBy === 'requester' ? 'Requester' : 'SCM'}
+                    </Field>
+                    <Field label="Vendor" icon="ri-store-3-line" index={9}>
+                      {pr.vendorName || pr.recommendedVendor || '—'}
+                    </Field>
+                    <Field label="Payment Terms" icon="ri-bank-card-line" index={10} wide>
+                      <span className="whitespace-pre-wrap">{pr.paymentTerms || '—'}</span>
+                    </Field>
+                    <Field label="Project Detail" icon="ri-briefcase-4-line" index={11} wide>
                       {pr.projectDetail || '—'}
                     </Field>
-                    <Field label="Required Date" icon="ri-calendar-event-line" index={6}>
+                    <Field label="Required Date" icon="ri-calendar-event-line" index={12}>
                       {pr.requiredDate || '—'}
                     </Field>
-                    <Field label="Expected Delivery" icon="ri-truck-line" index={7}>
+                    <Field label="Work Period" icon="ri-calendar-schedule-line" index={13}>
+                      {[pr.workStartDate, pr.workEndDate].filter(Boolean).join(' → ') || '—'}
+                    </Field>
+                    <Field label="Expected Delivery" icon="ri-truck-line" index={14}>
                       {pr.expectedDeliveryTimeline || '—'}
+                    </Field>
+                    <Field label="Submitted Date" icon="ri-send-plane-line" index={15}>
+                      {pr.submittedDate || '—'}
                     </Field>
 
                     {pr.poDocumentAvailable && pr.poId ? (
-                      <div className="dfx-po sm:col-span-2" style={{ '--i': 8 } as CSSProperties}>
+                      <div className="dfx-po sm:col-span-2" style={{ '--i': 16 } as CSSProperties}>
                         <div className="min-w-0">
                           <p className="dfx-label !text-white/70">Purchase Order</p>
                           <p className="mt-1 break-words text-sm font-semibold text-white">
@@ -464,7 +502,7 @@ export default function PRDetailDrawer({
                         </button>
                       </div>
                     ) : pr.poId ? (
-                      <Field label="Purchase Order" icon="ri-file-paper-2-line" index={8} wide>
+                      <Field label="Purchase Order" icon="ri-file-paper-2-line" index={16} wide>
                         {pr.poNumber || `PO #${pr.poId}`}
                         {pr.statusUI ? ` · ${pr.statusUI}` : ''}
                         <p className="dfx-sub">
@@ -473,14 +511,14 @@ export default function PRDetailDrawer({
                       </Field>
                     ) : null}
 
-                    <Field label="Billing Region / GST" icon="ri-map-pin-line" index={9} wide>
+                    <Field label="Billing Region / GST" icon="ri-map-pin-line" index={17} wide>
                       {pr.billingLocation || '—'}
                       {pr.billingGstNo ? <span className="dfx-code ml-2 font-mono">{pr.billingGstNo}</span> : null}
                     </Field>
-                    <Field label="Billing Address" icon="ri-home-office-line" index={10} wide>
+                    <Field label="Billing Address" icon="ri-home-office-line" index={18} wide>
                       <span className="whitespace-pre-wrap">{pr.billingAddress || '—'}</span>
                     </Field>
-                    <Field label="POC for Delivery" icon="ri-contacts-line" index={11}>
+                    <Field label="POC for Delivery" icon="ri-contacts-line" index={19}>
                       <span className="whitespace-pre-wrap">{pr.deliveryPoc || '—'}</span>
                       {pr.deliveryPocEmail || pr.deliveryPocPhone ? (
                         <p className="dfx-sub">
@@ -488,7 +526,7 @@ export default function PRDetailDrawer({
                         </p>
                       ) : null}
                     </Field>
-                    <Field label="Project Manager at HO" icon="ri-user-star-line" index={12}>
+                    <Field label="Project Manager at HO" icon="ri-user-star-line" index={20}>
                       <span className="whitespace-pre-wrap">{pr.projectManagerHo || '—'}</span>
                       {pr.projectManagerEmail || pr.projectManagerContact ? (
                         <p className="dfx-sub">
@@ -496,15 +534,12 @@ export default function PRDetailDrawer({
                         </p>
                       ) : null}
                     </Field>
-                    <Field label="Place of Delivery" icon="ri-map-2-line" index={13}>
+                    <Field label="Place of Delivery" icon="ri-map-2-line" index={21} wide>
                       {pr.placeOfDelivery || '—'}
-                    </Field>
-                    <Field label="Submitted Date" icon="ri-send-plane-line" index={14}>
-                      {pr.submittedDate || '—'}
                     </Field>
                   </div>
 
-                  <div className="dfx-note" style={{ '--i': 15 } as CSSProperties}>
+                  <div className="dfx-note" style={{ '--i': 22 } as CSSProperties}>
                     <p className="dfx-label">
                       <i className="ri-lightbulb-flash-line mr-1" /> Business Justification
                     </p>
@@ -512,7 +547,15 @@ export default function PRDetailDrawer({
                       {pr.justification || '—'}
                     </p>
                   </div>
-                  <div className="dfx-note" style={{ '--i': 16 } as CSSProperties}>
+                  <div className="dfx-note" style={{ '--i': 23 } as CSSProperties}>
+                    <p className="dfx-label">
+                      <i className="ri-file-list-3-line mr-1" /> Scope of Work
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                      {pr.scopeOfWork || '—'}
+                    </p>
+                  </div>
+                  <div className="dfx-note" style={{ '--i': 24 } as CSSProperties}>
                     <p className="dfx-label">
                       <i className="ri-sticky-note-line mr-1" /> Special Notes
                     </p>
@@ -573,13 +616,19 @@ export default function PRDetailDrawer({
                       <span className="dfx-item-no">{i + 1}</span>
                       <div className="min-w-0 flex-1">
                         <p className="break-words text-sm font-semibold text-slate-800">
-                          {item.description}
+                          {item.itemName || item.description}
                         </p>
+                        {item.itemName && item.description && item.itemName !== item.description ? (
+                          <p className="mt-0.5 break-words text-xs text-slate-500">{item.description}</p>
+                        ) : null}
                         <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                           {item.category ? <span className="dfx-code">{item.category}</span> : null}
                           <span>
-                            {item.quantity} × {inr(item.unitCost)}
+                            {item.quantity} {item.unit || 'Nos'} × {inr(item.unitCost)}
                           </span>
+                          {item.gstPercentage != null ? (
+                            <span className="dfx-code">GST {item.gstPercentage}%</span>
+                          ) : null}
                         </p>
                       </div>
                       <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
