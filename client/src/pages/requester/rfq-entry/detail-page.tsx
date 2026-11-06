@@ -213,6 +213,8 @@ export default function RfqEntryDetailPage() {
     lineItems?: Array<{
       id: number | string;
       description: string;
+      itemName?: string;
+      item?: string;
       category?: string;
       quantity: number;
       unit?: string;
@@ -467,7 +469,7 @@ export default function RfqEntryDetailPage() {
         ...comparison.pr,
         lineItems: prLineItems.map((li) => ({
           id: li.id,
-          description: li.description,
+          description: li.description || li.itemName || li.item || '',
           category: li.category || '',
           quantity: Number(li.quantity) || 0,
           uom: li.uom || li.unit || 'Nos',

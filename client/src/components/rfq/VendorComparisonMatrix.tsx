@@ -56,12 +56,21 @@ function columnFill(_isBest: boolean, isRec: boolean, themeSoft: string, extra =
 
 type QuoteLine = {
   lineItemId?: string | number;
+  id?: string | number;
   description?: string;
+  itemName?: string;
+  item?: string;
   category?: string;
   quantity?: number;
   quotedUnitPrice?: number;
+  unitPrice?: number;
+  unitCost?: number;
+  rate?: number;
   quotedTotal?: number;
+  lineTotal?: number;
+  total?: number;
   gstPercent?: number;
+  gst?: number;
   extra?: boolean;
 };
 
@@ -137,41 +146,90 @@ function exclusiveFromInclusive(inclusive: number, gstRate = GST_RATE) {
 }
 
 function quoteLinesFromValues(values: Record<string, unknown>): QuoteLine[] {
-  return (Array.isArray(values.quoteLineItems) ? values.quoteLineItems : []) as QuoteLine[];
+  const raw =
+    (Array.isArray(values.quoteLineItems) && values.quoteLineItems.length
+      ? values.quoteLineItems
+      : null) ||
+    (Array.isArray(values.lineItems) && values.lineItems.length ? values.lineItems : null) ||
+    [];
+  return raw as QuoteLine[];
+}
+
+function quoteLineLabel(ql: QuoteLine) {
+  return String(ql.description || ql.itemName || ql.item || '')
+    .trim()
+    .toLowerCase();
+}
+
+function quoteUnitRate(ql: QuoteLine) {
+  const direct = Number(ql.quotedUnitPrice ?? ql.unitPrice ?? ql.unitCost ?? ql.rate);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const qty = Number(ql.quantity) || 0;
+  const total = Number(ql.quotedTotal ?? ql.lineTotal ?? ql.total) || 0;
+  if (qty > 0 && total > 0) return money(total / qty);
+  return Number.isFinite(direct) ? Math.max(0, direct) : 0;
 }
 
 function lineExGst(ql: QuoteLine, prQty: number) {
-  const rate = Number(ql.quotedUnitPrice) || 0;
   const qty = Number(ql.quantity) || prQty || 0;
-  const amount = money(rate * qty);
+  let rate = quoteUnitRate(ql);
+  let amount = money(rate * qty);
+  const storedTotal = Number(ql.quotedTotal ?? ql.lineTotal ?? ql.total) || 0;
+  if (amount <= 0 && storedTotal > 0) {
+    amount = money(storedTotal);
+    rate = qty > 0 ? money(amount / qty) : amount;
+  }
   const gstPercent =
     ql.gstPercent != null && String(ql.gstPercent) !== ''
       ? Math.max(0, Number(ql.gstPercent) || 0)
-      : GST_RATE * 100;
+      : ql.gst != null && String(ql.gst) !== ''
+        ? Math.max(0, Number(ql.gst) || 0)
+        : GST_RATE * 100;
   const gst = money(amount * (gstPercent / 100));
   return { rate, amount, qty, gst, gstPercent };
 }
 
-function findQuoteLine(values: Record<string, unknown>, lineId: string, description: string): QuoteLine | null {
+function findQuoteLine(
+  values: Record<string, unknown>,
+  lineId: string,
+  description: string,
+  lineIndex?: number
+): QuoteLine | null {
   const lines = quoteLinesFromValues(values);
   if (!lines.length) return null;
   const descKey = String(description || '')
     .trim()
     .toLowerCase();
-  return (
+  const byId =
     lines.find((l) => String(l.lineItemId ?? '') === String(lineId)) ||
-    lines.find((l) => String(l.description || '').trim().toLowerCase() === descKey) ||
-    (String(lineId).startsWith('extra:')
-      ? lines.find(
-          (l) =>
-            Boolean(l.extra) &&
-            String(l.description || '')
-              .trim()
-              .toLowerCase() === String(lineId).slice(6)
-        )
-      : null) ||
-    null
-  );
+    lines.find((l) => String(l.id ?? '') === String(lineId));
+  if (byId) return byId;
+  const byDesc =
+    (descKey
+      ? lines.find((l) => quoteLineLabel(l) === descKey) ||
+        lines.find((l) => {
+          const label = quoteLineLabel(l);
+          return Boolean(label) && (label.includes(descKey) || descKey.includes(label));
+        })
+      : null) || null;
+  if (byDesc) return byDesc;
+  if (String(lineId).startsWith('extra:')) {
+    const extraKey = String(lineId).slice(6);
+    const byExtra = lines.find(
+      (l) => Boolean(l.extra) && quoteLineLabel(l) === extraKey
+    );
+    if (byExtra) return byExtra;
+  }
+  // Same count / stable order — match by index (common after PR line id remaps)
+  if (
+    lineIndex != null &&
+    lineIndex >= 0 &&
+    lineIndex < lines.length &&
+    !lines[lineIndex]?.extra
+  ) {
+    return lines[lineIndex];
+  }
+  return null;
 }
 
 /** PR lines + any extra items vendors added on the quotation (not only PR master lines). */
@@ -395,6 +453,23 @@ export default function VendorComparisonMatrix({
     1
   );
 
+  const mergeRoundValues = (
+    values: Record<string, unknown> | undefined,
+    roundLines?: unknown,
+    vendorLines?: unknown
+  ): Record<string, unknown> => {
+    const base = { ...(values || {}) };
+    const fromValues = Array.isArray(base.quoteLineItems) ? base.quoteLineItems : [];
+    const fromRound = Array.isArray(roundLines) ? roundLines : [];
+    const fromVendor = Array.isArray(vendorLines) ? vendorLines : [];
+    const quoteLineItems =
+      (fromValues.length ? fromValues : null) ||
+      (fromRound.length ? fromRound : null) ||
+      (fromVendor.length ? fromVendor : null) ||
+      fromValues;
+    return { ...base, quoteLineItems };
+  };
+
   const revColumns: RevColumn[] = [];
   vendors.forEach((vendor, vendorIndex) => {
     const rounds = [...(vendor.rounds || [])].sort((a, b) => a.round - b.round);
@@ -406,11 +481,12 @@ export default function VendorComparisonMatrix({
       const rnum = Number(vendor.round) || 1;
       byRound.set(rnum, {
         round: rnum,
-        values: vendor.latest || {},
+        values: mergeRoundValues(vendor.latest || {}, vendor.quoteLineItems, vendor.quoteLineItems),
         submissionId: vendor.latestSubmissionId,
         quotationFileName: vendor.quotationFileName || '',
         hasQuotationFile: Boolean(vendor.hasQuotationFile || vendor.quotationFileName),
         quotationFiles: vendor.rounds?.[0]?.quotationFiles,
+        quoteLineItems: vendor.quoteLineItems,
         submittedAt: '',
       });
     }
@@ -432,7 +508,11 @@ export default function VendorComparisonMatrix({
         revisionLabel: latestOnly ? '' : revisionLabel(roundNum),
         isRecommended: vendor.isRecommended,
         isLatest: roundNum === latestRound,
-        values: (r.values || {}) as Record<string, unknown>,
+        values: mergeRoundValues(
+          (r.values || {}) as Record<string, unknown>,
+          r.quoteLineItems,
+          roundNum === latestRound ? vendor.quoteLineItems : undefined
+        ),
         submissionId: r.submissionId,
         quotationFileName: r.quotationFileName || (roundNum === latestRound ? vendor.quotationFileName : '') || '',
         hasQuotationFile: Boolean(
@@ -484,8 +564,14 @@ export default function VendorComparisonMatrix({
   // Include PR lines + extra items added on the quotation (e.g. Cylinder)
   const displayLines = buildDisplayLines(lineItems, revColumns);
 
-  const getLineRateAmount = (col: RevColumn, lineId: string, description: string, prQty: number) => {
-    const ql = findQuoteLine(col.values, lineId, description);
+  const getLineRateAmount = (
+    col: RevColumn,
+    lineId: string,
+    description: string,
+    prQty: number,
+    lineIndex?: number
+  ) => {
+    const ql = findQuoteLine(col.values, lineId, description, lineIndex);
     if (ql) return lineExGst(ql, prQty);
     const quotedLines = quoteLinesFromValues(col.values);
     // Only fall back to lump-sum quotedPrice when there is a single PR line and no extras
@@ -504,8 +590,15 @@ export default function VendorComparisonMatrix({
     const gstPercents: number[] = [];
     const quotedLines = quoteLinesFromValues(col.values);
     if (displayLines.length && String(displayLines[0].id) !== 'total') {
-      for (const li of displayLines) {
-        const row = getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+      for (let lineIdx = 0; lineIdx < displayLines.length; lineIdx += 1) {
+        const li = displayLines[lineIdx];
+        const row = getLineRateAmount(
+          col,
+          String(li.id),
+          li.description,
+          Number(li.quantity) || 0,
+          lineIdx
+        );
         material += row.amount;
         gst += row.gst;
         if (row.amount > 0) gstPercents.push(row.gstPercent);
@@ -867,7 +960,13 @@ export default function VendorComparisonMatrix({
                                 const stripped = exclusiveFromInclusive(Number(col.values.quotedPrice) || 0);
                                 return { rate: stripped.amount, amount: stripped.amount };
                               })()
-                            : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+                            : getLineRateAmount(
+                                col,
+                                String(li.id),
+                                li.description,
+                                Number(li.quantity) || 0,
+                                lineIdx
+                              );
                         return (
                           <div key={`m-${col.key}-${li.id}`} className="px-3 py-3">
                             <p className="text-[11px] font-semibold text-slate-500 uppercase">
@@ -1132,7 +1231,13 @@ export default function VendorComparisonMatrix({
                                 const stripped = exclusiveFromInclusive(Number(col.values.quotedPrice) || 0);
                                 return { rate: stripped.amount, amount: stripped.amount };
                               })()
-                            : getLineRateAmount(col, String(li.id), li.description, Number(li.quantity) || 0);
+                            : getLineRateAmount(
+                                col,
+                                String(li.id),
+                                li.description,
+                                Number(li.quantity) || 0,
+                                lineIdx
+                              );
                         return (
                           <Fragment key={`${col.key}-${li.id}`}>
                             <td className={`px-2 sm:px-3 py-3 border-b border-l text-right tabular-nums text-[#334155] text-xs sm:text-sm whitespace-nowrap ${colUnit} ${columnFill(isBest, isRecRev, theme.soft)}`}>

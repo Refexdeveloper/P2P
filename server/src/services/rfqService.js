@@ -1320,6 +1320,19 @@ function extractCoreVendorValues(body, fieldDefinitions, customFields = {}) {
 }
 
 function submissionToFieldValues(submission) {
+  const customFields = submission?.customFields || {};
+  const requesterFields = submission?.requesterFields || {};
+  const quoteLineItems =
+    (Array.isArray(submission?.quoteLineItems) && submission.quoteLineItems.length
+      ? submission.quoteLineItems
+      : null) ||
+    (Array.isArray(customFields.quoteLineItems) && customFields.quoteLineItems.length
+      ? customFields.quoteLineItems
+      : null) ||
+    (Array.isArray(requesterFields.quoteLineItems) && requesterFields.quoteLineItems.length
+      ? requesterFields.quoteLineItems
+      : null) ||
+    [];
   return {
     quotedPrice: submission?.quotedPrice,
     leadTime: submission?.leadTime,
@@ -1328,9 +1341,10 @@ function submissionToFieldValues(submission) {
     deliveryTerms: submission?.deliveryTerms,
     compliance: submission?.compliance,
     vendorNotes: submission?.vendorNotes,
-    quoteLineItems: submission?.quoteLineItems || submission?.customFields?.quoteLineItems || [],
-    ...(submission?.customFields || {}),
-    ...(submission?.requesterFields || {}),
+    ...customFields,
+    ...requesterFields,
+    // Always keep quote lines last so custom/requester spreads cannot wipe them
+    quoteLineItems,
   };
 }
 
@@ -2342,6 +2356,10 @@ async function buildRfqSummary(prId) {
       .sort((a, b) => Number(a.round) - Number(b.round))
       .map((s) => {
         const files = listQuotationFilesFromSubmission(s);
+        const values = submissionToFieldValues(s);
+        const quoteLineItems = Array.isArray(values.quoteLineItems)
+          ? values.quoteLineItems
+          : s.quoteLineItems || s.customFields?.quoteLineItems || [];
         return {
         round: s.round,
         quotedPrice: s.quotedPrice,
@@ -2353,8 +2371,8 @@ async function buildRfqSummary(prId) {
         quotationFilePath: s.quotationFilePath || '',
         submissionId: s.id,
         submittedAt: s.submittedAt,
-        quoteLineItems: s.quoteLineItems || s.customFields?.quoteLineItems || [],
-        values: submissionToFieldValues(s),
+        quoteLineItems,
+        values: { ...values, quoteLineItems },
       };
       });
 
@@ -2961,9 +2979,13 @@ export async function getVendorComparisonMatrix(user, prId) {
       .filter((s) => s.status === 'submitted' || s.status === 'sent_back')
       .map((s) => {
         const files = listQuotationFilesFromSubmission(s);
+        const values = submissionToFieldValues(s);
+        const quoteLineItems = Array.isArray(values.quoteLineItems)
+          ? values.quoteLineItems
+          : s.quoteLineItems || s.customFields?.quoteLineItems || [];
         return {
         round: s.round,
-        values: submissionToFieldValues(s),
+        values: { ...values, quoteLineItems },
         submittedAt: s.submittedAt,
         quotationFileName: s.quotationFileName || files[0]?.fileName || '',
         quotationFiles: files.map(({ fileName, id, isPrimary }) => ({ fileName, id, isPrimary })),
@@ -2971,7 +2993,7 @@ export async function getVendorComparisonMatrix(user, prId) {
         submissionId: s.id,
         sendBackReason: inv.sendBackReason,
         status: s.status,
-        quoteLineItems: s.quoteLineItems || s.customFields?.quoteLineItems || [],
+        quoteLineItems,
       };
       });
 
@@ -3066,7 +3088,7 @@ export async function getVendorComparisonMatrix(user, prId) {
       approvalHistory: pr.approvalHistory,
       lineItems: (pr.lineItems || []).map((li) => ({
         id: li.id,
-        description: li.description || li.item || '',
+        description: li.description || li.itemName || li.item || '',
         category: li.category || '',
         quantity: Number(li.quantity) || 0,
         uom: li.uom || li.unit || 'Nos',
