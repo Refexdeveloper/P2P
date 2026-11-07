@@ -180,7 +180,10 @@ function cfoQueryFilters(query = {}) {
 
 router.get(
   '/stats/cfo',
-  requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager'], ['nav.cfo_insights']),
+  requireRolesOrPermissions(
+    ['CFO', 'Super Admin', 'SCM Manager', 'Accounts Payable', 'Accounts Manager'],
+    ['nav.cfo_insights', 'nav.accounts_dashboard']
+  ),
   async (req, res) => {
     try {
       const data = await getCfoPoInsights(req.user, cfoQueryFilters(req.query));
@@ -193,7 +196,10 @@ router.get(
 
 router.get(
   '/stats/cfo/orders',
-  requireRolesOrPermissions(['CFO', 'Super Admin', 'SCM Manager'], ['nav.cfo_insights']),
+  requireRolesOrPermissions(
+    ['CFO', 'Super Admin', 'SCM Manager', 'Accounts Payable', 'Accounts Manager'],
+    ['nav.cfo_insights', 'nav.accounts_dashboard']
+  ),
   async (req, res) => {
     try {
       const q = (key) => (typeof req.query[key] === 'string' ? req.query[key] : '');

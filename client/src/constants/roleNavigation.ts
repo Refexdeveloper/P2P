@@ -381,8 +381,14 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.po_letterhead_master',
     'nav.letterhead_master',
   ],
-  'Accounts Payable': ['nav.accounts_dashboard', 'nav.invoice_verification', 'nav.payment'],
+  'Accounts Payable': [
+    'nav.cfo_insights',
+    'nav.accounts_dashboard',
+    'nav.invoice_verification',
+    'nav.payment',
+  ],
   'Accounts Manager': [
+    'nav.cfo_insights',
     'nav.accounts_dashboard',
     'nav.invoice_verification',
     'nav.payment',

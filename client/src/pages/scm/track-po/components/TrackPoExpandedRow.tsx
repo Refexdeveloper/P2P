@@ -4,8 +4,31 @@ import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
-import { poApi, prApi, rfqApi, accountsApi, type VendorComparisonData } from '../../../../services/api';
+import {
+  poApi,
+  prApi,
+  rfqApi,
+  accountsApi,
+  vendorApi,
+  type VendorComparisonData,
+  type VendorRecord,
+} from '../../../../services/api';
 import { allQuotationFilesForRound } from '../../../../utils/quotationFiles';
+
+const VENDOR_DOC_LABELS: Record<string, string> = {
+  gst: 'GST Certificate',
+  pan: 'PAN Card',
+  cheque: 'Cancelled Cheque',
+  msme: 'MSME Certificate',
+  kyc: 'KYC Form',
+  msme_declaration: 'MSME Declaration Form',
+};
+
+function vendorDocLabel(docType: string, fileName?: string) {
+  if (VENDOR_DOC_LABELS[docType]) return VENDOR_DOC_LABELS[docType];
+  if (String(docType).startsWith('other__')) return fileName || 'Other document';
+  return docType || 'Document';
+}
 
 type TrackRowLite = {
   prId: number;

@@ -20,12 +20,23 @@ const canManageVendors = requireRolesOrPermissions(
   ['Requester', 'SCM Buyer', 'SCM Manager', 'Super Admin'],
   ['nav.vendor_master']
 );
-const canUseVendorsForPr = requireRolesOrPermissions(CREATE_PR_ROLES, [
-  'nav.create_pr',
-  'nav.vendor_master',
-  'nav.rfq_entry',
-  'nav.scm_rfq_entry',
-]);
+const canUseVendorsForPr = requireRolesOrPermissions(
+  [
+    ...CREATE_PR_ROLES,
+    'Accounts Payable',
+    'Accounts Manager',
+  ],
+  [
+    'nav.create_pr',
+    'nav.vendor_master',
+    'nav.rfq_entry',
+    'nav.scm_rfq_entry',
+    'nav.cfo_insights',
+    'nav.invoice_verification',
+    'nav.accounts_dashboard',
+    'nav.track_po',
+  ]
+);
 
 function sendCsv(res, filename, csv) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
