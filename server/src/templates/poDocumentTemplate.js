@@ -1795,10 +1795,10 @@ function poIntroHtml(po) {
     String(po.purchaseType || '').toLowerCase().replace(/[\s-]+/g, '_') === 'work_order';
   const docLabel = isWorkOrder ? 'Work Order' : 'Purchase Order';
   const docTitle = isWorkOrder ? 'WORK ORDER' : 'PURCHASE ORDER';
-  const vendorAddress = po.vendorAddress || 'Address not available';
-  const vendorGst = po.vendorGst || '—';
-  const vendorPan = po.vendorPan || '—';
-  const vendorPhone = po.vendorPhone || '—';
+  const vendorAddress = String(po.vendorAddress || '').trim() || 'Address not available';
+  const vendorGst = String(po.vendorGst || '').trim() || '—';
+  const vendorPan = String(po.vendorPan || '').trim() || '—';
+  const vendorPhone = String(po.vendorPhone || '').trim() || '—';
   const subjectFallback = (po.poTermsDetails && po.poTermsDetails.subject) || po.prTitle || docLabel;
   const letterheadHtml = adaptLetterheadHeader(po.letterheadHeader, isWorkOrder);
   const quoteNo = resolveQuoteNo(po);
@@ -1818,8 +1818,8 @@ function poIntroHtml(po) {
       <p><strong>To</strong></p>
       <p><strong>${escapeHtml(po.vendorName)},</strong></p>
       <p>${escapeHtml(vendorAddress).replace(/\n/g, '<br>')}</p>
-      <p><strong>GST No:</strong>${escapeHtml(vendorGst)}</p>
-      <p><strong>PAN No:</strong>${escapeHtml(vendorPan)}</p>
+      <p><strong>GST No:</strong> ${escapeHtml(vendorGst)}</p>
+      <p><strong>PAN No:</strong> ${escapeHtml(vendorPan)}</p>
       <p><strong>Email:</strong> <a href="mailto:${escapeHtml(po.vendorEmail)}">${escapeHtml(po.vendorEmail)}</a></p>
       <p><strong>Phone:</strong> ${escapeHtml(vendorPhone)}</p>
       <p><strong>Quote No:</strong> ${escapeHtml(quoteNoText)}</p>

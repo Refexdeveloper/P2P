@@ -919,8 +919,14 @@ function vendorNameKey(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/&/g, ' and ')
+    // Strip M/s / Messrs before punctuation is removed (M/s → m + s otherwise).
+    .replace(/\bm\s*\/\s*s\b/g, ' ')
+    .replace(/\bmessrs?\b/g, ' ')
     .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\b(private|limited|pvt|ltd|llp|inc|corp|company|co)\b/g, '')
+    .replace(
+      /\b(private|limited|pvt|ltd|llp|inc|corp|corporation|company|co|ms|messrs|proprietary|prop)\b/g,
+      ''
+    )
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -928,7 +934,49 @@ function vendorNameKey(value) {
 function sameVendorName(a, b) {
   const left = vendorNameKey(a);
   const right = vendorNameKey(b);
-  return Boolean(left && right && left === right);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  // "MicroGenesis CADSoft" vs "MicroGenesis CADSoft Pvt. Ltd. Chennai"
+  if (left.length >= 8 && right.length >= 8 && (left.includes(right) || right.includes(left))) {
+    return true;
+  }
+  const leftParts = left.split(' ').filter(Boolean);
+  const rightParts = right.split(' ').filter(Boolean);
+  if (leftParts.length >= 2 && rightParts.length >= 2) {
+    const overlap = leftParts.filter((p) => rightParts.includes(p) && p.length >= 4);
+    if (overlap.length >= 2) return true;
+  }
+  return false;
+}
+
+function vendorProfileScore(row) {
+  if (!row) return 0;
+  let score = 0;
+  if (String(row.gst_number || '').trim()) score += 4;
+  if (String(row.address || '').trim()) score += 3;
+  if (String(row.pan_number || '').trim()) score += 2;
+  if (String(row.phone || '').trim()) score += 1;
+  if (String(row.email || '').trim()) score += 1;
+  return score;
+}
+
+function pickBestVendorCandidate(cands, name) {
+  const list = Array.isArray(cands) ? cands.filter(Boolean) : [];
+  if (!list.length) return null;
+  const exact = list.find((row) => sameVendorName(name, row.name));
+  if (exact) return exact;
+  const ranked = [...list].sort((a, b) => vendorProfileScore(b) - vendorProfileScore(a));
+  if (list.length === 1) return ranked[0];
+  // Distinctive soft hit: only one row shares the legal name key closely enough
+  const soft = ranked.filter((row) => {
+    const key = vendorNameKey(row.name);
+    const want = vendorNameKey(name);
+    if (!key || !want) return false;
+    return key.includes(want.split(' ')[0]) || want.includes(key.split(' ')[0]);
+  });
+  if (soft.length === 1) return soft[0];
+  if (soft.length > 1 && vendorProfileScore(soft[0]) > 0) return soft[0];
+  return null;
 }
 
 function recommendedQuoteFromRounds(rounds) {
@@ -1067,12 +1115,26 @@ async function enrichPO(row) {
       sourceVendorEmail = manualRecommended.vendor_email || sourceVendorEmail;
     }
   }
-  const vendor = await lookupVendorMaster(sourceVendorEmail, sourceVendorName);
+  const vendor = await lookupVendorMaster(sourceVendorEmail, sourceVendorName, {
+    vendorId: row.vendor_id || pr?.vendorId || pr?.vendor_id,
+  });
   const masterIsSame =
+    (Number(row.vendor_id || pr?.vendorId || pr?.vendor_id) > 0 &&
+      Number(row.vendor_id || pr?.vendorId || pr?.vendor_id) === Number(vendor.id)) ||
     sameVendorName(sourceVendorName, vendor.name) ||
     (sourceVendorEmail &&
       vendor.email &&
-      sourceVendorEmail.toLowerCase() === String(vendor.email).trim().toLowerCase());
+      sourceVendorEmail.toLowerCase() === String(vendor.email).trim().toLowerCase()) ||
+    (sourceVendorEmail &&
+      vendor.email &&
+      sourceVendorEmail.includes('@') &&
+      String(vendor.email).includes('@') &&
+      sourceVendorEmail.split('@').pop().trim().toLowerCase() ===
+        String(vendor.email).split('@').pop().trim().toLowerCase() &&
+      Boolean(vendorNameKey(sourceVendorName)) &&
+      Boolean(vendorNameKey(vendor.name)) &&
+      (vendorNameKey(sourceVendorName).includes(vendorNameKey(vendor.name).split(' ')[0] || '') ||
+        vendorNameKey(vendor.name).includes(vendorNameKey(sourceVendorName).split(' ')[0] || '')));
   const [creatorRows] = await pool.query(`SELECT name, role FROM users WHERE id = ?`, [row.created_by]);
   const creator = creatorRows[0] || {};
   const [cancelledByRows] = row.cancelled_by
@@ -1094,6 +1156,7 @@ async function enrichPO(row) {
     prTitle: pr?.title || '',
     department: pr?.department || '',
     requester: pr?.requester || '',
+    vendorId: Number(vendor.id) || Number(row.vendor_id) || null,
     vendorName: masterIsSame ? vendor.name || sourceVendorName : sourceVendorName,
     vendorEmail: masterIsSame ? vendor.email || sourceVendorEmail : sourceVendorEmail,
     vendorAddress: masterIsSame ? vendor.address || '' : '',
@@ -1836,9 +1899,15 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
   const email = String(vendorEmail || '').trim();
   const name = String(vendorName || '').trim();
   const gst = String(extras.gst || extras.gstNumber || extras.gst_number || '').trim();
-  const select = `SELECT name, email, address, gst_number, pan_number, phone FROM vendors`;
+  const vendorId = Number(extras.vendorId || extras.vendor_id || 0);
+  const select = `SELECT id, name, email, address, gst_number, pan_number, phone FROM vendors`;
 
-  // Exact name, GST, or email only — a partial name must not swap in a different vendor.
+  if (vendorId > 0) {
+    const [byId] = await pool.query(`${select} WHERE id = ? LIMIT 1`, [vendorId]);
+    if (byId[0]) return byId[0];
+  }
+
+  // Exact name, GST, or email — prefer these over soft matches.
   if (name) {
     const [byName] = await pool.query(
       `${select} WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1`,
@@ -1860,6 +1929,34 @@ async function lookupVendorMaster(vendorEmail, vendorName, extras = {}) {
     );
     if (byEmail[0]) return byEmail[0];
   }
+
+  // Same email domain + matching legal name (quote contact vs master inbox).
+  const domain = email.includes('@') ? email.split('@').pop().trim().toLowerCase() : '';
+  if (domain && domain.includes('.') && name) {
+    const [byDomain] = await pool.query(`${select} WHERE LOWER(email) LIKE ? LIMIT 40`, [
+      `%@${domain.replace(/[%_]/g, '')}`,
+    ]);
+    const domainHit = pickBestVendorCandidate(byDomain, name);
+    if (domainHit) return domainHit;
+  }
+
+  // Pvt. Ltd. vs Private Limited / M/s — soft match on distinctive name tokens
+  const key = vendorNameKey(name);
+  if (key) {
+    const tokens = key
+      .split(' ')
+      .filter((part) => part.length >= 4)
+      .sort((a, b) => b.length - a.length);
+    const tried = new Set();
+    for (const token of tokens.slice(0, 3)) {
+      const safe = token.replace(/[%_]/g, '');
+      if (!safe || tried.has(safe)) continue;
+      tried.add(safe);
+      const [cands] = await pool.query(`${select} WHERE LOWER(name) LIKE ? LIMIT 40`, [`%${safe}%`]);
+      const hit = pickBestVendorCandidate(cands, name);
+      if (hit) return hit;
+    }
+  }
   return {};
 }
 
@@ -1867,16 +1964,43 @@ async function overlayVendorMasterOnPo(po) {
   if (!po) return po;
   const master = await lookupVendorMaster(po.vendorEmail, po.vendorName, {
     gst: po.vendorGst,
+    vendorId: po.vendorId || po.vendor_id,
   });
-  if (!master?.email && !master?.name && !master?.address) return po;
+  if (!master?.id && !master?.email && !master?.name && !master?.address && !master?.gst_number) {
+    return po;
+  }
   const same =
+    (Number(po.vendorId || po.vendor_id) > 0 &&
+      Number(po.vendorId || po.vendor_id) === Number(master.id)) ||
     sameVendorName(po.vendorName, master.name) ||
     (po.vendorEmail &&
       master.email &&
-      String(po.vendorEmail).trim().toLowerCase() === String(master.email).trim().toLowerCase());
-  if (!same) return po;
+      String(po.vendorEmail).trim().toLowerCase() === String(master.email).trim().toLowerCase()) ||
+    (po.vendorEmail &&
+      master.email &&
+      String(po.vendorEmail).includes('@') &&
+      String(master.email).includes('@') &&
+      String(po.vendorEmail).split('@').pop().trim().toLowerCase() ===
+        String(master.email).split('@').pop().trim().toLowerCase() &&
+      sameVendorName(po.vendorName, master.name)) ||
+    (po.vendorGst &&
+      master.gst_number &&
+      String(po.vendorGst).replace(/\s+/g, '').toUpperCase() ===
+        String(master.gst_number).replace(/\s+/g, '').toUpperCase()) ||
+    // Soft lookup already resolved a unique master row for this PO name
+    (Number(master.id) > 0 && sameVendorName(po.vendorName, master.name));
+  // If lookup returned a master row for this name/email, always fill missing GST/address/PAN.
+  // Avoid swapping a completely unrelated vendor when names do not relate at all.
+  const nameRelated =
+    same ||
+    (master.name &&
+      po.vendorName &&
+      (vendorNameKey(po.vendorName).includes(vendorNameKey(master.name).split(' ')[0] || '—') ||
+        vendorNameKey(master.name).includes(vendorNameKey(po.vendorName).split(' ')[0] || '—')));
+  if (!nameRelated) return po;
   return {
     ...po,
+    vendorId: Number(master.id) || po.vendorId || null,
     vendorName: master.name || po.vendorName,
     vendorEmail: master.email || po.vendorEmail,
     vendorAddress: master.address || po.vendorAddress || '',
@@ -1913,8 +2037,13 @@ async function resolvePoDraftContent(prId, body) {
       vendor_email: String(body.vendorEmail || '').trim() || vendor.vendor_email,
     };
   }
-  const vendorMaster = await lookupVendorMaster(vendor.vendor_email, vendor.vendor_name);
+  const vendorMaster = await lookupVendorMaster(vendor.vendor_email, vendor.vendor_name, {
+    vendorId: vendor.vendor_id || vendor.vendorId || body?.vendorId || pr?.vendorId || pr?.vendor_id,
+  });
   const masterIsSame =
+    (Number(vendor.vendor_id || vendor.vendorId || body?.vendorId || pr?.vendorId || pr?.vendor_id) > 0 &&
+      Number(vendor.vendor_id || vendor.vendorId || body?.vendorId || pr?.vendorId || pr?.vendor_id) ===
+        Number(vendorMaster.id)) ||
     sameVendorName(vendor.vendor_name, vendorMaster.name) ||
     (vendor.vendor_email &&
       vendorMaster.email &&
@@ -2108,8 +2237,13 @@ export async function resolveManualPoDraftContent(body = {}, options = {}) {
     else throw new Error('Vendor email is required');
   }
 
-  const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName);
+  const vendorMaster = await lookupVendorMaster(vendorEmail, vendorName, {
+    vendorId: body.vendorId || body.vendor_id,
+    gst: body.vendorGst || body.gstNumber || body.gst_number,
+  });
   const masterIsSame =
+    (Number(body.vendorId || body.vendor_id) > 0 &&
+      Number(body.vendorId || body.vendor_id) === Number(vendorMaster.id)) ||
     sameVendorName(vendorName, vendorMaster.name) ||
     (vendorEmail &&
       vendorMaster.email &&

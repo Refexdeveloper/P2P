@@ -186,21 +186,36 @@ async function sendPoPdf(res, po) {
     Boolean(doc.pdfPath) &&
     !String(doc.pdfPath).includes(poNumber) &&
     !String(doc.pdfPath).startsWith(safePoNumber);
-  const vendorBlockIncomplete = !isSigned && !String(doc.vendorAddress || '').trim();
+  // Rebuild PDF when vendor master address / GSTIN / PAN / phone are missing on the rendered doc
+  // (includes already-signed/released files so requester views show master data).
+  const vendorBlockIncomplete =
+    !String(doc.vendorAddress || '').trim() ||
+    !String(doc.vendorGst || '').trim() ||
+    !String(doc.vendorPan || '').trim() ||
+    !String(doc.vendorPhone || '').trim();
   const { fullPath, fileName, buffer } = await ensurePoPdf(doc, {
     fileName: preferredName,
     signed: isSigned,
     signature: signatureOpts,
-    forceRegenerate: mugeshPo || meetPo
+    forceRegenerate: mugeshPo || meetPo || vendorBlockIncomplete
       ? true
       : isSigned
         ? false
-        : status === 'draft' || storedLooksStale || vendorBlockIncomplete,
+        : status === 'draft' || storedLooksStale,
   });
-  if (!isSigned && doc.pdfPath !== fileName) {
+  // Persist regenerated signed/draft path so next open uses the refreshed file.
+  if (doc.pdfPath !== fileName || (isSigned && doc.signedPdfPath !== fileName)) {
     try {
       const pool = (await import('../config/db.js')).default;
-      await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, doc.id]);
+      if (isSigned) {
+        await pool.query(`UPDATE purchase_orders SET signed_pdf_path = ?, pdf_path = COALESCE(pdf_path, ?) WHERE id = ?`, [
+          fileName,
+          fileName,
+          doc.id,
+        ]);
+      } else if (doc.pdfPath !== fileName) {
+        await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, doc.id]);
+      }
     } catch {
       /* non-fatal */
     }
