@@ -198,12 +198,17 @@ export default function SearchCreateField({
             <div
               ref={menuRef}
               className={`${
-                portal ? 'fixed z-[80]' : 'absolute z-30 mt-1 w-full'
-              } overflow-y-auto rounded-2xl border border-[#d7e6ea] bg-white py-1 shadow-[0_16px_40px_-18px_rgba(13,95,110,0.45)]`}
+                portal ? 'fixed z-[120]' : 'absolute left-0 right-0 z-[60] mt-1 w-full'
+              } overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl ring-1 ring-black/5`}
               style={
                 portal && menuPos
-                  ? { top: menuPos.top, left: menuPos.left, width: menuPos.width, maxHeight: menuPos.maxH }
-                  : undefined
+                  ? {
+                      top: menuPos.top,
+                      left: menuPos.left,
+                      width: menuPos.width,
+                      maxHeight: menuPos.maxH,
+                    }
+                  : { maxHeight: 280 }
               }
             >
               {filtered.length === 0 && !canAdd && (

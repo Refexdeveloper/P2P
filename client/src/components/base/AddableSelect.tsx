@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface AddableSelectOption {
   id: number | string;
@@ -41,16 +42,23 @@ export default function AddableSelect({
 }: AddableSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxH: number;
+  } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const onCloseAddRef = useRef(onCloseAdd);
   onCloseAddRef.current = onCloseAdd;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!boxRef.current?.contains(e.target as Node)) {
-        setOpen(false);
-        onCloseAddRef.current();
-      }
+      const t = e.target as Node;
+      if (boxRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+      onCloseAddRef.current();
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -65,20 +73,139 @@ export default function AddableSelect({
     });
   }, [options, query]);
 
-  const selected = options.find((opt) => opt.label === value);
+  useEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const el = boxRef.current?.querySelector('button');
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom - 12;
+      const spaceAbove = r.top - 12;
+      const openUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+      const maxH = Math.max(180, Math.min(320, openUp ? spaceAbove : spaceBelow));
+      setMenuPos({
+        top: openUp ? Math.max(8, r.top - maxH - 4) : r.bottom + 4,
+        left: Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - r.width - 8)),
+        width: r.width,
+        maxH,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open, adding, filtered.length, query]);
 
+  const selected = options.find((opt) => opt.label === value);
   const compact = variant === 'compact';
 
+  const menu =
+    open && !disabled && menuPos ? (
+      <div
+        ref={menuRef}
+        className="fixed z-[120] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl ring-1 ring-black/5"
+        style={{
+          top: menuPos.top,
+          left: menuPos.left,
+          width: menuPos.width,
+          maxHeight: menuPos.maxH,
+        }}
+      >
+        <div className="border-b border-gray-100 p-2">
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${label.toLowerCase()}...`}
+            className={`w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+              compact ? 'focus:ring-slate-400' : 'focus:ring-[#1E88E5]'
+            }`}
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-gray-400">No saved options yet</p>
+          ) : (
+            filtered.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => {
+                  onSelect(opt);
+                  setOpen(false);
+                  onCloseAdd();
+                  setQuery('');
+                }}
+                className={`w-full cursor-pointer border-b border-gray-50 px-3 py-2.5 text-left text-sm last:border-0 ${
+                  compact
+                    ? opt.label === value
+                      ? 'bg-slate-100 text-slate-800'
+                      : 'text-gray-800 hover:bg-slate-50'
+                    : opt.label === value
+                      ? 'bg-[#E3F2FD] text-[#1565C0]'
+                      : 'text-gray-800 hover:bg-[#E3F2FD]'
+                }`}
+              >
+                <span className="block whitespace-pre-wrap font-medium">{opt.label}</span>
+                {opt.email || opt.phone ? (
+                  <span className="mt-1 flex flex-col gap-0.5 text-[11px] font-normal text-gray-500">
+                    {opt.email ? (
+                      <span className="inline-flex items-center gap-1 truncate">
+                        <i className="ri-mail-line text-gray-400"></i>
+                        {opt.email}
+                      </span>
+                    ) : null}
+                    {opt.phone ? (
+                      <span className="inline-flex items-center gap-1">
+                        <i className="ri-phone-line text-gray-400"></i>
+                        {opt.phone}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : opt.subLabel ? (
+                  <span className="mt-0.5 block text-[11px] text-gray-500">{opt.subLabel}</span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="border-t border-gray-100 bg-gray-50">
+          {!adding ? (
+            <button
+              type="button"
+              onClick={onOpenAdd}
+              className={`inline-flex w-full cursor-pointer items-center gap-1.5 px-3 py-2 text-left text-sm font-semibold ${
+                compact
+                  ? 'text-slate-700 hover:bg-slate-100'
+                  : 'text-[#1565C0] hover:bg-[#E3F2FD]'
+              }`}
+            >
+              <i className="ri-add-line"></i>
+              Add new
+            </button>
+          ) : (
+            <div className="space-y-2 bg-white p-3">{addForm}</div>
+          )}
+        </div>
+      </div>
+    ) : null;
+
   return (
-    <div ref={boxRef} className="min-w-0">
+    <div ref={boxRef} className="relative z-10 min-w-0">
       {compact ? (
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-gray-500">
           {label}
         </label>
       ) : (
-        <div className="flex items-center gap-2 mb-3">
+        <div className="mb-3 flex items-center gap-2">
           {icon ? (
-            <div className="w-8 h-8 flex items-center justify-center bg-[#E3F2FD] rounded-full shrink-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#E3F2FD]">
               <i className={`${icon} text-[#1E88E5]`}></i>
             </div>
           ) : null}
@@ -96,12 +223,14 @@ export default function AddableSelect({
           }}
           className={
             compact
-              ? `w-full flex items-center text-left px-4 py-2.5 pr-9 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 ${
-                  disabled ? 'opacity-60 cursor-not-allowed bg-slate-50' : 'cursor-pointer'
+              ? `flex w-full items-center rounded-xl border border-gray-200 bg-white px-4 py-2.5 pr-9 text-left text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 ${
+                  disabled ? 'cursor-not-allowed bg-slate-50 opacity-60' : 'cursor-pointer'
                 } ${open ? 'ring-2 ring-slate-400' : ''}`
-              : `w-full text-left px-3.5 py-2.5 pr-9 border border-gray-200 rounded-lg text-sm bg-gray-50/50 focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
-                  disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                } ${open ? 'ring-2 ring-[#1E88E5]' : ''} ${multiline ? 'min-h-[88px] whitespace-pre-wrap' : ''}`
+              : `w-full rounded-lg border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 pr-9 text-left text-sm focus:outline-none focus:ring-2 focus:ring-[#1E88E5] ${
+                  disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                } ${open ? 'ring-2 ring-[#1E88E5]' : ''} ${
+                  multiline ? 'min-h-[88px] whitespace-pre-wrap' : ''
+                }`
           }
         >
           {value ? (
@@ -111,106 +240,32 @@ export default function AddableSelect({
               <span className={`block ${multiline ? 'whitespace-pre-wrap' : 'truncate'} text-gray-800`}>
                 {value}
                 {selected?.email || selected?.phone ? (
-                  <span className="block text-[11px] text-gray-500 font-normal mt-0.5 truncate">
+                  <span className="mt-0.5 block truncate text-[11px] font-normal text-gray-500">
                     {[selected.email, selected.phone].filter(Boolean).join(' · ')}
                   </span>
                 ) : selected?.subLabel ? (
-                  <span className="block text-[11px] text-gray-500 font-normal mt-0.5 truncate">{selected.subLabel}</span>
+                  <span className="mt-0.5 block truncate text-[11px] font-normal text-gray-500">
+                    {selected.subLabel}
+                  </span>
                 ) : null}
               </span>
             )
           ) : (
-            <span className={`block text-gray-400 ${compact ? 'min-w-0 flex-1 truncate' : multiline ? '' : 'truncate'}`}>
+            <span
+              className={`block text-gray-400 ${
+                compact ? 'min-w-0 flex-1 truncate' : multiline ? '' : 'truncate'
+              }`}
+            >
               {placeholder}
             </span>
           )}
           <i
-            className={`ri-arrow-down-s-line absolute right-3 text-gray-400 text-lg ${
+            className={`ri-arrow-down-s-line absolute right-3 text-lg text-gray-400 ${
               compact ? 'top-1/2 -translate-y-1/2' : 'top-3'
             }`}
           ></i>
         </button>
-
-        {open && !disabled && (
-          <div className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-            <div className="p-2 border-b border-gray-100">
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${label.toLowerCase()}...`}
-                className={`w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 ${
-                  compact ? 'focus:ring-slate-400' : 'focus:ring-[#1E88E5]'
-                }`}
-              />
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {filtered.length === 0 ? (
-                <p className="px-3 py-3 text-xs text-gray-400">No saved options yet</p>
-              ) : (
-                filtered.map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      onSelect(opt);
-                      setOpen(false);
-                      onCloseAdd();
-                      setQuery('');
-                    }}
-                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer border-b border-gray-50 last:border-0 ${
-                      compact
-                        ? opt.label === value
-                          ? 'bg-slate-100 text-slate-800'
-                          : 'text-gray-800 hover:bg-slate-50'
-                        : opt.label === value
-                          ? 'bg-[#E3F2FD] text-[#1565C0]'
-                          : 'text-gray-800 hover:bg-[#E3F2FD]'
-                    }`}
-                  >
-                    <span className="block font-medium whitespace-pre-wrap">{opt.label}</span>
-                    {opt.email || opt.phone ? (
-                      <span className="mt-1 flex flex-col gap-0.5 text-[11px] text-gray-500 font-normal">
-                        {opt.email ? (
-                          <span className="inline-flex items-center gap-1 truncate">
-                            <i className="ri-mail-line text-gray-400"></i>
-                            {opt.email}
-                          </span>
-                        ) : null}
-                        {opt.phone ? (
-                          <span className="inline-flex items-center gap-1">
-                            <i className="ri-phone-line text-gray-400"></i>
-                            {opt.phone}
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : opt.subLabel ? (
-                      <span className="block text-[11px] text-gray-500 mt-0.5">{opt.subLabel}</span>
-                    ) : null}
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="border-t border-gray-100 bg-gray-50">
-              {!adding ? (
-                <button
-                  type="button"
-                  onClick={onOpenAdd}
-                  className={`w-full px-3 py-2 text-left text-sm font-semibold cursor-pointer inline-flex items-center gap-1.5 ${
-                    compact
-                      ? 'text-slate-700 hover:bg-slate-100'
-                      : 'text-[#1565C0] hover:bg-[#E3F2FD]'
-                  }`}
-                >
-                  <i className="ri-add-line"></i>
-                  Add new
-                </button>
-              ) : (
-                <div className="p-3 space-y-2 bg-white">{addForm}</div>
-              )}
-            </div>
-          </div>
-        )}
+        {menu ? createPortal(menu, document.body) : null}
       </div>
     </div>
   );

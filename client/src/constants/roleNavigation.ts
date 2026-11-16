@@ -384,12 +384,14 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
   'Accounts Payable': [
     'nav.cfo_insights',
     'nav.accounts_dashboard',
+    'nav.tasks',
     'nav.invoice_verification',
     'nav.payment',
   ],
   'Accounts Manager': [
     'nav.cfo_insights',
     'nav.accounts_dashboard',
+    'nav.tasks',
     'nav.invoice_verification',
     'nav.payment',
     'nav.payment_authorization',
@@ -555,6 +557,21 @@ export function ensureNavigation(
       }
     }
     const order = ROLE_DEFAULT_CODES['SCM Buyer'] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    merged = [...merged].sort((a, b) => {
+      const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;
+      const bi = rank.has(b.code) ? (rank.get(b.code) as number) : 1000;
+      return ai - bi;
+    });
+  }
+
+  // Accounts: always show My Tasks alongside Accounts menus
+  if (role === 'Accounts Payable' || role === 'Accounts Manager') {
+    const codes = new Set(merged.map((n) => n.code));
+    if (!codes.has('nav.tasks') && NAV_BY_CODE['nav.tasks']) {
+      merged = [...merged, NAV_BY_CODE['nav.tasks']];
+    }
+    const order = ROLE_DEFAULT_CODES[role] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     merged = [...merged].sort((a, b) => {
       const ai = rank.has(a.code) ? (rank.get(a.code) as number) : 1000;

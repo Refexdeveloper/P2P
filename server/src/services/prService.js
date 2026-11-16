@@ -4043,9 +4043,20 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
   const { remarks, ...updateFields } = body;
   const hasUpdates = Object.keys(updateFields).length > 0;
 
+  const adminResubmitRoles = [
+    'Super Admin',
+    'SCM Manager',
+    'SCM Buyer',
+    'HOD Approver',
+    'PR Manager',
+    'CFO',
+  ];
+  const isAdminEditor = adminResubmitRoles.includes(user.role) || Boolean(user.isSuperAdmin);
   const [prRows] = await pool.query(
-    'SELECT * FROM purchase_requests WHERE id = ? AND requester_id = ?',
-    [prId, user.id]
+    isAdminEditor
+      ? 'SELECT * FROM purchase_requests WHERE id = ?'
+      : 'SELECT * FROM purchase_requests WHERE id = ? AND requester_id = ?',
+    isAdminEditor ? [prId] : [prId, user.id]
   );
   if (!prRows.length) throw new Error('PR not found');
 
@@ -4062,11 +4073,17 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
   const lineItemsForSubmit = Array.isArray(updateFields.lineItems) ? updateFields.lineItems : undefined;
   assertPrSubmitRequirements(extrasForSubmit, lineItemsForSubmit);
 
+  const isOwner = Number(pr.requester_id) === Number(user.id);
+  if (hasUpdates && isAdminEditor && !isOwner) {
+    // Track PR admin edit/submit for another requester's draft/returned PR
+    await adminUpdatePurchaseRequest(user, prId, updateFields);
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    if (hasUpdates) {
+    if (hasUpdates && !(isAdminEditor && !isOwner)) {
       await updatePurchaseRequest(user, prId, updateFields, conn, { skipRfqPersist: true });
     }
 

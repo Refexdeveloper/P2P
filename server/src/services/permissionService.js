@@ -160,9 +160,15 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.po_letterhead_master',
     'nav.letterhead_master',
   ],
-  'Accounts Payable': ['nav.accounts_dashboard', 'nav.invoice_verification', 'nav.payment'],
+  'Accounts Payable': [
+    'nav.accounts_dashboard',
+    'nav.tasks',
+    'nav.invoice_verification',
+    'nav.payment',
+  ],
   'Accounts Manager': [
     'nav.accounts_dashboard',
+    'nav.tasks',
     'nav.invoice_verification',
     'nav.payment',
     'nav.payment_authorization',
@@ -510,6 +516,25 @@ export async function getUserNavigation(userId, role, email = null) {
   if (ROLE_NAV_WHITELIST[role] && !getEmailNavPermissionOverride(email)) {
     const allowed = new Set(ROLE_NAV_WHITELIST[role]);
     nav = nav.filter((n) => allowed.has(n.code));
+    const order = ROLE_DEFAULT_PERMISSIONS[role] || [];
+    const rank = new Map(order.map((code, i) => [code, i]));
+    nav.sort((a, b) => {
+      const ai = rank.has(a.code) ? rank.get(a.code) : 1000 + a.sort;
+      const bi = rank.has(b.code) ? rank.get(b.code) : 1000 + b.sort;
+      return ai - bi;
+    });
+  }
+
+  // Accounts: always include My Tasks (heal permission if missing)
+  if (role === 'Accounts Payable' || role === 'Accounts Manager') {
+    if (!nav.some((n) => n.code === 'nav.tasks')) {
+      const tasksNav = NAV_ITEMS.find((n) => n.code === 'nav.tasks');
+      if (tasksNav) nav = [...nav, tasksNav];
+      await pool.query(
+        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, 'nav.tasks')`,
+        [userId]
+      );
+    }
     const order = ROLE_DEFAULT_PERMISSIONS[role] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
     nav.sort((a, b) => {

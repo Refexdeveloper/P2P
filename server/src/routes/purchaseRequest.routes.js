@@ -285,7 +285,13 @@ router.put('/:id/admin', canEditPrDetails, async (req, res) => {
   }
 });
 
-router.post('/:id/resubmit', canCreatePr, async (req, res) => {
+router.post(
+  '/:id/resubmit',
+  requireRolesOrPermissions(
+    [...CREATE_PR_ROLES, 'Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO'],
+    ['nav.create_pr', 'nav.track_pr', 'nav.rfq_approval', 'nav.tasks', 'nav.pr_manager_dashboard']
+  ),
+  async (req, res) => {
   try {
     const pr = await resubmitPurchaseRequest(req.user, req.params.id, req.body);
     res.json({ data: pr, message: 'PR resubmitted successfully' });

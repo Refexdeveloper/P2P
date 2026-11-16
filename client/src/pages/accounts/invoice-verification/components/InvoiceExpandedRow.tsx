@@ -26,7 +26,17 @@ function Field({ label, value, className = '' }: { label: string; value: string;
 
 interface Props {
   invoice: InvoiceData;
-  onAction: (type: 'approve' | 'hold' | 'reject' | 'manager_approve', invoice: InvoiceData) => void;
+  onAction: (
+    type:
+      | 'approve'
+      | 'hold'
+      | 'reject'
+      | 'send_back'
+      | 'manager_approve'
+      | 'manager_reject'
+      | 'manager_send_back',
+    invoice: InvoiceData
+  ) => void;
 }
 
 type TabKey = 'match' | 'files' | 'lineitems' | 'history';
@@ -428,51 +438,57 @@ export default function InvoiceExpandedRow({ invoice, onAction }: Props) {
             </div>
           )}
 
-          {/* Action buttons */}
-          <div className="flex items-center space-x-3 pt-1">
+          {/* Action buttons — same Approve / Send Back / Reject pattern as User Approval */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             {invoice.status === 'Pending Manager Approval' && (
-              <button
-                onClick={() => onAction('manager_approve', invoice)}
-                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-[#1E88E5] text-white text-sm font-medium rounded-lg hover:from-blue-700 hover:to-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
-              >
-                <div className="w-4 h-4 flex items-center justify-center">
-                  <i className="ri-user-star-line text-sm"></i>
-                </div>
-                <span>Manager Approve Payment</span>
-              </button>
+              <>
+                <button
+                  onClick={() => onAction('manager_approve', invoice)}
+                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-check-line"></i>
+                  Approve
+                </button>
+                <button
+                  onClick={() => onAction('manager_send_back', invoice)}
+                  className="px-4 py-2 bg-white text-amber-600 text-sm font-medium rounded-lg border border-amber-200 hover:bg-amber-50 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-arrow-go-back-line"></i>
+                  Send Back
+                </button>
+                <button
+                  onClick={() => onAction('manager_reject', invoice)}
+                  className="px-4 py-2 bg-white text-red-600 text-sm font-medium rounded-lg border border-red-200 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-close-line"></i>
+                  Reject
+                </button>
+              </>
             )}
             {(invoice.status === 'Pending Verification' || invoice.status === 'Matched') && (
-              <button
-                onClick={() => onAction('approve', invoice)}
-                className="px-4 py-2 bg-[#1E88E5] text-white text-sm font-medium rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
-              >
-                <div className="w-4 h-4 flex items-center justify-center">
-                  <i className="ri-checkbox-circle-line text-sm"></i>
-                </div>
-                <span>Send to Manager</span>
-              </button>
-            )}
-            {(invoice.status === 'Pending Verification' || invoice.status === 'Discrepancy') && (
-              <button
-                onClick={() => onAction('hold', invoice)}
-                className="px-4 py-2 bg-orange-100 text-orange-700 text-sm font-medium rounded-lg hover:bg-orange-200 transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
-              >
-                <div className="w-4 h-4 flex items-center justify-center">
-                  <i className="ri-pause-circle-line text-sm"></i>
-                </div>
-                <span>Put On Hold</span>
-              </button>
-            )}
-            {invoice.status !== 'Approved for Payment' && invoice.status !== 'Discrepancy' && invoice.status !== 'Pending Manager Approval' && (
-              <button
-                onClick={() => onAction('reject', invoice)}
-                className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors cursor-pointer whitespace-nowrap flex items-center space-x-2"
-              >
-                <div className="w-4 h-4 flex items-center justify-center">
-                  <i className="ri-close-circle-line text-sm"></i>
-                </div>
-                <span>Raise Discrepancy</span>
-              </button>
+              <>
+                <button
+                  onClick={() => onAction('approve', invoice)}
+                  className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-check-line"></i>
+                  Approve
+                </button>
+                <button
+                  onClick={() => onAction('send_back', invoice)}
+                  className="px-4 py-2 bg-white text-amber-600 text-sm font-medium rounded-lg border border-amber-200 hover:bg-amber-50 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-arrow-go-back-line"></i>
+                  Send Back
+                </button>
+                <button
+                  onClick={() => onAction('reject', invoice)}
+                  className="px-4 py-2 bg-white text-red-600 text-sm font-medium rounded-lg border border-red-200 hover:bg-red-50 transition-colors cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <i className="ri-close-line"></i>
+                  Reject
+                </button>
+              </>
             )}
           </div>
         </div>

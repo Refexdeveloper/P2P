@@ -174,8 +174,8 @@ export default function PrBillingDeliverySection({
   };
 
   return (
-    <div className={PM_CARD}>
-      <div className={PM_CARD_HEADER}>
+    <div className={`${PM_CARD} !overflow-visible`}>
+      <div className={`${PM_CARD_HEADER} rounded-t-2xl sm:rounded-t-[18px]`}>
         <div className={PM_ICON_CHIP_SOLID}>
           <i className="ri-map-pin-line text-sm"></i>
         </div>
@@ -187,7 +187,7 @@ export default function PrBillingDeliverySection({
         </div>
       </div>
 
-      <div className="relative z-[1] grid grid-cols-1 items-start gap-x-6 gap-y-5 p-4 sm:grid-cols-2 sm:p-6">
+      <div className="relative z-[1] grid grid-cols-1 items-start gap-x-6 gap-y-5 overflow-visible p-4 sm:grid-cols-2 sm:p-6">
         <div>
           <label className={PM_LABEL}>
             Billing Region / GST
@@ -286,7 +286,7 @@ export default function PrBillingDeliverySection({
           </p>
         </div>
 
-        <div data-field="deliveryPoc" className="min-w-0">
+        <div data-field="deliveryPoc" className="relative z-20 min-w-0">
           <AddableSelect
             variant="compact"
             label="POC for Delivery"
@@ -372,7 +372,7 @@ export default function PrBillingDeliverySection({
           />
         </div>
 
-        <div data-field="projectManagerHo" className="min-w-0">
+        <div data-field="projectManagerHo" className="relative z-20 min-w-0">
           <AddableSelect
             variant="compact"
             label="Project Manager HO"
@@ -498,7 +498,7 @@ export default function PrBillingDeliverySection({
         </div>
 
         {!hidePaymentTerms && (
-        <div data-field="paymentTerms" className="md:col-span-2 lg:col-span-3">
+        <div data-field="paymentTerms" className="relative z-0 md:col-span-2 lg:col-span-3">
           <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
             Payment Terms
           </label>

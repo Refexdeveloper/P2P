@@ -78,7 +78,14 @@ export default function InvoiceVerificationPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | InvoiceStatus>('all');
   const [toast, setToast] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{
-    type: 'approve' | 'hold' | 'reject' | 'manager_approve';
+    type:
+      | 'approve'
+      | 'hold'
+      | 'reject'
+      | 'send_back'
+      | 'manager_approve'
+      | 'manager_reject'
+      | 'manager_send_back';
     invoice: InvoiceData;
   } | null>(null);
   const [uploadModal, setUploadModal] = useState<InvoiceData | null>(null);
@@ -126,7 +133,15 @@ export default function InvoiceVerificationPage() {
   });
 
   const handleAction = (
-    type: 'approve' | 'hold' | 'reject' | 'manager_approve' | 'upload',
+    type:
+      | 'approve'
+      | 'hold'
+      | 'reject'
+      | 'send_back'
+      | 'manager_approve'
+      | 'manager_reject'
+      | 'manager_send_back'
+      | 'upload',
     invoice: InvoiceData
   ) => {
     if (type === 'upload') {
@@ -140,8 +155,11 @@ export default function InvoiceVerificationPage() {
       setUploadModal(invoice);
       return;
     }
-    if (type === 'manager_approve' && !isManager) {
-      showToast('Only Accounts Manager can approve for payment');
+    if (
+      (type === 'manager_approve' || type === 'manager_reject' || type === 'manager_send_back') &&
+      !isManager
+    ) {
+      showToast('Only Accounts Manager can decide at this step');
       return;
     }
     setActionModal({ type, invoice });
@@ -153,10 +171,23 @@ export default function InvoiceVerificationPage() {
     try {
       if (type === 'manager_approve') {
         await accountsApi.managerApprove(invoice.id, 'approve', remarks);
-        showToast('Manager approved — ready for payment upload');
+        showToast('Approved — ready for payment upload');
+      } else if (type === 'manager_reject') {
+        await accountsApi.managerApprove(invoice.id, 'reject', remarks);
+        showToast('Rejected');
+      } else if (type === 'manager_send_back') {
+        await accountsApi.managerApprove(invoice.id, 'send_back', remarks);
+        showToast('Sent back to Accounts verification');
       } else {
-        await accountsApi.verifyInvoice(invoice.id, type, remarks);
-        showToast(type === 'approve' ? 'Sent to Accounts Manager' : 'Invoice updated');
+        const verifyAction = type === 'send_back' ? 'send_back' : type;
+        await accountsApi.verifyInvoice(invoice.id, verifyAction, remarks);
+        showToast(
+          type === 'approve'
+            ? 'Approved — sent to Accounts Manager'
+            : type === 'reject'
+              ? 'Rejected'
+              : 'Sent back'
+        );
       }
       setActionModal(null);
       await load();

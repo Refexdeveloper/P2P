@@ -5,7 +5,15 @@ import InvoiceExpandedRow from './InvoiceExpandedRow';
 interface Props {
   invoices: InvoiceData[];
   onAction: (
-    type: 'approve' | 'hold' | 'reject' | 'manager_approve' | 'upload',
+    type:
+      | 'approve'
+      | 'hold'
+      | 'reject'
+      | 'send_back'
+      | 'manager_approve'
+      | 'manager_reject'
+      | 'manager_send_back'
+      | 'upload',
     invoice: InvoiceData
   ) => void;
 }
@@ -173,34 +181,51 @@ export default function InvoiceTable({ invoices, onAction }: Props) {
                         <>
                           <button
                             onClick={() => onAction('approve', invoice)}
-                            className="px-2.5 py-1.5 bg-[#1E88E5] text-white text-xs font-medium rounded-lg hover:bg-[#1565C0] transition-colors whitespace-nowrap"
-                            title="Send to Manager"
+                            className="px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-medium rounded-lg hover:bg-emerald-700 transition-colors whitespace-nowrap"
+                            title="Approve"
                           >
-                            <i className="ri-send-plane-fill"></i>
+                            <i className="ri-check-line"></i>
                           </button>
                           <button
-                            onClick={() => onAction('hold', invoice)}
-                            className="px-2.5 py-1.5 bg-orange-500 text-white text-xs font-medium rounded-lg hover:bg-orange-600 transition-colors whitespace-nowrap"
-                            title="Put On Hold"
+                            onClick={() => onAction('send_back', invoice)}
+                            className="px-2.5 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap"
+                            title="Send Back"
                           >
-                            <i className="ri-pause-circle-line"></i>
+                            <i className="ri-arrow-go-back-line"></i>
                           </button>
                           <button
                             onClick={() => onAction('reject', invoice)}
                             className="px-2.5 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors whitespace-nowrap"
-                            title="Raise Discrepancy"
+                            title="Reject"
                           >
-                            <i className="ri-error-warning-line"></i>
+                            <i className="ri-close-line"></i>
                           </button>
                         </>
                       )}
                     {invoice.status === 'Pending Manager Approval' && (
-                      <button
-                        onClick={() => onAction('manager_approve', invoice)}
-                        className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-[#1E88E5] text-white text-xs font-semibold rounded-lg hover:from-blue-700 hover:to-[#1565C0] transition-all whitespace-nowrap"
-                      >
-                        Manager Approve
-                      </button>
+                      <>
+                        <button
+                          onClick={() => onAction('manager_approve', invoice)}
+                          className="px-2.5 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 whitespace-nowrap"
+                          title="Approve"
+                        >
+                          <i className="ri-check-line mr-1"></i>Approve
+                        </button>
+                        <button
+                          onClick={() => onAction('manager_send_back', invoice)}
+                          className="px-2.5 py-1.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 whitespace-nowrap"
+                          title="Send Back"
+                        >
+                          <i className="ri-arrow-go-back-line"></i>
+                        </button>
+                        <button
+                          onClick={() => onAction('manager_reject', invoice)}
+                          className="px-2.5 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 whitespace-nowrap"
+                          title="Reject"
+                        >
+                          <i className="ri-close-line"></i>
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>

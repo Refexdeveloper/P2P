@@ -25,7 +25,7 @@ export default function ItemCombobox({
   onSelect,
   onClear,
   onCreated,
-  portal = false,
+  portal = true,
 }: Props) {
   const options = useMemo(
     () =>

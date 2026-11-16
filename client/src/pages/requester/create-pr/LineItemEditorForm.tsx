@@ -230,8 +230,8 @@ export default function LineItemEditorForm({
   };
 
   return (
-    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-gray-100">
+    <div className="relative z-10 border border-slate-200 rounded-xl bg-white shadow-sm overflow-visible">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-gray-100 rounded-t-xl">
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 flex items-center justify-center bg-slate-800 text-white text-xs font-bold rounded-full">
             <i className={mode === 'edit' ? 'ri-pencil-line text-[11px]' : 'ri-add-line text-[11px]'}></i>
@@ -250,8 +250,8 @@ export default function LineItemEditorForm({
         </button>
       </div>
 
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="md:col-span-2">
+      <div className="relative z-0 p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-visible">
+        <div className="relative z-20 md:col-span-2">
           <label className="block text-xs font-medium text-gray-500 mb-1.5">
             Item Name <span className="text-red-500">*</span>
           </label>
@@ -263,6 +263,7 @@ export default function LineItemEditorForm({
             selectedName={draft.itemName || draft.description}
             hasError={Boolean(errors.itemName)}
             categoryId={masterCategories.find((c) => c.name === draft.category)?.id || null}
+            portal
             onSelect={(master) => applyMaster(master)}
             onClear={() => applyMaster(null)}
             onCreated={(created) => {

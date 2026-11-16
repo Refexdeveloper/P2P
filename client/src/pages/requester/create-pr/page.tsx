@@ -347,13 +347,21 @@ export default function CreatePRPage() {
     return null;
   };
 
-  const isReturned = prStatus === 'RETURNED';
+  const statusUpper = String(prStatus || '').toUpperCase();
+  const isReturned = statusUpper === 'RETURNED';
+  const isDraftStatus = statusUpper === 'DRAFT' || statusUpper === '';
   const isPendingEditFlow =
     isEditMode &&
     !isAdminEditFlow &&
     !isReturned &&
-    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(prStatus);
-  const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
+    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
+      statusUpper
+    );
+  /** Mid-flight admin/requester edits: save only. Draft / returned keep Submit. */
+  const isSaveOnlyEditFlow =
+    isPendingEditFlow ||
+    (isAdminEditFlow && !isDraftStatus && !isReturned);
+  const isResubmitFlow = isEditMode && isReturned;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
   const askBillingOnCreatePr =
@@ -2354,7 +2362,8 @@ export default function CreatePRPage() {
       };
 
       const finishExisting = async (id: number) => {
-        if (isAdminEditFlow) {
+        // Admin mid-flight edit: save fields only (no workflow submit)
+        if (isAdminEditFlow && !(submit && (isDraftStatus || isReturned))) {
           const res = await prApi.adminUpdate(id, { ...payload, silent });
           const updated = res.data as
             | { approvalHistory?: typeof approvalHistory }
@@ -2365,13 +2374,13 @@ export default function CreatePRPage() {
           await uploadNewAttachments(id);
           await markQuoteFilesSaved(id);
           if (silent) return;
-        setCreatedPrNumber(prNumber);
+          setCreatedPrNumber(prNumber);
           setNextStepLabel('');
           setL1Manager(null);
           setShowConfirmModal(false);
-        setShowSuccessModal(true);
-        return;
-      }
+          setShowSuccessModal(true);
+          return;
+        }
         if (submit) {
           const res = await prApi.resubmit(id, { ...payload, remarks: resubmitRemarks });
           const data = res.data as {
@@ -2386,7 +2395,11 @@ export default function CreatePRPage() {
           setNextStepLabel(data.nextStep || 'L1 Manager Approval');
           setL1Manager(data.l1Manager || null);
         } else {
-          await prApi.update(id, payload);
+          if (isAdminEditFlow) {
+            await prApi.adminUpdate(id, { ...payload, silent });
+          } else {
+            await prApi.update(id, payload);
+          }
           await uploadNewAttachments(id);
           await markQuoteFilesSaved(id);
           bindSavedDraftId(id);
@@ -2410,7 +2423,7 @@ export default function CreatePRPage() {
           return;
         }
         setShowConfirmModal(false);
-      setShowSuccessModal(true);
+        setShowSuccessModal(true);
       };
 
       // Always resolve from ref/localStorage — never create duplicates while setState is pending.
@@ -2573,15 +2586,15 @@ export default function CreatePRPage() {
                   : 'New Purchase Requisition'}
             </h1>
             <p className="cpr-sub">
-              {isAdminEditFlow
-                ? 'Update any PR field or line item, then save changes'
+              {isSaveOnlyEditFlow
+                ? isAdminEditFlow
+                  ? 'Update any PR field or line item, then save changes'
+                  : 'Update the request. It stays in the current approval step.'
                 : isReturned
-                ? 'Update the fields based on feedback, then resubmit for approval'
-                : isPendingEditFlow
-                ? 'Update the request. It stays in the current approval step.'
-                : isEditMode
-                ? 'Update your draft or submit when ready'
-                : 'Fill in the details to raise a new procurement request'}
+                  ? 'Update the fields based on feedback, then resubmit for approval'
+                  : isEditMode
+                    ? 'Update your draft or submit when ready'
+                    : 'Fill in the details to raise a new procurement request'}
             </p>
             <div className="cpr-chips">
               <span className={`cpr-chip ${typeColors[requestType]}`}>{requestType}</span>
@@ -3909,8 +3922,9 @@ export default function CreatePRPage() {
             <Link to={backTo} className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap text-center sm:w-auto`}>
               Cancel
             </Link>
-            {isAdminEditFlow || isPendingEditFlow ? (
+            {isSaveOnlyEditFlow ? (
               <button
+                type="button"
                 onClick={() => {
                   if (!validateForm()) return;
                   setSubmitAction('draft');
@@ -3924,22 +3938,28 @@ export default function CreatePRPage() {
               </button>
             ) : (
               <>
-            <button
-              onClick={handleSaveDraft}
-              disabled={isSubmitting}
-              className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap sm:w-auto`}
-            >
-              <i className="ri-save-line"></i>
-              {isSubmitting && submitAction === 'draft' ? 'Saving…' : 'Save Draft'}
-            </button>
-            <button
-              onClick={handleSubmitPR}
-              disabled={isSubmitting}
-              className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
-            >
-              <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
-              {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
-            </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={isSubmitting}
+                  className={`${PM_BTN_SECONDARY} w-full whitespace-nowrap sm:w-auto`}
+                >
+                  <i className="ri-save-line"></i>
+                  {isSubmitting && submitAction === 'draft'
+                    ? 'Saving…'
+                    : isEditMode
+                      ? 'Save Changes'
+                      : 'Save Draft'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitPR}
+                  disabled={isSubmitting}
+                  className={`${PM_BTN_PRIMARY} w-full whitespace-nowrap sm:w-auto`}
+                >
+                  <i className={isResubmitFlow ? 'ri-refresh-line' : 'ri-send-plane-fill'}></i>
+                  {isResubmitFlow ? 'Resubmit PR' : 'Submit PR'}
+                </button>
               </>
             )}
           </div>

@@ -889,8 +889,11 @@ export async function uploadInvoiceDocument(user, invoiceId, body) {
 }
 
 export async function verifyInvoice(user, invoiceId, { action, remarks }) {
+  // hold / send_back / return are the same “send back for rework” path
+  const normalized =
+    action === 'send_back' || action === 'return' ? 'hold' : action;
   const allowed = ['approve', 'hold', 'reject'];
-  if (!allowed.includes(action)) throw new Error('Invalid action');
+  if (!allowed.includes(normalized)) throw new Error('Invalid action');
 
   const [rows] = await pool.query(`SELECT * FROM invoices WHERE id = ?`, [invoiceId]);
   if (!rows.length) throw new Error('Invoice not found');
@@ -904,15 +907,15 @@ export async function verifyInvoice(user, invoiceId, { action, remarks }) {
 
   let nextStatus = 'pending_manager_approval';
   let poStatus = 'pending_accounts_approval';
-  let actionLabel = 'Sent to Manager';
-  if (action === 'hold') {
+  let actionLabel = 'Approved';
+  if (normalized === 'hold') {
     nextStatus = 'on_hold';
     poStatus = 'invoice_entry';
-    actionLabel = 'Put On Hold';
-  } else if (action === 'reject') {
+    actionLabel = 'Sent Back';
+  } else if (normalized === 'reject') {
     nextStatus = 'discrepancy';
     poStatus = 'invoice_entry';
-    actionLabel = 'Discrepancy Raised';
+    actionLabel = 'Rejected';
   }
 
   const history = [
@@ -957,13 +960,34 @@ export async function managerApproveInvoice(user, invoiceId, { action = 'approve
     throw new Error('Invoice is not pending manager approval');
   }
 
-  const approve = action !== 'reject';
-  const nextStatus = approve ? 'approved_for_payment' : 'discrepancy';
-  const poStatus = approve ? 'approved_for_payment' : 'invoice_entry';
+  const normalized =
+    action === 'send_back' || action === 'return' || action === 'hold' ? 'send_back' : action;
+
+  let nextStatus;
+  let poStatus;
+  let actionLabel;
+  let stampManager = false;
+  if (normalized === 'approve') {
+    nextStatus = 'approved_for_payment';
+    poStatus = 'approved_for_payment';
+    actionLabel = 'Approved';
+    stampManager = true;
+  } else if (normalized === 'send_back') {
+    nextStatus = 'pending_verification';
+    poStatus = 'pending_accounts_approval';
+    actionLabel = 'Sent Back';
+  } else if (normalized === 'reject') {
+    nextStatus = 'discrepancy';
+    poStatus = 'invoice_entry';
+    actionLabel = 'Rejected';
+  } else {
+    throw new Error('Invalid action');
+  }
+
   const history = [
     ...parseHistory(inv.approval_history),
     {
-      action: approve ? 'Manager Approved' : 'Manager Rejected',
+      action: actionLabel,
       performedBy: user.name,
       role: user.grantedFromRole || user.role,
       date: formatDateTime(new Date()),
@@ -975,12 +999,20 @@ export async function managerApproveInvoice(user, invoiceId, { action = 'approve
     `UPDATE invoices SET
        status = ?,
        accounts_remarks = ?,
-       manager_approved_by = ?,
-       manager_approved_at = NOW(),
+       manager_approved_by = CASE WHEN ? = 1 THEN ? ELSE manager_approved_by END,
+       manager_approved_at = CASE WHEN ? = 1 THEN NOW() ELSE manager_approved_at END,
        approval_history = ?,
        updated_at = NOW()
      WHERE id = ?`,
-    [nextStatus, remarks || null, user.id, JSON.stringify(history), invoiceId]
+    [
+      nextStatus,
+      remarks || null,
+      stampManager ? 1 : 0,
+      user.id,
+      stampManager ? 1 : 0,
+      JSON.stringify(history),
+      invoiceId,
+    ]
   );
   await pool.query(`UPDATE purchase_orders SET status = ?, updated_at = NOW() WHERE id = ?`, [
     poStatus,
