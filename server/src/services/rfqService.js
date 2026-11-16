@@ -1646,10 +1646,10 @@ async function userCanViewPrQuotes(user, pr) {
   return Boolean(tasks.length);
 }
 
-/** Requester of PR, or assigned RFQ Entry agent (e.g. Reginold for New Joiners Laptop). */
+/** Requester of PR, or assigned RFQ Entry agent (e.g. Reginold for New Joiners Laptop).
+ *  Do not treat SCM/Admin as requester here — that breaks Create PO finalize. */
 async function userCanActOnRequesterRfq(user, pr) {
   if (!user || !pr) return false;
-  if (['Super Admin', 'SCM Buyer', 'SCM Manager'].includes(String(user.role || ''))) return true;
   if (Number(pr.requesterId) === Number(user.id)) return true;
   const email = String(user.email || '').trim().toLowerCase();
   const [tasks] = await pool.query(
@@ -2140,6 +2140,7 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   if (user.role === 'Requester' && !canActRequesterRfq) throw new Error('Unauthorized');
 
   const isOwnVendor = pr.vendorSelection === 'own';
+  // Keep original Create PO roles: SCM Buyer finalizes; Requester (or assigned RFQ agent) submits own-vendor.
   const isRequester = user.role === 'Requester' || canActRequesterRfq;
   const isScmBuyer = user.role === 'SCM Buyer';
 
