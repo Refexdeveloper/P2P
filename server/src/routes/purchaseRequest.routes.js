@@ -18,6 +18,7 @@ import {
   submitSassInvoiceUpload,
   updatePurchaseRequest,
   updatePrBillingDelivery,
+  updateJoinerDetails,
   adminUpdatePurchaseRequest,
   adminSendBackPurchaseRequest,
   resubmitPurchaseRequest,
@@ -69,12 +70,22 @@ router.post('/', canCreatePr, async (req, res) => {
   }
 });
 
+router.patch('/:id/joiner-details', canEditPrDetails, async (req, res) => {
+  try {
+    const data = await updateJoinerDetails(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Joiner details updated' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 router.get('/', async (req, res) => {
   try {
     const pendingOnly = req.query.pending === 'true';
     const bucket = req.query.bucket === 'scm' ? 'scm' : undefined;
     const wantsRequesterList =
       req.user.role === 'Requester' ||
+      req.user.role === 'HR' ||
       req.query.scope === 'requester' ||
       req.query.page != null;
 
@@ -98,7 +109,7 @@ router.get('/', async (req, res) => {
 
     const list = await listPurchaseRequests(req.user, { pendingOnly, bucket });
 
-    if (req.user.role === 'Requester') {
+    if (req.user.role === 'Requester' || req.user.role === 'HR') {
       return res.json({ data: list.map(toRequesterDashboardFormat) });
     }
     if (req.user.role === 'PR Manager') {

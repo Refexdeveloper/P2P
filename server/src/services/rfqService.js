@@ -29,6 +29,10 @@ import { applySendBackToTarget, queueSendBackNotifications } from './sendBackSer
 import { canUseAdminSendBackCatalog } from '../utils/sendBackTargets.js';
 import { formatCurrency, normalizeEmailCurrency } from '../templates/emailUtils.js';
 import { isSassPurchaseType } from './sassWorkflow.js';
+import {
+  isNewJoinersLaptopPr,
+  NEW_JOINERS_RFQ_EMAIL,
+} from './newJoinersLaptopWorkflow.js';
 
 function currencySymbolForCode(currency) {
   const code = normalizeEmailCurrency(currency);
@@ -1485,7 +1489,8 @@ export async function inviteVendors(user, prId, vendors, fieldDefinitions = null
 
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (pr.requesterId !== user.id && user.role !== 'SCM Buyer' && user.role !== 'Requester') {
+  const canAct = await userCanActOnRequesterRfq(user, pr);
+  if (!canAct && user.role !== 'SCM Buyer' && user.role !== 'Super Admin') {
     throw new Error('Unauthorized');
   }
 
@@ -1637,6 +1642,30 @@ async function userCanViewPrQuotes(user, pr) {
      WHERE pr_id = ? AND assigned_user_id = ? AND status IN ('pending', 'in_progress', 'completed')
      LIMIT 1`,
     [pr.id, user.id]
+  );
+  return Boolean(tasks.length);
+}
+
+/** Requester of PR, or assigned RFQ Entry agent (e.g. Reginold for New Joiners Laptop). */
+async function userCanActOnRequesterRfq(user, pr) {
+  if (!user || !pr) return false;
+  if (['Super Admin', 'SCM Buyer', 'SCM Manager'].includes(String(user.role || ''))) return true;
+  if (Number(pr.requesterId) === Number(user.id)) return true;
+  const email = String(user.email || '').trim().toLowerCase();
+  const [tasks] = await pool.query(
+    `SELECT wt.id
+     FROM workflow_tasks wt
+     LEFT JOIN users au ON au.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.task_type = 'RFQ_ENTRY'
+       AND wt.assigned_role = 'Requester'
+       AND wt.status IN ('pending', 'in_progress', 'completed')
+       AND (
+         wt.assigned_user_id = ?
+         OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+       )
+     LIMIT 1`,
+    [pr.id, user.id, email, email]
   );
   return Boolean(tasks.length);
 }
@@ -2039,7 +2068,9 @@ export async function saveRfqConfig(
 ) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (user.role === 'Requester' && pr.requesterId !== user.id) throw new Error('Unauthorized');
+  if (user.role === 'Requester' && !(await userCanActOnRequesterRfq(user, pr))) {
+    throw new Error('Unauthorized');
+  }
 
   const config = await getOrCreateRfqConfig(prId);
   if (config.finalizedAt) throw new Error('RFQ already finalized');
@@ -2105,13 +2136,14 @@ export async function updateSubmissionReviewFields(user, submissionId, requester
 export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId, recommendationJustification }) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
-  if (user.role === 'Requester' && pr.requesterId !== user.id) throw new Error('Unauthorized');
+  const canActRequesterRfq = await userCanActOnRequesterRfq(user, pr);
+  if (user.role === 'Requester' && !canActRequesterRfq) throw new Error('Unauthorized');
 
   const isOwnVendor = pr.vendorSelection === 'own';
-  const isRequester = user.role === 'Requester';
+  const isRequester = user.role === 'Requester' || canActRequesterRfq;
   const isScmBuyer = user.role === 'SCM Buyer';
 
-  if (isRequester && !isOwnVendor) {
+  if (user.role === 'Requester' && !isOwnVendor) {
     throw new Error('RFQ entry for this PR is handled by SCM');
   }
   if (!isRequester && !isScmBuyer) {
@@ -2320,7 +2352,20 @@ async function resolvePostRfqManager(requesterEmail, departmentId, level) {
 
 async function createPostRfqApprovalTask(conn, prId, level) {
   const requester = await getRequesterEmailForPr(prId);
-  const assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
+  // New Joiners: L1/L2 follow Reginold (RFQ owner), not HR and not a selected reporting head
+  let managerEmail = requester.email;
+  if (level === 'hod' || level === 'l2') {
+    try {
+      const pr = await getPurchaseRequestById(prId);
+      if (isNewJoinersLaptopPr(pr)) {
+        managerEmail = NEW_JOINERS_RFQ_EMAIL;
+      }
+    } catch (err) {
+      console.warn('New Joiners L1/L2 (Reginold) resolve skipped:', err.message);
+    }
+  }
+  const assignee = await resolvePostRfqManager(managerEmail, requester.departmentId, level);
+
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
   // SCM Buyer is role-queued (any active buyer can act). SCM Manager is assigned to Rajeev.
@@ -2662,9 +2707,12 @@ async function startOwnVendorPostRfqWorkflow(prId) {
   const assignee = await createPostRfqApprovalTask(null, prId, 'hod');
   const pr = await getPurchaseRequestById(prId);
 
+  const isNjl = isNewJoinersLaptopPr(pr);
+  // New Joiners: L1/L2 = Reginold's managers (no reporting-head / selected L1)
+  const l1StageLabel = 'L1 Manager Vendor Final Approval';
   await queuePostQuotationApprovalMail(pr, 'HOD Approver', {
     postRfq: true,
-    stageLabel: 'L1 Manager Vendor Final Approval',
+    stageLabel: l1StageLabel,
     approverEmails: assignee.email ? [assignee.email] : undefined,
     approverName: assignee.name || undefined,
   });
@@ -2672,8 +2720,8 @@ async function startOwnVendorPostRfqWorkflow(prId) {
     action: 'submitted',
     actorRole: 'Requester',
     actorName: pr.requester,
-    completedStepLabel: 'RFQ Entry (Own Vendor) submitted',
-    nextStepLabel: 'L1 Manager Vendor Final Approval',
+    completedStepLabel: isNjl ? 'RFQ Entry (Reginold) submitted' : 'RFQ Entry (Own Vendor) submitted',
+    nextStepLabel: l1StageLabel,
     requesterName: pr.requester,
   });
 }

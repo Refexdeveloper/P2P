@@ -344,6 +344,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.requester_vendor_invoice',
     ...REQUESTER_MASTER_NAV_CODES,
   ],
+  HR: ['nav.requester_dashboard', 'nav.create_pr', 'nav.track_pr', 'nav.department_master', 'nav.entity_master'],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],

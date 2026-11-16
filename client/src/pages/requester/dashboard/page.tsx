@@ -8,7 +8,7 @@ import RequesterPrMobileFilters, {
   type PrStatusFilter,
 } from './components/RequesterPrMobileFilters';
 import { prApi, taskApi, RequesterPrListMeta } from '../../../services/api';
-import { getRoleHomePath, useAuth } from '../../../contexts/AuthContext';
+import { getRoleHomePath, isRequesterPortalRole, useAuth } from '../../../contexts/AuthContext';
 import { getUserDesignation } from '../../../utils/roleDisplay';
 import PRDetailDrawer, { PRDetail } from './components/PRDetailDrawer';
 import '../../../styles/dashboard-fx.css';
@@ -139,7 +139,7 @@ export default function RequesterDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    if (user.role !== 'Requester' && !user.isSuperAdmin) {
+    if (!isRequesterPortalRole(user.role) && !user.isSuperAdmin) {
       navigate(getRoleHomePath(user.role, user.navigation, user.email), { replace: true });
     }
   }, [user, navigate]);
@@ -184,7 +184,7 @@ export default function RequesterDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!user || (user.role !== 'Requester' && !user.isSuperAdmin)) {
+    if (!user || (!isRequesterPortalRole(user.role) && !user.isSuperAdmin)) {
       setLoading(false);
       return;
     }
@@ -192,7 +192,7 @@ export default function RequesterDashboard() {
   }, [loadList, user]);
 
   useEffect(() => {
-    if (!user || (user.role !== 'Requester' && !user.isSuperAdmin)) return;
+    if (!user || (!isRequesterPortalRole(user.role) && !user.isSuperAdmin)) return;
     loadSideData().catch((err) => setError(err.message));
   }, [loadSideData, user]);
 
@@ -625,7 +625,7 @@ export default function RequesterDashboard() {
                         Edit
                       </button>
                     )}
-                    {user?.role === 'Requester' && isDraftRequesterPr(request) && (
+                    {isRequesterPortalRole(user?.role) && isDraftRequesterPr(request) && (
                       <button
                         type="button"
                         disabled={deletingId === request.prId}
@@ -770,7 +770,7 @@ export default function RequesterDashboard() {
                               <i className={request.status === 'returned' ? 'ri-refresh-line' : 'ri-edit-line'}></i>
                             </button>
                           )}
-                          {user?.role === 'Requester' && isDraftRequesterPr(request) && (
+                          {isRequesterPortalRole(user?.role) && isDraftRequesterPr(request) && (
                             <button
                               type="button"
                               disabled={deletingId === request.prId}
@@ -861,7 +861,7 @@ export default function RequesterDashboard() {
           pr={drawerPR}
           loading={drawerLoading}
           onClose={closeDrawer}
-          onDeleteDraft={user?.role === 'Requester' ? handleDeleteDraft : undefined}
+          onDeleteDraft={isRequesterPortalRole(user?.role) ? handleDeleteDraft : undefined}
           deletingDraft={drawerPR ? deletingId === drawerPR.id : false}
         />
       )}

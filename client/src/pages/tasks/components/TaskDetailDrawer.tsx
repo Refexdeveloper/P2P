@@ -112,6 +112,7 @@ interface PRTask {
   lineItems: LineItem[];
   attachments?: Array<{ id: number; fileName: string; size?: number }>;
   approvalHistory: ApprovalStep[];
+  joinerDetails?: Array<Record<string, unknown>>;
   slaHours: number;
   slaRemaining: number;
   isOverdue: boolean;
@@ -637,6 +638,82 @@ export default function TaskDetailDrawer({
                         <span className="whitespace-pre-wrap">{task.deliveryPoc || '—'}</span>
                       </Field>
                     </div>
+
+                    {(() => {
+                      // Only New Joiners Laptop PRs — other purchase types keep existing details unchanged
+                      const purchaseType = String(task.purchaseType || '')
+                        .toLowerCase()
+                        .replace(/[\s-]+/g, '_');
+                      const isNjl =
+                        purchaseType === 'new_joiners_laptop' ||
+                        purchaseType === 'new_joiner_laptop' ||
+                        purchaseType === 'newjoinerslaptop';
+                      const joiners = isNjl && Array.isArray(task.joinerDetails) ? task.joinerDetails : [];
+                      if (!isNjl || !joiners.length) return null;
+                      const cell = (label: string, value: unknown) => (
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700/80">
+                            {label}
+                          </p>
+                          <p className="mt-0.5 text-sm font-medium text-slate-800 break-words">
+                            {String(value ?? '').trim() || '—'}
+                          </p>
+                        </div>
+                      );
+                      return (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 sm:p-4">
+                          <p className="mb-3 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-emerald-900">
+                            <i className="ri-macbook-line" aria-hidden />
+                            New Joiners details ({joiners.length})
+                          </p>
+                          <div className="space-y-3">
+                            {joiners.map((row, idx) => {
+                              const first = String(row.firstName || row.first_name || '').trim();
+                              const last = String(row.lastName || row.last_name || '').trim();
+                              const name = [first, last].filter(Boolean).join(' ') || `Joiner ${idx + 1}`;
+                              const createdBy = String(
+                                row.createdByName || row.hrName || row.hr_name || ''
+                              ).trim();
+                              return (
+                                <div
+                                  key={idx}
+                                  className="rounded-lg border border-emerald-100 bg-white p-3 shadow-sm"
+                                >
+                                  <p className="mb-2 text-sm font-bold text-emerald-900">
+                                    #{idx + 1} · {name}
+                                    {createdBy ? (
+                                      <span className="ml-2 text-xs font-medium text-slate-500">
+                                        Created by {createdBy}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    {cell('Joining Date', row.joiningDate || row.joining_date)}
+                                    {cell('Mobile Number', row.mobileNumber || row.mobile_number)}
+                                    {cell('Designation', row.designation)}
+                                    {cell('Department', row.department)}
+                                    {cell('Company', row.company)}
+                                    {cell('Location', row.location)}
+                                    {cell(
+                                      'Reporting Head Email ID',
+                                      row.reportingHeadEmail ||
+                                        row.reportingHead ||
+                                        row.reporting_head
+                                    )}
+                                    {cell(
+                                      'Rolls / Contractor',
+                                      row.onRollsOrContract || row.on_rolls_or_contract
+                                    )}
+                                    {cell('Email ID', row.emailRequired || row.email_id)}
+                                    {cell('Laptop / Desktop', row.deviceType || row.laptop_desktop)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="dfx-note" style={{ '--i': 16 } as CSSProperties}>
                       <p className="dfx-label">

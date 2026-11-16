@@ -1,4 +1,12 @@
-import { escapeHtml, formatCurrency, formatEntity, formatEntityLocation, formatRoleDisplayName, formatScmRfqEntrySubject } from './emailUtils.js';
+import {
+  escapeHtml,
+  formatCurrency,
+  formatEntity,
+  formatEntityLocation,
+  formatRoleDisplayName,
+  formatScmRfqEntrySubject,
+  buildJoinerDetailsEmailSection,
+} from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 function money(amount, currencyOrPr) {
@@ -766,6 +774,7 @@ export function buildPrApprovalPendingEmail({
       Click a button to open the portal — the approval popup will open automatically.
     </p>`;
 
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
   const lineOwnVendor = isOwnVendorPr(pr) && !isSassRequest;
   const lineRows = (pr.lineItems || [])
     .map((item, i) => {
@@ -1017,6 +1026,15 @@ export function buildPrApprovalPendingEmail({
           </td>
         </tr>
         ${rfqBlock}
+        ${
+          joinerSection.html
+            ? `<tr>
+          <td style="padding:0 32px 16px 32px;">
+            ${joinerSection.html}
+          </td>
+        </tr>`
+            : ''
+        }
         <tr>
           <td style="padding:0 32px 16px 32px;">
             <div style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;">Business Justification</div>
@@ -1089,6 +1107,7 @@ export function buildPrApprovalPendingEmail({
       : '',
     rfqSummary?.totalRounds ? `Total Rounds: ${rfqSummary.totalRounds}` : '',
     hasRfqVendors ? 'Quotation files for each round are attached.' : '',
+    joinerSection.text || '',
     '',
     isCreatePoStep
       ? `Open Create PO: ${portalUrl}`

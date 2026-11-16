@@ -141,6 +141,36 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+              Demo logins
+            </p>
+            <div className="space-y-1.5">
+              {[
+                { label: 'HR', email: 'hr@procure.com', password: 'demo1234' },
+                { label: 'Mugesh', email: 'mugesh.m@refex.co.in', password: 'demo1234' },
+                { label: 'Reginold', email: 'reginold.j@refex.co.in', password: 'demo1234' },
+                { label: 'Requester', email: 'requester@procure.com', password: 'demo1234' },
+                { label: 'Admin', email: 'admin@procure.com', password: 'demo1234' },
+              ].map((demo) => (
+                <button
+                  key={demo.email}
+                  type="button"
+                  onClick={() => {
+                    setEmail(demo.email);
+                    setPassword(demo.password);
+                    setError('');
+                  }}
+                  className="w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-xs hover:border-[#90CAF9] hover:bg-[#E3F2FD]/50 cursor-pointer"
+                >
+                  <span className="font-semibold text-slate-800">{demo.label}</span>
+                  <span className="truncate text-slate-500">{demo.email}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">Password for all demos: demo1234</p>
+          </div>
+
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
               Prefer RefexOne SSO?{' '}

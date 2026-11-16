@@ -1027,7 +1027,7 @@ export default function TrackPRPage() {
   };
 
   const handleDeleteDraft = async (pr: TrackPR) => {
-    if (user?.role !== 'Requester' || !pr.prId || !isDraftTrackPr(pr)) return;
+    if ((user?.role !== 'Requester' && user?.role !== 'HR') || !pr.prId || !isDraftTrackPr(pr)) return;
     const ok = window.confirm(
       `Delete draft ${pr.prNumber || pr.id}?\n\nThis permanently removes the draft. This cannot be undone.`
     );
@@ -1438,7 +1438,7 @@ export default function TrackPRPage() {
                                   >
                                     {deletingId === pr.prId ? 'Deleting…' : 'Delete'}
                                   </button>
-                                ) : user?.role === 'Requester' && isDraftTrackPr(pr) ? (
+                                ) : (user?.role === 'Requester' || user?.role === 'HR') && isDraftTrackPr(pr) ? (
                                   <button
                                     type="button"
                                     disabled={deletingId === pr.prId}
@@ -1460,7 +1460,7 @@ export default function TrackPRPage() {
                                       type="button"
                                       onClick={() =>
                                         navigate(
-                                          user?.role === 'Requester'
+                                          user?.role === 'Requester' || user?.role === 'HR'
                                             ? `/requester/rfq-entry/${pr.prId}`
                                             : `/scm/rfq-entry/${pr.prId}?adminEdit=1`
                                         )

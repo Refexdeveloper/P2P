@@ -36,6 +36,15 @@ function buildPoolConfig() {
     };
   }
 
+  // Local Unix socket (preferred when TCP/localhost auth fails or mysqld binds only to socket)
+  const socketPath = String(process.env.DB_SOCKET || '').trim();
+  if (socketPath) {
+    return {
+      ...base,
+      socketPath,
+    };
+  }
+
   return {
     ...base,
     host: process.env.DB_HOST || 'localhost',

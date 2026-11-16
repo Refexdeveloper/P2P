@@ -309,7 +309,7 @@ export default function PRDetailDrawer({
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              {isDraft && user?.role === 'Requester' && onDeleteDraft && pr && (
+              {isDraft && (user?.role === 'Requester' || user?.role === 'HR') && onDeleteDraft && pr && (
                 <button
                   type="button"
                   disabled={deletingDraft}

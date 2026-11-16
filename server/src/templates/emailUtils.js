@@ -204,3 +204,163 @@ export function formatScmRfqEntrySubject(pr) {
   const entityPart = location ? `${entity} - ${location}` : entity;
   return `New PR request received - ${prNumber} — ${entityPart}`;
 }
+
+function isNewJoinersPurchaseType(pr) {
+  const raw = String(pr?.purchaseType || pr?.purchase_type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return (
+    raw === 'new_joiners_laptop' ||
+    raw === 'new_joiner_laptop' ||
+    raw === 'newjoinerslaptop' ||
+    raw === 'njl' ||
+    Boolean(pr?.isNewJoinersLaptop)
+  );
+}
+
+function resolveJoinerRows(pr) {
+  const raw = pr?.joinerDetails || pr?.joiner_details || pr?.joiners || [];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (row) =>
+      String(row?.firstName || row?.first_name || '').trim() ||
+      String(row?.lastName || row?.last_name || '').trim() ||
+      String(row?.mobileNumber || row?.mobile_number || '').trim()
+  );
+}
+
+/**
+ * HTML + plain-text New Joiners roster for workflow emails (every step).
+ * Returns empty strings when the PR is not New Joiners / has no roster.
+ */
+export function buildJoinerDetailsEmailSection(pr) {
+  const rows = resolveJoinerRows(pr);
+  if (!rows.length && !isNewJoinersPurchaseType(pr)) {
+    return { html: '', text: '' };
+  }
+  if (!rows.length) {
+    return {
+      html: `
+        <div style="margin:16px 0 0;padding:14px 16px;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:10px;">
+          <div style="font-size:12px;font-weight:800;color:#065f46;text-transform:uppercase;letter-spacing:0.04em;">New Joiners Laptop Purchase</div>
+          <div style="font-size:13px;color:#047857;margin-top:6px;">No joiner roster rows on this PR yet.</div>
+        </div>`,
+      text: 'New Joiners Laptop Purchase — no joiner roster rows.',
+    };
+  }
+
+  const field = (label, value) => {
+    const v = String(value ?? '').trim() || '—';
+    return `<td width="50%" style="padding:4px 6px 8px;vertical-align:top;">
+      <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;letter-spacing:0.04em;">${escapeHtml(label)}</div>
+      <div style="font-size:13px;color:#0f172a;font-weight:600;margin-top:2px;line-height:1.35;">${escapeHtml(v)}</div>
+    </td>`;
+  };
+
+  const cards = rows
+    .map((row, index) => {
+      const first = String(row.firstName || row.first_name || '').trim();
+      const last = String(row.lastName || row.last_name || '').trim();
+      const fullName = [first, last].filter(Boolean).join(' ') || `Joiner ${index + 1}`;
+      const createdBy =
+        String(row.createdByName || row.created_by_name || row.hrName || row.hr_name || '').trim() ||
+        String(pr?.requesterName || pr?.requester || '').trim() ||
+        '—';
+      return `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border:1px solid #bbf7d0;border-radius:10px;background:#ffffff;overflow:hidden;">
+        <tr>
+          <td style="padding:10px 14px;background:#ecfdf5;border-bottom:1px solid #bbf7d0;">
+            <div style="font-size:13px;font-weight:800;color:#065f46;">#${index + 1} · ${escapeHtml(fullName)}</div>
+            <div style="font-size:11px;color:#047857;margin-top:2px;">Created by: ${escapeHtml(createdBy)}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 8px 4px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                ${field('Joining Date', row.joiningDate || row.joining_date)}
+                ${field('Mobile Number', row.mobileNumber || row.mobile_number || row.mobile)}
+              </tr>
+              <tr>
+                ${field('Designation', row.designation)}
+                ${field('Department', row.department)}
+              </tr>
+              <tr>
+                ${field('Company', row.company)}
+                ${field('Location', row.location)}
+              </tr>
+              <tr>
+                ${field('Reporting Head Email ID', row.reportingHead || row.reporting_head)}
+                ${field('Rolls / Contractor', row.onRollsOrContract || row.on_rolls_or_contract)}
+              </tr>
+              <tr>
+                ${field('Email ID', row.emailRequired || row.email_id || row.emailId)}
+                ${field('Laptop / Desktop', row.deviceType || row.laptop_desktop)}
+              </tr>
+              ${
+                row.inventoryStatus || row.remarks
+                  ? `<tr>
+                ${field('Inventory', row.inventoryStatus || row.inventory_status || '—')}
+                ${field('Remarks', row.remarks || '—')}
+              </tr>`
+                  : ''
+              }
+            </table>
+          </td>
+        </tr>
+      </table>`;
+    })
+    .join('');
+
+  const html = `
+    <div style="margin:16px 0 0;">
+      <div style="font-size:13px;font-weight:800;color:#0f172a;margin-bottom:8px;">
+        New Joiners Laptop Purchase · ${rows.length} joiner(s)
+      </div>
+      ${cards}
+    </div>`;
+
+  const textLines = [
+    `New Joiners Laptop Purchase (${rows.length}):`,
+    ...rows.map((row, index) => {
+      const first = String(row.firstName || row.first_name || '').trim();
+      const last = String(row.lastName || row.last_name || '').trim();
+      const name = [first, last].filter(Boolean).join(' ') || `Joiner ${index + 1}`;
+      const createdBy =
+        String(row.createdByName || row.hrName || '').trim() ||
+        String(pr?.requesterName || pr?.requester || '').trim() ||
+        '—';
+      return [
+        `${index + 1}. ${name}`,
+        `   Joining Date: ${row.joiningDate || row.joining_date || '—'}`,
+        `   Mobile: ${row.mobileNumber || row.mobile_number || row.mobile || '—'}`,
+        `   Designation: ${row.designation || '—'}`,
+        `   Department: ${row.department || '—'}`,
+        `   Company: ${row.company || '—'}`,
+        `   Location: ${row.location || '—'}`,
+        `   Reporting Head: ${row.reportingHead || row.reporting_head || '—'}`,
+        `   Rolls/Contractor: ${row.onRollsOrContract || row.on_rolls_or_contract || '—'}`,
+        `   Email ID: ${row.emailRequired || row.email_id || '—'}`,
+        `   Laptop/Desktop: ${row.deviceType || row.laptop_desktop || '—'}`,
+        `   Created by: ${createdBy}`,
+        row.inventoryStatus ? `   Inventory: ${row.inventoryStatus}` : '',
+        row.remarks ? `   Remarks: ${row.remarks}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }),
+  ];
+
+  return { html, text: textLines.join('\n') };
+}
+
+/** Convenience: HTML only (empty string when N/A). */
+export function joinerDetailsEmailHtml(pr) {
+  return buildJoinerDetailsEmailSection(pr).html;
+}
+
+/** Convenience: plain text only (empty string when N/A). */
+export function joinerDetailsEmailText(pr) {
+  return buildJoinerDetailsEmailSection(pr).text;
+}

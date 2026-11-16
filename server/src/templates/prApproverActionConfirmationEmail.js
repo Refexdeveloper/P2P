@@ -1,4 +1,4 @@
-import { escapeHtml, formatEntity } from './emailUtils.js';
+import { escapeHtml, formatEntity, buildJoinerDetailsEmailSection } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 const ACTION_COPY = {
@@ -65,6 +65,7 @@ export function buildPrApproverActionConfirmationEmail({
           <div style="font-size:14px;color:#334155;margin-top:6px;line-height:1.5;">${escapeHtml(remarks)}</div>
         </div>`
     : '';
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -108,6 +109,7 @@ export function buildPrApproverActionConfirmationEmail({
         </table>
         <div style="margin-top:14px;font-size:14px;color:#475569;">Entity: <strong>${escapeHtml(entityLabel)}</strong></div>
         ${remarksHtml}
+        ${joinerSection.html || ''}
         <p style="margin:22px 0 0;text-align:center;">
           <a href="${trackUrl}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
             View request →
@@ -129,6 +131,7 @@ export function buildPrApproverActionConfirmationEmail({
     `Action taken: ${copy.actionLabel}`,
     entityLabel !== '—' ? `Entity: ${entityLabel}` : '',
     remarks ? `Remarks: ${remarks}` : '',
+    joinerSection.text || '',
     `View: ${trackUrl}`,
   ]
     .filter(Boolean)

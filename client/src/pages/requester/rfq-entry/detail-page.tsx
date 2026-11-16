@@ -26,6 +26,7 @@ import RfqExtraQuestionsPanel from './components/RfqExtraQuestionsPanel';
 import PrBillingDeliverySection, {
   PrBillingDeliveryValue,
 } from '../create-pr/PrBillingDeliverySection';
+import NewJoinersRfqPanel from './NewJoinersRfqPanel';
 import RfqEditPrModal from './components/RfqEditPrModal';
 import {
   billingFromDraft,
@@ -200,6 +201,9 @@ export default function RfqEntryDetailPage() {
     currency?: string | null;
     entityId?: number | null;
     vendorSelection?: string;
+    purchaseType?: string;
+    isNewJoinersLaptop?: boolean;
+    joinerDetails?: Array<Record<string, unknown>>;
     billingLocationId?: number | null;
     billingLocation?: string;
     billingGstNo?: string;
@@ -442,6 +446,12 @@ export default function RfqEntryDetailPage() {
   };
 
   const prLineItems = pr?.lineItems || [];
+  const isNewJoinersLaptopPr = Boolean(
+    pr &&
+      (pr.purchaseType === 'new_joiners_laptop' ||
+        pr.isNewJoinersLaptop ||
+        (Array.isArray(pr.joinerDetails) && pr.joinerDetails.length > 0))
+  );
 
   /** Changes when PR lines are edited — forces comparison refetch so preview isn't stale. */
   const prLinesFingerprint = useMemo(
@@ -2279,6 +2289,75 @@ export default function RfqEntryDetailPage() {
     }
   };
 
+  const scopeBillingSection =
+    showScmBilling && pr ? (
+      <div className="mb-5 space-y-5">
+        <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
+            }}
+          />
+          <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
+              <i className="ri-file-list-3-line text-lg"></i>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-[#2C3E50]">Scope of Work &amp; Payment Terms</h2>
+              <p className="text-xs text-slate-500">Required before Create PO. Fill this on RFQ entry.</p>
+            </div>
+          </div>
+          <div className="relative z-[1] grid grid-cols-1 gap-4 p-5">
+            <div>
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Scope of Work <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={scopeOfWork}
+                onChange={(e) => setScopeOfWork(e.target.value)}
+                disabled={isFinalized && !adminEdit}
+                rows={5}
+                placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
+              />
+              <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
+            </div>
+            <div>
+              <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Payment Terms <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={billing.paymentTerms}
+                onChange={(e) => setBilling((prev) => ({ ...prev, paymentTerms: e.target.value }))}
+                disabled={isFinalized && !adminEdit}
+                rows={4}
+                placeholder={
+                  'e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed...'
+                }
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
+              />
+              <p className="text-xs text-gray-400 mt-1.5">
+                Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
+              </p>
+            </div>
+          </div>
+        </div>
+        <PrBillingDeliverySection
+          value={billing}
+          selectedEntity={selectedEntity}
+          billingLocations={billingLocations}
+          disabled={isFinalized && !adminEdit}
+          hidePaymentTerms
+          hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
+          onChange={(patch) => {
+            setBilling((prev) => ({ ...prev, ...patch }));
+          }}
+        />
+      </div>
+    ) : null;
+
   return (
     <DashboardLayout>
       {toast && (
@@ -2399,6 +2478,102 @@ export default function RfqEntryDetailPage() {
 
       {prId && pr && (
         <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-5">
+      {isNewJoinersLaptopPr ? (
+        <div className="mb-4 space-y-4">
+          <NewJoinersRfqPanel
+            prId={Number(prId)}
+            joiners={Array.isArray(pr.joinerDetails) ? pr.joinerDetails : []}
+            readOnly={Boolean(isFinalized)}
+            onSaved={(payload) => {
+              setPr((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      joinerDetails: payload.joinerDetails,
+                      ...(Array.isArray(payload.lineItems)
+                        ? { lineItems: payload.lineItems as typeof prev.lineItems }
+                        : {}),
+                    }
+                  : prev
+              );
+              // Drop draft quote lines so the quote editor reseeds from new laptop PR lines
+              setManualDrafts((prev) => {
+                const next: Record<number, Record<string, unknown>> = {};
+                for (const [key, draft] of Object.entries(prev)) {
+                  if (!draft || typeof draft !== 'object') continue;
+                  const {
+                    quoteLineItems: _qli,
+                    removedQuoteLineIds: _rm,
+                    lineItemsTotal: _lit,
+                    ...rest
+                  } = draft as Record<string, unknown>;
+                  next[Number(key)] = rest;
+                }
+                return next;
+              });
+              setComparison(null);
+              setMode('entry');
+              void loadRfq({ soft: true }).then(() => {
+                showToast(
+                  'Laptop line items synced — upload quotation files, fill line prices, then Compare prices'
+                );
+              });
+            }}
+          />
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
+            <div className="border-b border-slate-200 bg-white px-4 py-3">
+              <h3 className="text-sm font-semibold text-slate-900">RFQ laptop line items</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Same as standard RFQ Entry: these lines appear when you edit a vendor quote (upload
+                quotation file + unit price / GST). Use <strong>Compare prices</strong> for
+                side-by-side comparison.
+              </p>
+            </div>
+            {prLineItems.length ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="bg-slate-100 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">#</th>
+                      <th className="px-3 py-2 font-semibold">Item</th>
+                      <th className="px-3 py-2 font-semibold">Category</th>
+                      <th className="px-3 py-2 font-semibold text-center">Qty</th>
+                      <th className="px-3 py-2 font-semibold text-right">Est. unit (₹)</th>
+                      <th className="px-3 py-2 font-semibold text-right">Total (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prLineItems.map((li, idx) => (
+                      <tr key={String(li.id)} className="border-t border-slate-100 bg-white">
+                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                        <td className="px-3 py-2 font-medium text-slate-900">
+                          {li.description || li.itemName || li.item || 'Laptop'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{li.category || '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {Number(li.quantity) || 0} {li.uom || li.unit || 'Nos'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {(Number(li.unitCost) || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium">
+                          {(Number(li.total) || 0).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="px-4 py-3 text-xs text-amber-800">
+                No laptop purchase lines yet. Mark joiners as New purchase and save above — then
+                upload quotations and compare like a normal RFQ.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
           <PrDocumentsPanel
             prId={Number(pr.id || prId)}
             attachments={pr.attachments}
@@ -2407,71 +2582,7 @@ export default function RfqEntryDetailPage() {
         </div>
       )}
 
-      {showScmBilling && pr && (
-        <div className="mb-5 space-y-5">
-          <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background:
-                  'radial-gradient(120% 90% at 100% 0%, rgba(30, 136, 229, 0.10) 0%, rgba(255,255,255,0) 55%)',
-              }}
-            />
-            <div className="relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-5 py-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E3F2FD] text-[#1E88E5]">
-                <i className="ri-file-list-3-line text-lg"></i>
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-[#2C3E50]">Scope of Work &amp; Payment Terms</h2>
-                <p className="text-xs text-slate-500">Required before Create PO. Fill this on RFQ entry.</p>
-              </div>
-            </div>
-            <div className="relative z-[1] grid grid-cols-1 gap-4 p-5">
-              <div>
-                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  Scope of Work <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  value={scopeOfWork}
-                  onChange={(e) => setScopeOfWork(e.target.value)}
-                  disabled={isFinalized && !adminEdit}
-                  rows={5}
-                  placeholder="Describe the full scope of work, deliverables, and any technical requirements..."
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
-                />
-                <p className="text-xs text-gray-400 mt-1.5">{scopeOfWork.length} chars</p>
-              </div>
-              <div>
-                <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  Payment Terms <span className="text-rose-500">*</span>
-                </label>
-                <textarea
-                  value={billing.paymentTerms}
-                  onChange={(e) => setBilling((prev) => ({ ...prev, paymentTerms: e.target.value }))}
-                  disabled={isFinalized && !adminEdit}
-                  rows={4}
-                  placeholder={"e.g. Net 30 Days\nAdvance 30%, balance on delivery\nInclude milestones if needed..."}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30 disabled:bg-slate-50"
-                />
-                <p className="text-xs text-gray-400 mt-1.5">
-                  Suggestions: {PR_PAYMENT_TERM_OPTIONS.slice(0, 4).join(' · ')}
-                </p>
-              </div>
-            </div>
-          </div>
-          <PrBillingDeliverySection
-            value={billing}
-            selectedEntity={selectedEntity}
-            billingLocations={billingLocations}
-            disabled={isFinalized && !adminEdit}
-            hidePaymentTerms
-            hint="For Standard + Own vendor, fill billing and delivery here (not on Create PR)."
-            onChange={(patch) => {
-              setBilling((prev) => ({ ...prev, ...patch }));
-            }}
-          />
-        </div>
-      )}
+      {!isNewJoinersLaptopPr ? scopeBillingSection : null}
 
       {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
       {!isFinalized && config?.sendBackRemarks && (
@@ -2514,7 +2625,11 @@ export default function RfqEntryDetailPage() {
               <div className="relative z-[1] mb-4">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Step 1</p>
                 <h2 className="mt-0.5 text-base font-semibold text-[#2C3E50]">Add vendors</h2>
-                <p className="mt-1 text-sm text-slate-500">Search a vendor, then email them, type the quote yourself, or upload the file with AI.</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {isNewJoinersLaptopPr
+                    ? 'Same as normal RFQ: add vendors, upload quotation files, fill laptop line prices, then Compare prices.'
+                    : 'Search a vendor, then email them, type the quote yourself, or upload the file with AI.'}
+                </p>
               </div>
               <div className="relative z-[1]">
 
@@ -3352,6 +3467,8 @@ export default function RfqEntryDetailPage() {
               onRemove={(fieldId) => void removeField(fieldId)}
             />
           )}
+
+          {isNewJoinersLaptopPr ? scopeBillingSection : null}
         </div>
       )}
       </div>

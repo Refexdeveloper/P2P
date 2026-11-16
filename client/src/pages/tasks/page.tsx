@@ -597,6 +597,9 @@ export default function TasksPage() {
           : [],
         lineItems,
         approvalHistory,
+        joinerDetails: Array.isArray(pr.joinerDetails)
+          ? (pr.joinerDetails as Array<Record<string, unknown>>)
+          : [],
         slaHours: 48,
         slaRemaining: task.slaRemaining,
         isOverdue: task.isOverdue,

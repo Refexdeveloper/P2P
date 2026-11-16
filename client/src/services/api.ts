@@ -333,6 +333,14 @@ export const prApi = {
   listPending: () => request<{ data: unknown[] }>('/api/purchase-requests?pending=true'),
   listScmBucket: () => request<{ data: unknown[] }>('/api/purchase-requests?bucket=scm'),
   get: (id: number) => request<{ data: unknown }>(`/api/purchase-requests/${id}`),
+  updateJoinerDetails: (id: number, joinerDetails: unknown[]) =>
+    request<{ data: { joinerDetails: unknown[] }; message: string }>(
+      `/api/purchase-requests/${id}/joiner-details`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ joinerDetails }),
+      }
+    ),
   listApprovalUsers: () =>
     request<{
       data: Array<{ id: number; name: string; email: string; role: string; department: string }>;

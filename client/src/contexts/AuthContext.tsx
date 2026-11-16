@@ -6,6 +6,7 @@ import { DINESH_DESIGNATION, DINESH_DISPLAY_NAME, MEET_DESIGNATION, getUserDesig
 
 export type UserRole =
   | 'Requester'
+  | 'HR'
   | 'HOD Approver'
   | 'CFO'
   | 'Functional Team'
@@ -63,6 +64,7 @@ const EMAIL_HOME_OVERRIDES: Record<string, string> = {
 /** Starting page for each role after login */
 export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   Requester: '/requester/dashboard',
+  HR: '/requester/dashboard',
   'PR Manager': '/tasks',
   CFO: '/dashboard',
   Vendor: '/vendor/dashboard',
@@ -78,6 +80,11 @@ export const ROLE_HOME: Partial<Record<UserRole, string>> = {
   'Governance Admin': '/admin/user-permissions',
   'Super Admin': '/admin/user-permissions',
 };
+
+/** Roles that use the requester portal (dashboard / create PR / track PR). */
+export function isRequesterPortalRole(role?: string | null): boolean {
+  return role === 'Requester' || role === 'HR';
+}
 
 export function getRoleHomePath(role: UserRole, navigation?: NavItem[], email?: string): string {
   const normalizedEmail = String(email || '').trim().toLowerCase();

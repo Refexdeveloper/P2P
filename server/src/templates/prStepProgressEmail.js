@@ -3,6 +3,7 @@ import {
   formatCurrency,
   formatEntity,
   formatActorWithRole,
+  buildJoinerDetailsEmailSection,
 } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
@@ -126,6 +127,7 @@ export function buildPrStepProgressEmail({
           <div style="font-size:14px;color:#334155;margin-top:6px;line-height:1.5;">${escapeHtml(remarks)}</div>
         </div>`
     : '';
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -148,6 +150,7 @@ export function buildPrStepProgressEmail({
           ${completedBlock}
         </table>
         ${remarksHtml}
+        ${joinerSection.html || ''}
         <p style="margin:22px 0 0;text-align:center;">
           <a href="${ctaUrl}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
             ${escapeHtml(ctaLabel)}
@@ -170,6 +173,7 @@ export function buildPrStepProgressEmail({
     completedStepLabel ? `Completed: ${completedStepLabel} by ${actorLine}` : '',
     nextStepLabel ? `Next step: ${nextStepLabel}` : '',
     remarks ? `Remarks: ${remarks}` : '',
+    joinerSection.text || '',
     `${ctaLabel}: ${ctaUrl}`,
   ]
     .filter(Boolean)

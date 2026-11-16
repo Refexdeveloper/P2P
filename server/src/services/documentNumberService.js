@@ -56,6 +56,14 @@ export function normalizePurchaseType(value) {
   if (raw === 'online_purchase' || raw === 'onlinepurchase' || raw === 'op') {
     return 'online_purchase';
   }
+  if (
+    raw === 'new_joiners_laptop' ||
+    raw === 'new_joiner_laptop' ||
+    raw === 'newjoinerslaptop' ||
+    raw === 'njl'
+  ) {
+    return 'new_joiners_laptop';
+  }
   return 'purchase_order';
 }
 
@@ -64,6 +72,7 @@ export function purchaseTypeToDocType(purchaseType) {
   const t = normalizePurchaseType(purchaseType);
   if (t === 'work_order') return 'WO';
   if (t === 'online_purchase') return 'OP';
+  if (t === 'new_joiners_laptop') return 'NJL';
   return 'PO';
 }
 
@@ -72,6 +81,7 @@ export function purchaseTypeLabel(purchaseType) {
   if (t === 'work_order') return 'Work Order';
   if (t === 'sass') return 'Cloud Subscription';
   if (t === 'online_purchase') return 'Online Purchase';
+  if (t === 'new_joiners_laptop') return 'New Joiners Laptop';
   return 'Purchase Order';
 }
 

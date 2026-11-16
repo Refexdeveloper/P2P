@@ -295,6 +295,25 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
   const isSass =
     rawType === 'sass' || rawType === 'saas' || rawType === 'cloud_subscription';
   const isOnline = rawType === 'online_purchase' || rawType === 'onlinepurchase' || rawType === 'op';
+  const isNewJoiners =
+    rawType === 'new_joiners_laptop' ||
+    rawType === 'new_joiner_laptop' ||
+    rawType === 'newjoinerslaptop';
+
+  if (isNewJoiners) {
+    const njlMap = {
+      [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
+      [PR_STATUS.APPROVED]: 'RFQ Entry (Reginold) / Post-RFQ',
+      [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: 'Pending L1 Vendor Final',
+      [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: 'Pending L2 Approval',
+      [PR_STATUS.PENDING_RFQ_CFO_APPROVAL]: 'Pending Mugesh (post-RFQ)',
+      [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM PO Create',
+      [PR_STATUS.REJECTED]: 'Rejected',
+      [PR_STATUS.RETURNED]: 'Returned for Rework',
+      [PR_STATUS.DRAFT]: 'Draft',
+    };
+    if (njlMap[status]) return njlMap[status];
+  }
 
   if (isOnline) {
     const onlineMap = {

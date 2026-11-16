@@ -487,6 +487,11 @@ const MIGRATIONS = [
   `ALTER TABLE purchase_requests MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE purchase_orders MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase') NOT NULL DEFAULT 'purchase_order'`,
   `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO', 'OP') NOT NULL`,
+  // New Joiners Laptop Purchase — HR roster → Mugesh → Reginold RFQ → L1/L2 → SCM
+  `ALTER TABLE purchase_requests MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase', 'new_joiners_laptop') NOT NULL DEFAULT 'purchase_order'`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN purchase_type ENUM('purchase_order', 'work_order', 'sass', 'online_purchase', 'new_joiners_laptop') NOT NULL DEFAULT 'purchase_order'`,
+  `ALTER TABLE purchase_requests ADD COLUMN joiner_details_json JSON NULL`,
+  `ALTER TABLE document_number_sequences MODIFY COLUMN doc_type ENUM('PR', 'PO', 'WO', 'OP', 'NJL') NOT NULL`,
   // SASS: vendor is known on Create PR — no RFQ entry
   `ALTER TABLE purchase_requests ADD COLUMN vendor_id INT NULL`,
   `ALTER TABLE purchase_requests ADD COLUMN vendor_name VARCHAR(150) NULL`,
@@ -683,6 +688,12 @@ export async function runStartupMigrations() {
   }
 
   try {
+    await ensureHrDemoUser();
+  } catch (err) {
+    console.warn('HR demo user seed skipped:', err.message);
+  }
+
+  try {
     const { seedLetterheadDefaults } = await import('./poLetterheadService.js');
     await seedLetterheadDefaults();
   } catch (err) {
@@ -864,5 +875,35 @@ export async function runStartupMigrations() {
     }
   } catch (err) {
     console.warn('Draft PO number rewrite skipped:', err.message);
+  }
+}
+
+/** Local demo HR login for New Joiners Laptop Purchase. */
+async function ensureHrDemoUser() {
+  const email = 'hr@procure.com';
+  const [existing] = await pool.query(`SELECT id, role FROM users WHERE email = ? LIMIT 1`, [email]);
+  let userId = existing[0]?.id || null;
+  if (!userId) {
+    const bcrypt = (await import('bcryptjs')).default;
+    const hash = await bcrypt.hash('demo1234', 10);
+    const [deptRows] = await pool.query(
+      `SELECT id FROM departments WHERE name = 'HR & Admin' LIMIT 1`
+    );
+    const departmentId = deptRows[0]?.id || null;
+    const [result] = await pool.query(
+      `INSERT INTO users (name, email, password_hash, role, department_id, is_active)
+       VALUES (?, ?, ?, 'HR', ?, 1)`,
+      ['Sathyakala HR', email, hash, departmentId]
+    );
+    userId = result.insertId;
+    console.log(`HR demo user created: ${email} / demo1234`);
+  } else if (String(existing[0].role) !== 'HR') {
+    await pool.query(`UPDATE users SET role = 'HR', is_active = 1 WHERE id = ?`, [userId]);
+    console.log(`HR demo user role updated: ${email}`);
+  }
+
+  if (userId) {
+    const { seedUserPermissionsForRole } = await import('./permissionService.js');
+    await seedUserPermissionsForRole(userId, 'HR');
   }
 }

@@ -28,6 +28,10 @@ import FunctionalOwnRfqSection, {
 } from './FunctionalOwnRfqSection';
 import UserSearchSelect from './UserSearchSelect';
 import PrBillingDeliverySection from './PrBillingDeliverySection';
+import NewJoinersLaptopSection, {
+  EMPTY_JOINER_ROW,
+  type JoinerRow,
+} from './NewJoinersLaptopSection';
 import {
   clearCreatePrDraft,
   CreatePrDraftSnapshot,
@@ -213,7 +217,7 @@ export default function CreatePRPage() {
   const [projectDetail, setProjectDetail] = useState('');
   const [specialNotes, setSpecialNotes] = useState('');
   const [purchaseType, setPurchaseType] = useState<
-    'purchase_order' | 'work_order' | 'sass' | 'online_purchase'
+    'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop'
   >('purchase_order');
   const [sassSubscriptionMode, setSassSubscriptionMode] = useState<'one_time' | 'recurring' | null>(
     null
@@ -227,10 +231,14 @@ export default function CreatePRPage() {
     'mode'
   );
   const [previousPurchaseType, setPreviousPurchaseType] = useState<
-    'purchase_order' | 'work_order' | 'sass' | 'online_purchase'
+    'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop'
   >('purchase_order');
+  const [joinerDetails, setJoinerDetails] = useState<JoinerRow[]>([EMPTY_JOINER_ROW()]);
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
+  /** HR login Create PR is always New Joiners Laptop — hide standard fields for this role only. */
+  const isHrLogin = String(user?.role || '') === 'HR';
+  const isNewJoinersLaptop = isHrLogin || purchaseType === 'new_joiners_laptop';
   const [poCreationBy, setPoCreationBy] = useState<'scm' | 'requester'>('scm');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
   const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
@@ -414,6 +422,9 @@ export default function CreatePRPage() {
     purchaseType !== 'online_purchase';
 
   const createPrTabs = useMemo(() => {
+    if (isHrLogin) {
+      return [{ id: 'basic' as CreatePrTab, label: 'New Joiners', icon: 'ri-macbook-line' }];
+    }
     const tabs: { id: CreatePrTab; label: string; icon: string }[] = [
       { id: 'basic', label: 'Basic Details', icon: 'ri-information-line' },
       { id: 'items', label: 'Line Items', icon: 'ri-shopping-cart-line' },
@@ -427,13 +438,54 @@ export default function CreatePRPage() {
       icon: 'ri-team-line',
     });
     return tabs;
-  }, [showInlineVendorQuotes]);
+  }, [showInlineVendorQuotes, isHrLogin]);
 
   useEffect(() => {
     if (!createPrTabs.some((t) => t.id === activeTab)) {
       setActiveTab('basic');
     }
   }, [activeTab, createPrTabs]);
+
+  // HR Create PR: always New Joiners Laptop — do not change other roles' Create PR.
+  useEffect(() => {
+    if (!isHrLogin) return;
+    setPurchaseType('new_joiners_laptop');
+    setVendorSelection('own');
+    setPrFlow('standard');
+    setPoCreationBy('scm');
+    setRequestCategory('Product');
+    setRequestType('Opex');
+    setApprovalUserIds([]);
+    setPrTitle((prev) => prev.trim() || 'New Joiners Laptop Purchase');
+    setDepartment((prev) => prev || String(user?.departmentName || '').trim() || 'HR & Admin');
+    setRequiredDate((prev) => {
+      if (prev) return prev;
+      const d = new Date();
+      d.setDate(d.getDate() + 14);
+      return d.toISOString().slice(0, 10);
+    });
+    setJoinerDetails((prev) => (prev.length ? prev : [EMPTY_JOINER_ROW()]));
+  }, [isHrLogin, user?.departmentName]);
+
+  useEffect(() => {
+    if (!isHrLogin || !entities.length) return;
+    let nextId = entityId;
+    if (!nextId) {
+      const preferred =
+        entities.find((e) => /rgml/i.test(String(e.code || e.name || ''))) || entities[0];
+      if (preferred?.id) {
+        nextId = preferred.id;
+        setEntityId(preferred.id);
+      }
+    }
+    const ent = nextId ? entities.find((e) => e.id === nextId) : null;
+    if (!ent) return;
+    const company = String(ent.code || ent.name || '').trim();
+    if (!company) return;
+    setJoinerDetails((prev) =>
+      prev.map((row) => (row.company?.trim() ? row : { ...row, company }))
+    );
+  }, [isHrLogin, entityId, entities]);
 
   const restoredKeyRef = useRef('');
 
@@ -1914,6 +1966,38 @@ export default function CreatePRPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+    if (isNewJoinersLaptop) {
+      if (!prTitle.trim()) setPrTitle('New Joiners Laptop Purchase');
+      if (!entityId) newErrors.entityId = 'Select Company (Entity Master) on the joiner row';
+      if (!department.trim()) {
+        setDepartment(String(user?.departmentName || '').trim() || 'HR & Admin');
+      }
+      const validJoiners = joinerDetails.filter((j) => j.firstName.trim() && j.joiningDate);
+      if (!validJoiners.length) {
+        newErrors.joinerDetails = 'Add at least one joiner with First Name and Joining Date';
+      } else {
+        joinerDetails.forEach((j, i) => {
+          if (!j.firstName.trim() && !j.lastName.trim() && !j.mobileNumber.trim()) return;
+          if (!j.firstName.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: First Name is required`;
+          if (!j.joiningDate) newErrors.joinerDetails = `Joiner #${i + 1}: Joining Date is required`;
+          if (!j.department.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Department is required`;
+          if (!j.company.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Company is required`;
+          if (!j.reportingHead?.trim() && !j.reportingHeadEmail?.trim()) {
+            newErrors.joinerDetails = `Joiner #${i + 1}: Reporting Head is required`;
+          }
+          if (!j.deviceType.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Laptop / Desktop is required`;
+        });
+      }
+      setErrors(newErrors);
+      const okJoiners = Object.keys(newErrors).length === 0;
+      if (!okJoiners) {
+        const firstMsg =
+          Object.values(newErrors).find(Boolean) || 'Please fill the required joiner fields';
+        showToast(firstMsg, 'error');
+        scrollToFirstError(newErrors, setActiveTab);
+      }
+      return okJoiners;
+    }
     if (!prTitle.trim()) newErrors.prTitle = 'PR Title is required';
     if (!entityId) newErrors.entityId = 'Entity is required';
     if (!department) newErrors.department = 'Department is required';
@@ -2169,17 +2253,26 @@ export default function CreatePRPage() {
   };
 
   const buildPayload = (items: LineItem[] = lineItems) => ({
-    title: prTitle.trim() || items[0]?.description || `${requestType} Request`,
+    title:
+      prTitle.trim() ||
+      (isNewJoinersLaptop
+        ? `New Joiners Laptop Purchase (${joinerDetails.filter((j) => j.firstName).length || joinerDetails.length})`
+        : items[0]?.description || `${requestType} Request`),
     requestType,
     purchaseType,
-    requestCategory,
-    projectDetail: projectDetail.trim() || undefined,
-    specialNotes: specialNotes.trim() || undefined,
+    requestCategory: isNewJoinersLaptop ? 'Product' : requestCategory,
+    projectDetail: isNewJoinersLaptop ? undefined : projectDetail.trim() || undefined,
+    specialNotes: isNewJoinersLaptop ? undefined : specialNotes.trim() || undefined,
     department,
     entityId: entityId ? Number(entityId) : undefined,
     priority,
     currency,
-    prFlow: purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'standard' : prFlow,
+    prFlow:
+      purchaseType === 'sass' ||
+      purchaseType === 'online_purchase' ||
+      purchaseType === 'new_joiners_laptop'
+        ? 'standard'
+        : prFlow,
     approvalUserId:
       (prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase') &&
       approvalUserIds[0]
@@ -2192,11 +2285,19 @@ export default function CreatePRPage() {
           : approvalUserIds
         : undefined,
     vendorSelection:
-      purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'own' : vendorSelection,
+      purchaseType === 'sass' ||
+      purchaseType === 'online_purchase' ||
+      purchaseType === 'new_joiners_laptop'
+        ? 'own'
+        : vendorSelection,
     poCreationBy:
-      prFlow === 'standard' && purchaseType !== 'sass' && purchaseType !== 'online_purchase'
+      prFlow === 'standard' &&
+      purchaseType !== 'sass' &&
+      purchaseType !== 'online_purchase' &&
+      purchaseType !== 'new_joiners_laptop'
         ? poCreationBy
         : 'scm',
+    joinerDetails: isNewJoinersLaptop ? joinerDetails : undefined,
     vendorId:
       purchaseType === 'sass' && rfqRecommendedMeta.vendorId
         ? Number(rfqRecommendedMeta.vendorId)
@@ -3043,7 +3144,36 @@ export default function CreatePRPage() {
           })}
         </div>
 
-        {activeTab === 'basic' && (
+        {activeTab === 'basic' && isHrLogin && (
+          <div className="space-y-4">
+            <div className={PM_CARD}>
+              <div className="relative z-[1] p-3 sm:p-4">
+                <NewJoinersLaptopSection
+                  rows={joinerDetails}
+                  onChange={setJoinerDetails}
+                  errors={errors}
+                  entities={entities}
+                  departments={departments}
+                  reportingUsers={approvalUsers}
+                  entityId={entityId}
+                  onEntityIdChange={(id) => {
+                    setEntityId(id);
+                    if (errors.entityId) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.entityId;
+                        return next;
+                      });
+                    }
+                  }}
+                  formatEntityLabel={formatEntityLabel}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'basic' && !isHrLogin && (
           <div className="space-y-4">
         {/* ── Section 1: Basic Information ── */}
         <div className={PM_CARD}>
@@ -3190,7 +3320,7 @@ export default function CreatePRPage() {
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Purchase Type <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 w-full">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 w-full">
                 {(
                   [
                     { id: 'purchase_order' as const, label: 'Purchase Order', hint: 'Number: PO-Entity-FY-####', icon: 'ri-file-list-3-line' },
@@ -3206,6 +3336,12 @@ export default function CreatePRPage() {
                       label: 'Online Purchase',
                       hint: 'Number: OP-Entity-FY-####',
                       icon: 'ri-shopping-cart-2-line',
+                    },
+                    {
+                      id: 'new_joiners_laptop' as const,
+                      label: 'New Joiners Laptop',
+                      hint: 'HR roster → Mugesh → Reginold RFQ',
+                      icon: 'ri-macbook-line',
                     },
                   ]
                 ).map((opt) => (
@@ -3228,11 +3364,25 @@ export default function CreatePRPage() {
                         setPrFlow('standard');
                         setApprovalUserIds([]);
                       }
+                      if (opt.id === 'new_joiners_laptop') {
+                        setVendorSelection('own');
+                        setPrFlow('standard');
+                        setPoCreationBy('scm');
+                        setApprovalUserIds([]);
+                        setRequestCategory('Product');
+                        setRequestType('Opex');
+                        if (!joinerDetails.length) setJoinerDetails([EMPTY_JOINER_ROW()]);
+                        if (!prTitle.trim()) setPrTitle('New Joiners Laptop Purchase');
+                      }
                       // Service is only valid for Work Order
                       if (opt.id === 'purchase_order' && requestType === 'Service') {
                         setRequestType('Opex');
                       }
-                      if (opt.id === 'purchase_order' || opt.id === 'online_purchase') {
+                      if (
+                        opt.id === 'purchase_order' ||
+                        opt.id === 'online_purchase' ||
+                        opt.id === 'new_joiners_laptop'
+                      ) {
                         setWorkStartDate('');
                         setWorkEndDate('');
                       }
@@ -3342,6 +3492,20 @@ export default function CreatePRPage() {
               </div>
               {errors.requiredDate && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><i className="ri-error-warning-line"></i>{errors.requiredDate}</p>}
             </div>
+
+            {!isHrLogin && isNewJoinersLaptop ? (
+              <NewJoinersLaptopSection
+                rows={joinerDetails}
+                onChange={setJoinerDetails}
+                errors={errors}
+                entities={entities}
+                departments={departments}
+                reportingUsers={approvalUsers}
+                entityId={entityId}
+                onEntityIdChange={(id) => setEntityId(id)}
+                formatEntityLabel={formatEntityLabel}
+              />
+            ) : null}
 
             {purchaseType === 'work_order' && (
               <>
@@ -3455,8 +3619,11 @@ export default function CreatePRPage() {
               </div>
             </div>
 
-            {/* Request Category — Product or Service */}
-            <div className="flex w-full min-w-0 flex-col" data-field="requestCategory">
+            {/* Request Category — Product or Service (hidden for New Joiners Laptop) */}
+            <div
+              className={`flex w-full min-w-0 flex-col${isNewJoinersLaptop ? ' hidden' : ''}`}
+              data-field="requestCategory"
+            >
               <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                 Request Category <span className="text-red-500">*</span>
               </label>
@@ -3623,7 +3790,8 @@ export default function CreatePRPage() {
                   </p>
                 </div>
               </>
-            ) : purchaseType === 'online_purchase' ? null : (
+            ) : purchaseType === 'online_purchase' ||
+              purchaseType === 'new_joiners_laptop' ? null : (
               <>
             <div className="grid grid-cols-1 items-start gap-4 sm:col-span-2 sm:grid-cols-2">
             {/* Request Flow */}
@@ -3736,7 +3904,10 @@ export default function CreatePRPage() {
         </div>
 
         {/* ── Section 4: Business Justification ── */}
-        <div className={PM_CARD} data-field="businessJustification">
+        <div
+          className={`${PM_CARD}${isNewJoinersLaptop ? ' hidden' : ''}`}
+          data-field="businessJustification"
+        >
           <div className="cpr-sec-head relative z-[1] flex items-center gap-3 border-b border-slate-100/80 bg-gradient-to-r from-white to-[#E3F2FD]/40 px-4 py-2.5 sm:px-4 sm:py-3">
             <div className={PM_ICON_CHIP_SOLID}>
               <i className="ri-article-line text-sm"></i>
@@ -3828,7 +3999,7 @@ export default function CreatePRPage() {
           </div>
         )}
 
-        {activeTab === 'items' && (
+        {activeTab === 'items' && !isNewJoinersLaptop && (
           <div className="space-y-4">
         {/* ── Section 2: Line Items ── */}
         <div className={PM_CARD} data-field="lineItems">

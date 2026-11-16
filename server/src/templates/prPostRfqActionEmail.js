@@ -1,4 +1,11 @@
-import { escapeHtml, formatCurrency, formatEntity, formatRoleDisplayName, sanitizeEmailCfoMentions } from './emailUtils.js';
+import {
+  escapeHtml,
+  formatCurrency,
+  formatEntity,
+  formatRoleDisplayName,
+  sanitizeEmailCfoMentions,
+  buildJoinerDetailsEmailSection,
+} from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 export function buildPostRfqActionEmail({
@@ -33,6 +40,7 @@ export function buildPostRfqActionEmail({
       ? 'Edit PR & Resubmit'
       : 'Revise RFQ & Resubmit';
   const headerTitle = isReject ? `PR ${actionLabel}` : editPr ? `PR ${actionLabel}` : `RFQ ${actionLabel}`;
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -55,6 +63,7 @@ export function buildPostRfqActionEmail({
           <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;">Remarks</div>
           <div style="font-size:14px;color:#334155;margin-top:6px;line-height:1.5;">${escapeHtml(remarks)}</div>
         </div>
+        ${joinerSection.html || ''}
         <p style="margin-top:20px;text-align:center;">
           <a href="${portalUrl}" style="display:inline-block;padding:12px 24px;background:#0369a1;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
             ${escapeHtml(ctaLabel)}
@@ -70,8 +79,11 @@ export function buildPostRfqActionEmail({
     `PR ${pr.prNumber} ${actionLabel}`,
     `Role: ${roleDisplayName}`,
     `Remarks: ${remarks}`,
+    joinerSection.text || '',
     `${ctaLabel}: ${portalUrl}`,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return { subject, html, text };
 }

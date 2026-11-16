@@ -1,5 +1,5 @@
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
-import { formatCurrency } from './emailUtils.js';
+import { formatCurrency, buildJoinerDetailsEmailSection } from './emailUtils.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -120,6 +120,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
   const ownVendor = isOwnVendorPr(pr);
   const currency = pr.currency || pr.currency_code || 'INR';
   const money = (n) => formatCurrency(n, currency);
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -198,6 +199,16 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
             </td>
           </tr>
 
+          ${
+            joinerSection.html
+              ? `<tr>
+            <td style="padding:0 32px 24px 32px;">
+              ${joinerSection.html}
+            </td>
+          </tr>`
+              : ''
+          }
+
           <tr>
             <td style="padding:0 32px 24px 32px;">
               <div style="font-size:13px;color:#0f172a;font-weight:700;margin-bottom:12px;">Line Items</div>
@@ -249,6 +260,7 @@ export function buildPrRaisedEmail({ pr, requester, isResubmit = false }) {
     'Business Justification:',
     pr.justification || 'Not provided',
     '',
+    ...(joinerSection.text ? [joinerSection.text, ''] : []),
     'Line Items:',
     ...(pr.lineItems || []).map((item, i) => {
       const name = lineItemName(item);

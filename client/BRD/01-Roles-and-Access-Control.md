@@ -95,6 +95,8 @@ Permissions are stored in `role_permissions` and checked via `permissionService.
 | Email | Password | Role |
 |-------|----------|------|
 | admin@procure.com | demo1234 | Super Admin |
+| hr@procure.com | demo1234 | HR (New Joiners Laptop Create PR) |
+| requester@procure.com | demo1234 | Requester |
 
 Additional users synced from RefexOne or created via User Management.
 

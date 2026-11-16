@@ -154,6 +154,13 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.department_master',
     'nav.letterhead_master',
   ],
+  HR: [
+    'nav.requester_dashboard',
+    'nav.create_pr',
+    'nav.track_pr',
+    'nav.department_master',
+    'nav.entity_master',
+  ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
@@ -229,7 +236,7 @@ export const ROLE_NAV_WHITELIST = {
 };
 
 /** Roles that may be assigned Requester-group menus (Create PR, Track PR, etc.). */
-const ROLES_ALLOW_REQUESTER_NAV = new Set(['Requester', 'HOD Approver', 'PR Manager']);
+const ROLES_ALLOW_REQUESTER_NAV = new Set(['Requester', 'HR', 'HOD Approver', 'PR Manager']);
 
 function enforceRoleNavWhitelist(role, codes = []) {
   const allowed = ROLE_NAV_WHITELIST[role];

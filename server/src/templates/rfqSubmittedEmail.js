@@ -1,4 +1,4 @@
-import { escapeHtml, formatCurrency, formatEntity } from './emailUtils.js';
+import { escapeHtml, formatCurrency, formatEntity, buildJoinerDetailsEmailSection } from './emailUtils.js';
 import { wrapPortalUrlWithSso } from '../services/refexOneSamlService.js';
 
 export function buildRfqSubmittedNotifyRequesterEmail({
@@ -10,6 +10,7 @@ export function buildRfqSubmittedNotifyRequesterEmail({
 }) {
   const subject = `Vendor Quotation Submitted: ${pr.prNumber} — ${vendorName}`;
   const ssoReviewUrl = wrapPortalUrlWithSso(reviewUrl);
+  const joinerSection = buildJoinerDetailsEmailSection(pr);
 
   const html = `
 <!DOCTYPE html>
@@ -37,6 +38,7 @@ export function buildRfqSubmittedNotifyRequesterEmail({
             <tr><td style="padding:6px 0;color:#64748b;">Compliance</td><td style="padding:6px 0;text-align:right;">${submission.compliance ? 'Yes' : 'No'}</td></tr>
           </table>
         </div>
+        ${joinerSection.html || ''}
         <table cellpadding="0" cellspacing="0" align="center" style="margin:28px auto 8px;"><tr><td>
           <a href="${ssoReviewUrl}" style="display:inline-block;padding:16px 28px;background:#0f766e;color:#fff;text-decoration:none;font-size:14px;font-weight:700;border-radius:10px;">Review Quotations →</a>
         </td></tr></table>
@@ -50,8 +52,11 @@ export function buildRfqSubmittedNotifyRequesterEmail({
     '',
     `${vendorName} submitted a quotation for ${pr.prNumber}.`,
     `Price: ${formatCurrency(submission.quotedPrice)} | Lead: ${submission.leadTime} days`,
+    joinerSection.text || '',
     `Review: ${ssoReviewUrl}`,
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return { subject, html, text };
 }

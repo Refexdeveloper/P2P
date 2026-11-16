@@ -65,6 +65,19 @@ import {
   SASS_L2_EMAIL,
   SASS_L2_NAME,
 } from './sassWorkflow.js';
+import {
+  isNewJoinersLaptopType,
+  isNewJoinersLaptopPr,
+  parseJoinerDetails,
+  assertJoinerDetailsForSubmit,
+  lineItemsFromJoiners,
+  createMugeshApprovalTaskForNewJoiners,
+  createNewJoinersRfqEntryTask,
+  saveJoinerDetails,
+  stampJoinerCreator,
+  lineItemsFromNewPurchaseJoiners,
+  NEW_JOINERS_RFQ_EMAIL,
+} from './newJoinersLaptopWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
 import { resolveUserEntityScope, poEntityScopeSql } from '../utils/entityScope.js';
 import { deletePurchaseRequestCascade } from './adminDeleteService.js';
@@ -933,6 +946,8 @@ async function enrichPR(row) {
     sassSubscriptionMode: row.sass_subscription_mode || null,
     sassBillingFrequency: row.sass_billing_frequency || null,
     sassSubscriptionStartDate: formatDate(row.sass_subscription_start_date) || null,
+    joinerDetails: parseJoinerDetails(row.joiner_details_json),
+    isNewJoinersLaptop: isNewJoinersLaptopType(row.purchase_type),
     recommendedVendor: row.vendor_name || vendorRows[0]?.vendor_name || '',
     currentStage: row.current_stage,
     currentApprover: assignees.currentApprover,
@@ -1304,6 +1319,17 @@ async function queuePrSubmitNotifications({
 }) {
   // Submit/resubmit must return immediately — load quote pack + SMTP in background.
   const prId = pr?.id || pr?.prId;
+  const isNewJoinersSubmit = isNewJoinersLaptopPr(pr);
+  const firstApproverRole = isNewJoinersSubmit ? 'CFO' : 'HOD Approver';
+  const defaultNextStep = isNewJoinersSubmit
+    ? 'Mugesh Approval'
+    : prFlow === 'functional'
+      ? 'Selected Approver'
+      : 'L1 Manager Approval';
+  const mugeshEmail =
+    hodAssignment?.hodEmail || hodAssignment?.email || null;
+  const mugeshName =
+    hodAssignment?.hodName || hodAssignment?.name || (isNewJoinersSubmit ? 'Mugesh' : null);
   setImmediate(() => {
     (async () => {
       let mailPack = { rfqSummary: null, attachments: [] };
@@ -1333,14 +1359,18 @@ async function queuePrSubmitNotifications({
 
       queuePrApprovalPendingNotification(
         pr,
-        'HOD Approver',
+        firstApproverRole,
         { name: user.name, email: user.email },
         departmentId,
         {
-          approverEmails: hodAssignment?.hodEmail ? [hodAssignment.hodEmail] : undefined,
-          approverName: hodAssignment?.hodName || undefined,
-          stageLabel: nextStep,
-          roleDisplayName: prFlow === 'functional' ? 'Selected Approver' : undefined,
+          approverEmails: mugeshEmail ? [mugeshEmail] : undefined,
+          approverName: mugeshName || undefined,
+          stageLabel: nextStep || defaultNextStep,
+          roleDisplayName: isNewJoinersSubmit
+            ? 'Mugesh'
+            : prFlow === 'functional'
+              ? 'Selected Approver'
+              : undefined,
           rfqSummary: mailPack.rfqSummary,
           attachments: mailPack.attachments,
         }
@@ -1356,24 +1386,36 @@ async function queuePrSubmitNotifications({
         actorRole: 'Requester',
         actorName: user.name,
         completedStepLabel: isResubmit ? 'PR Resubmitted' : 'PR Raised',
-        nextStepLabel: nextStep || (prFlow === 'functional' ? 'Selected Approver' : 'L1 Manager Approval'),
+        nextStepLabel: nextStep || defaultNextStep,
         requesterEmail: user.email,
         requesterName: user.name,
       });
-      if (hodAssignment?.hodEmail) {
+      if (mugeshEmail) {
         queueStakeholderStepProgressNotifications(pr, {
           action: isResubmit ? 'submitted' : 'raised',
           actorRole: 'Requester',
           actorName: user.name,
           completedStepLabel: isResubmit ? 'PR Resubmitted' : 'PR Raised',
-          nextStepLabel:
-            nextStep || (prFlow === 'functional' ? 'Selected Approver' : 'L1 Manager Approval'),
+          nextStepLabel: nextStep || defaultNextStep,
           fyiRecipients: [
             {
-              email: hodAssignment.hodEmail,
-              name: hodAssignment.hodName || (prFlow === 'functional' ? 'Approver' : 'L1 Manager'),
+              email: mugeshEmail,
+              name:
+                mugeshName ||
+                (isNewJoinersSubmit
+                  ? 'Mugesh'
+                  : prFlow === 'functional'
+                    ? 'Approver'
+                    : 'L1 Manager'),
               perspective: 'next_approver',
-              actionUrl: buildActionUrl(prId, 'approve', 'HOD Approver', false, false, false),
+              actionUrl: buildActionUrl(
+                prId,
+                'approve',
+                firstApproverRole,
+                false,
+                false,
+                false
+              ),
             },
           ],
         });
@@ -1505,14 +1547,27 @@ export async function createPurchaseRequest(user, body) {
   const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   const isSass = normalizedPurchaseType === 'sass';
   const isOnline = normalizedPurchaseType === 'online_purchase';
+  const isNewJoiners = isNewJoinersLaptopType(normalizedPurchaseType);
   const isInvoiceFlow = isSass || isOnline;
   // Invoice-flow types (Cloud / Online): known vendor path, never SCM RFQ
-  const vendorMode = isInvoiceFlow
+  // New Joiners: own-vendor after Mugesh so Reginold RFQ → L1/L2 → SCM Final RFQ
+  const vendorMode = isInvoiceFlow || isNewJoiners
     ? 'own'
     : vendorSelection === 'own'
       ? 'own'
       : 'scm';
   const normalizedCurrency = normalizeCurrency(currency);
+  const joinerDetailsInput = body.joinerDetails || body.joiner_details || body.joiners || [];
+  let joinerDetails = isNewJoiners
+    ? stampJoinerCreator(joinerDetailsInput, user)
+    : parseJoinerDetails(joinerDetailsInput);
+  if (isNewJoiners && submit) {
+    joinerDetails = assertJoinerDetailsForSubmit(joinerDetails, user);
+  }
+  let effectiveLineItems = Array.isArray(lineItems) ? lineItems : [];
+  if (isNewJoiners) {
+    effectiveLineItems = lineItemsFromJoiners(joinerDetails, effectiveLineItems);
+  }
   const sassVendor = isSass ? await resolveSassVendorFromBody(body) : null;
   if (isSass && submit && !sassVendor?.vendorName) {
     throw new Error('Add vendors, enter quotes, and pick one recommended vendor for Cloud Subscription');
@@ -1542,8 +1597,12 @@ export async function createPurchaseRequest(user, body) {
     if (workEnd < workStart) throw new Error('Work end date must be on or after the start date');
   }
 
-  if (submit && !lineItems.length) {
-    throw new Error('At least one line item is required');
+  if (submit && !effectiveLineItems.length) {
+    throw new Error(
+      isNewJoiners
+        ? 'Add at least one new joiner (line items are created from the roster)'
+        : 'At least one line item is required'
+    );
   }
   if (!entityId) {
     throw new Error('Entity is required');
@@ -1604,8 +1663,8 @@ export async function createPurchaseRequest(user, body) {
       throw new Error('Add at least one vendor with a round-1 quotation and file');
     }
   }
-  if (submit) {
-    assertPrSubmitRequirements(extras, lineItems);
+  if (submit && !isNewJoiners) {
+    assertPrSubmitRequirements(extras, effectiveLineItems);
   }
 
   const departmentId = await resolveDepartmentIdForSave(department, user.id, {
@@ -1631,10 +1690,18 @@ export async function createPurchaseRequest(user, body) {
   );
   if (!entityRows.length) throw new Error('Invalid or inactive entity');
 
-  const totalAmount = lineItemsEstimatedTotal(lineItems);
-  const prTitle = title || lineItems[0]?.description || `${requestType} Request`;
-  const status = submit ? PR_STATUS.PENDING_HOD_APPROVAL : PR_STATUS.DRAFT;
-  const currentStage = submit ? STAGE.HOD_REVIEW : null;
+  const totalAmount = lineItemsEstimatedTotal(effectiveLineItems);
+  const prTitle =
+    title ||
+    (isNewJoiners
+      ? `New Joiners Laptop Purchase (${joinerDetails.length})`
+      : effectiveLineItems[0]?.description || `${requestType} Request`);
+  const status = submit
+    ? isNewJoiners
+      ? PR_STATUS.PENDING_CFO_APPROVAL
+      : PR_STATUS.PENDING_HOD_APPROVAL
+    : PR_STATUS.DRAFT;
+  const currentStage = submit ? (isNewJoiners ? STAGE.CFO_REVIEW : STAGE.HOD_REVIEW) : null;
 
   const conn = await pool.getConnection();
   try {
@@ -1770,8 +1837,12 @@ export async function createPurchaseRequest(user, body) {
       ]);
     }
 
-    for (const item of lineItems) {
+    for (const item of effectiveLineItems) {
       await insertPrLineItem(conn, prId, item);
+    }
+
+    if (isNewJoiners) {
+      await saveJoinerDetails(conn, prId, joinerDetails);
     }
 
     if (attachments.length) {
@@ -1809,7 +1880,9 @@ export async function createPurchaseRequest(user, body) {
     let hodAssignment = null;
 
     if (submit) {
-      const pathLabel = isOnline
+      const pathLabel = isNewJoiners
+        ? `New Joiners Laptop Purchase — Mugesh approval → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → vendor rounds → L1/L2 → SCM RFQ → SCM PO`
+        : isOnline
         ? `Online Purchase � User Approver: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh L1 ? Srivaths L2 ? Mugesh Invoice Upload ? Completed (SCM skipped)`
         : isSass
         ? isSassMugeshRequester(user)
@@ -1830,7 +1903,9 @@ export async function createPurchaseRequest(user, body) {
         ]
       );
 
-      if (isOnline || isSass || prFlow === 'functional') {
+      if (isNewJoiners) {
+        hodAssignment = await createMugeshApprovalTaskForNewJoiners(conn, prId, departmentId);
+      } else if (isOnline || isSass || prFlow === 'functional') {
         hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
       } else {
         hodAssignment = await createHodApprovalTask(conn, prId, user.email, departmentId, user.id);
@@ -1892,19 +1967,21 @@ export async function createPurchaseRequest(user, body) {
     }
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
-      const nextStep = isSass
-        ? cloudSubscriptionPendingLabel(selectedApprover?.email, selectedApprover?.name).replace(
-            /^Pending /,
-            ''
-          )
-        : prFlow === 'functional'
-          ? selectedApprovers.length > 1
-            ? `User Approval 1 of ${selectedApprovers.length}`
-            : 'User Approval'
-          : 'L1 Manager Approval';
+      const nextStep = isNewJoiners
+        ? 'Mugesh Approval'
+        : isSass
+          ? cloudSubscriptionPendingLabel(selectedApprover?.email, selectedApprover?.name).replace(
+              /^Pending /,
+              ''
+            )
+          : prFlow === 'functional'
+            ? selectedApprovers.length > 1
+              ? `User Approval 1 of ${selectedApprovers.length}`
+              : 'User Approval'
+            : 'L1 Manager Approval';
       // Fire-and-forget — do not await SMTP / quotation pack (keeps Submit fast)
       void queuePrSubmitNotifications({
-        pr,
+        pr: { ...pr, joinerDetails: pr.joinerDetails || joinerDetails },
         user,
         departmentId,
         prFlow,
@@ -2323,7 +2400,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
     const inv = buildPrInvolvementFilterSql(user);
     where += inv.clause;
     params.push(...inv.params);
-  } else if (user.role === 'Requester') {
+  } else if (user.role === 'Requester' || user.role === 'HR') {
     where += ' AND pr.requester_id = ?';
     params.push(user.id);
   }
@@ -2458,8 +2535,12 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
 }
 
 export async function listPurchaseRequests(user, filters = {}) {
-  // Requester lists use the lean paginated path � never N+1 enrich every PR
-  if (user.role === 'Requester' && !filters.pendingOnly && filters.bucket !== 'scm') {
+  // Requester / HR lists use the lean paginated path — never N+1 enrich every PR
+  if (
+    (user.role === 'Requester' || user.role === 'HR') &&
+    !filters.pendingOnly &&
+    filters.bucket !== 'scm'
+  ) {
     const result = await listRequesterPurchaseRequests(user, {
       ...filters,
       page: filters.page || 1,
@@ -2479,7 +2560,7 @@ export async function listPurchaseRequests(user, filters = {}) {
   `;
   const params = [];
 
-  if (user.role === 'Requester') {
+  if (user.role === 'Requester' || user.role === 'HR') {
     sql += ' AND pr.requester_id = ?';
     params.push(user.id);
   } else if (user.role === 'HOD Approver') {
@@ -2728,10 +2809,15 @@ async function countRequesterRfqTasks(userOrId) {
     `SELECT COUNT(*) AS cnt FROM workflow_tasks wt
      JOIN purchase_requests pr ON pr.id = wt.pr_id
      JOIN users ru ON ru.id = pr.requester_id
+     LEFT JOIN users au ON au.id = wt.assigned_user_id
      WHERE wt.assigned_role = 'Requester' AND wt.task_type = 'RFQ_ENTRY' AND wt.status = 'pending'
-       AND ${requesterOwnsPrSql('ru')}
+       AND (
+         ${requesterOwnsPrSql('ru')}
+         OR wt.assigned_user_id = ?
+         OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+       )
        AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')`,
-    [userId, userEmail, userEmail]
+    [userId, userEmail, userEmail, userId, userEmail, userEmail]
   );
   return rows[0].cnt;
 }
@@ -2752,7 +2838,7 @@ async function ensureOwnVendorRequesterRfqTasks(userOrId) {
      WHERE pr.status = ?
        AND COALESCE(pr.pr_flow, 'standard') <> 'functional'
        AND pr.vendor_selection = 'own'
-       AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')
+       AND COALESCE(pr.purchase_type, '') NOT IN ('sass', 'saas', 'cloud_subscription', 'online_purchase', 'new_joiners_laptop')
        AND rc.requester_submitted_at IS NULL
        AND rc.finalized_at IS NULL
        AND NOT EXISTS (
@@ -3154,8 +3240,11 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
   const isFunctional = pr.pr_flow === 'functional';
   const isSass = isSassPr(pr);
   const isOnline = isOnlinePurchasePr(pr);
+  const isNewJoiners = isNewJoinersLaptopPr(pr);
   const isInvoiceFlow = isSass || isOnline;
-  const flowLabel = purchaseFlowLabel(pr.purchase_type);
+  const flowLabel = isNewJoiners
+    ? 'New Joiners Laptop Purchase'
+    : purchaseFlowLabel(pr.purchase_type);
   let sassRequesterIsMugesh = false;
   if (isSass) {
     const [reqUserRows] = await pool.query(
@@ -3394,7 +3483,14 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
           }
         }
       } else if (actingRole === 'CFO') {
-        if (isSass) {
+        if (isNewJoiners) {
+          // Mugesh approve → Reginold RFQ Entry (own-vendor path after RFQ)
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
+          nextRole = null;
+          skipToScmRfq = false;
+          remarks = `${remarks.trim()} [New Joiners Laptop — Mugesh approved → RFQ Entry ${NEW_JOINERS_RFQ_EMAIL}]`;
+        } else if (isSass) {
           const l1WasSrivaths = await sassL1WasSrivaths(prId, conn);
           const l2Id = Number(preL2Assignee?.userId) || null;
           if (l1WasSrivaths || !l2Id) {
@@ -3572,9 +3668,18 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
 
     // Own vendor: Requester RFQ Entry immediately after HOD approval (Standard only)
     let rfqEntryRequester = null;
-    if (
+    let newJoinersRfqAssignee = null;
+    if (isNewJoiners && actingRole === 'CFO' && action === 'approve') {
+      newJoinersRfqAssignee = await createNewJoinersRfqEntryTask(conn, prId, pr.department_id);
+      rfqEntryRequester = {
+        id: newJoinersRfqAssignee.userId,
+        email: newJoinersRfqAssignee.email,
+        name: newJoinersRfqAssignee.name,
+      };
+    } else if (
       !isFunctional &&
       !isInvoiceFlow &&
+      !isNewJoiners &&
       actingAsHod &&
       action === 'approve' &&
       pr.vendor_selection === 'own'
@@ -3592,9 +3697,15 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
       rfqEntryRequester = reqRows[0] || null;
     }
 
-    // SCM vendor: after CFO pre-RFQ, or L2 skip-CFO ? SCM Buyer RFQ Entry
+    // SCM vendor: after CFO pre-RFQ, or L2 skip-CFO → SCM Buyer RFQ Entry
+    // New Joiners already got Reginold RFQ above — do not also queue SCM Buyer.
     let scmRfqBuyerEmails = [];
-    if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isInvoiceFlow) {
+    if (
+      (actingRole === 'CFO' || skipToScmRfq) &&
+      action === 'approve' &&
+      !isInvoiceFlow &&
+      !isNewJoiners
+    ) {
       const rfqDue = new Date();
       rfqDue.setDate(rfqDue.getDate() + 5);
       scmRfqBuyerEmails = await getScmBuyerNotifyEmails(conn);
@@ -4101,6 +4212,76 @@ export async function submitSassInvoiceUpload(user, prId, invoiceBody = {}) {
   });
 
   return updatedPr;
+}
+
+export async function updateJoinerDetails(user, prId, body = {}) {
+  const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
+  if (!prRows.length) throw new Error('PR not found');
+  const pr = prRows[0];
+  if (!isNewJoinersLaptopPr(pr)) {
+    throw new Error('Joiner details are only for New Joiners Laptop Purchase');
+  }
+  const isOwner = Number(pr.requester_id) === Number(user.id);
+  const isRfqEditor = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role);
+  if (!isOwner && !isRfqEditor) throw new Error('Unauthorized');
+  if (!isOwner && user.role === 'Requester') {
+    const email = String(user.email || '').trim().toLowerCase();
+    const [tasks] = await pool.query(
+      `SELECT wt.id
+       FROM workflow_tasks wt
+       LEFT JOIN users au ON au.id = wt.assigned_user_id
+       WHERE wt.pr_id = ?
+         AND wt.task_type = 'RFQ_ENTRY'
+         AND wt.assigned_role = 'Requester'
+         AND (
+           wt.assigned_user_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         )
+       LIMIT 1`,
+      [prId, user.id, email, email]
+    );
+    if (!tasks.length) throw new Error('Unauthorized');
+  }
+  const rawList = Array.isArray(body)
+    ? body
+    : body.joinerDetails || body.joiner_details || body.joiners || [];
+  const savedJoiners = stampJoinerCreator(rawList, user);
+  await saveJoinerDetails(pool, prId, savedJoiners);
+
+  // Sync PR line items: N new-purchase joiners → N laptop purchase tasks
+  const purchaseLines = lineItemsFromNewPurchaseJoiners(savedJoiners);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
+    for (const item of purchaseLines) {
+      await insertPrLineItem(conn, prId, item);
+    }
+    const total = purchaseLines.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.unitCost || 0),
+      0
+    );
+    await conn.query(`UPDATE purchase_requests SET total_amount = ?, updated_at = NOW() WHERE id = ?`, [
+      total,
+      prId,
+    ]);
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+
+  const updated = await getPurchaseRequestById(prId);
+  return {
+    joinerDetails: updated?.joinerDetails || savedJoiners,
+    lineItems: updated?.lineItems || purchaseLines,
+    newPurchaseCount: purchaseLines.length,
+    inventoryCount: savedJoiners.filter(
+      (j) => String(j.inventoryStatus || '').toLowerCase() === 'from_inventory'
+    ).length,
+  };
 }
 
 export async function updatePrBillingDelivery(user, prId, body = {}) {
@@ -5149,7 +5330,14 @@ export async function listRequesterTasks(userOrId) {
      LEFT JOIN purchase_orders po ON po.pr_id = pr.id AND po.status = 'sent_to_vendor'
      WHERE wt.status = 'pending'
        AND (
-         (wt.assigned_role = 'Requester' AND ${requesterOwnsPrSql('ru')}
+         (wt.assigned_role = 'Requester'
+           AND (
+             ${requesterOwnsPrSql('ru')}
+             OR (wt.task_type = 'RFQ_ENTRY' AND (
+               wt.assigned_user_id = ?
+               OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+             ))
+           )
            AND NOT (wt.task_type = 'RFQ_ENTRY' AND pr.purchase_type IN ('sass', 'saas', 'cloud_subscription', 'online_purchase')))
          OR (wt.task_type = 'PR_APPROVAL' AND (
            wt.assigned_user_id = ?
@@ -5162,6 +5350,9 @@ export async function listRequesterTasks(userOrId) {
        )
      ORDER BY wt.created_at DESC`,
     [
+      userId,
+      userEmail,
+      userEmail,
       userId,
       userEmail,
       userEmail,

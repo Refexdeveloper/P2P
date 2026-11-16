@@ -32,6 +32,14 @@ function buildDbConfig(includeDatabase = false) {
     };
   }
 
+  const socketPath = String(process.env.DB_SOCKET || '').trim();
+  if (socketPath) {
+    return {
+      ...base,
+      socketPath,
+    };
+  }
+
   // Local / Cloud Shell: use TCP connection
   return {
     ...base,
@@ -55,6 +63,7 @@ const USERS = [
   { name: 'Amit Sharma', email: 'manager@procure.com', role: 'HOD Approver', department: 'IT & Technology' },
   { name: 'Robert Wilson', email: 'hod.ops@procure.com', role: 'HOD Approver', department: 'Operations' },
   { name: 'Neha Gupta', email: 'hod.hr@procure.com', role: 'HOD Approver', department: 'HR & Admin' },
+  { name: 'Sathyakala HR', email: 'hr@procure.com', role: 'HR', department: 'HR & Admin' },
   { name: 'Sarah Johnson', email: 'hod.marketing@procure.com', role: 'HOD Approver', department: 'Marketing' },
   { name: 'Priya Mehta', email: 'hod.finance@procure.com', role: 'HOD Approver', department: 'Finance' },
   { name: 'Deepak Verma', email: 'prmanager@procure.com', role: 'PR Manager', department: null },
