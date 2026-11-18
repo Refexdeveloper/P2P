@@ -61,6 +61,7 @@ const TechEvaluatorPage = lazy(() => import('../pages/tech-evaluator/rfq-evaluat
 const UserPermissionsPage = lazy(() => import('../pages/admin/user-permissions/page'));
 const AdminEmailLogsPage = lazy(() => import('../pages/admin/email-logs/page'));
 const AdminScmSignaturePage = lazy(() => import('../pages/admin/scm-signature/page'));
+const ApprovalMatrixPage = lazy(() => import('../pages/admin/approval-matrix/page'));
 const AdminLoginPage = lazy(() => import('../pages/admin/login/page'));
 
 const routes: RouteObject[] = [
@@ -327,6 +328,10 @@ const routes: RouteObject[] = [
   {
     path: '/admin/scm-signature',
     element: <ProtectedRoute><AdminScmSignaturePage /></ProtectedRoute>,
+  },
+  {
+    path: '/admin/approval-matrix',
+    element: <ProtectedRoute><ApprovalMatrixPage /></ProtectedRoute>,
   },
   {
     path: '*',

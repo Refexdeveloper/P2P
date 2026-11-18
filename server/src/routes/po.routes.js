@@ -20,6 +20,8 @@ import {
   getPurchaseOrderVendorComparison,
   signPurchaseOrder,
   rejectPurchaseOrder,
+  actOnPoValueApproval,
+  PO_RELEASE_CATEGORIES,
   sendBackPurchaseOrder,
   cancelPurchaseOrder,
   retrieveCancelledPurchaseOrder,
@@ -772,6 +774,43 @@ router.put('/:id', requireRoles('SCM Manager', 'SCM Buyer', 'Super Admin'), asyn
     res.status(400).json({ message: err.message });
   }
 });
+
+router.get('/release-categories', authenticate, async (_req, res) => {
+  res.json({ data: PO_RELEASE_CATEGORIES });
+});
+
+/** Value approval (CFO / Business Head) — before SCM sign; no PDF signature */
+router.post(
+  '/:id/value-approve',
+  requireRoles('CFO', 'Business Head', 'Super Admin'),
+  async (req, res) => {
+    try {
+      const data = await actOnPoValueApproval(req.user, Number(req.params.id), {
+        action: 'approve',
+        remarks: req.body?.remarks,
+      });
+      res.json({ data, message: data.message || 'Value approval recorded' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
+
+router.post(
+  '/:id/value-reject',
+  requireRoles('CFO', 'Business Head', 'Super Admin'),
+  async (req, res) => {
+    try {
+      const data = await actOnPoValueApproval(req.user, Number(req.params.id), {
+        action: 'reject',
+        remarks: req.body?.remarks,
+      });
+      res.json({ data, message: data.message || 'PO returned to buyer draft' });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+    }
+  }
+);
 
 router.post('/:id/sign', requireRoles('SCM Manager'), async (req, res) => {
   try {

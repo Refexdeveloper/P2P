@@ -1200,6 +1200,22 @@ export const poApi = {
     }
     return { blob: new Blob([await htmlRes.text()], { type: 'text/html' }), isHtml: true };
   },
+  valueApprove: (poId: number, remarks: string) =>
+    request<{ data: { status?: string; message?: string }; message: string }>(
+      `/api/po/${poId}/value-approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ remarks }),
+      }
+    ),
+  valueReject: (poId: number, remarks: string) =>
+    request<{ data: { status?: string; message?: string }; message: string }>(
+      `/api/po/${poId}/value-reject`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ remarks }),
+      }
+    ),
   sign: (
     poId: number,
     remarks: string,
@@ -1891,6 +1907,8 @@ export interface AdminUserRecord {
   entityId?: number | null;
   entityName?: string;
   entityCode?: string;
+  /** RMC approver lists: RIL_RMC and/or P2P_RMC */
+  rmcTags?: string[];
   permissions: string[];
   isSuperAdmin: boolean;
   refexoneUserId?: string | null;
@@ -1969,6 +1987,45 @@ export interface UserActivityLogRecord {
 }
 
 export const adminApi = {
+  listPoValueMatrix: () =>
+    request<{
+      data: Array<{
+        id: number;
+        categoryCode: string;
+        levelNo: number;
+        amountMin: number;
+        amountMax: number | null;
+        approverEmails: string[];
+        isActive: boolean;
+      }>;
+      categories: Array<{ code: string; label: string; hint?: string }>;
+    }>('/api/admin/approval-matrix/po-value'),
+  savePoValueMatrixRow: (payload: Record<string, unknown>) =>
+    request<{ data: unknown; message: string }>('/api/admin/approval-matrix/po-value', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deactivatePoValueMatrixRow: (id: number) =>
+    request<{ message: string }>(`/api/admin/approval-matrix/po-value/${id}`, {
+      method: 'DELETE',
+    }),
+  listPrApprovalMatrix: () =>
+    request<{ data: unknown[]; message?: string }>('/api/admin/approval-matrix/pr'),
+  previewPoValueRouting: (payload: {
+    categoryCode: string;
+    amountExGst: number;
+    createdByUserId?: number;
+  }) =>
+    request<{
+      data: {
+        goesStraightToScmSign: boolean;
+        levelsAfterSkip: Array<{ level: number; emails: string[] }>;
+        levelsBeforeSkip: Array<{ level: number; emails: string[] }>;
+      };
+    }>('/api/admin/approval-matrix/po-value/preview', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   listUsers: () => request<{ data: AdminUserRecord[] }>('/api/admin/users'),
   syncUsers: () =>
     request<{ data: AdminUserRecord[]; stats: RefexOneSyncStats; message: string }>('/api/admin/users/sync', {
@@ -1976,7 +2033,15 @@ export const adminApi = {
     }),
   listPermissions: () => request<{ data: NavItem[] }>('/api/admin/permissions'),
   listRoles: () => request<{ data: AdminRoleRecord[] }>('/api/admin/roles'),
-  updateUser: (userId: number, payload: { role?: string; permissions?: string[]; entityId?: number | null }) =>
+  updateUser: (
+    userId: number,
+    payload: {
+      role?: string;
+      permissions?: string[];
+      entityId?: number | null;
+      rmcTags?: string[] | null;
+    }
+  ) =>
     request<{ data: AdminUserRecord; message: string }>(`/api/admin/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),

@@ -570,6 +570,53 @@ const MIGRATIONS = [
     FOREIGN KEY (original_purchase_request_id) REFERENCES purchase_requests(id),
     FOREIGN KEY (requester_id) REFERENCES users(id)
   )`,
+  // RMC: PO value approval matrix (Category × Level × Amount) — company-wide
+  `CREATE TABLE IF NOT EXISTS po_value_approval_matrix (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    category_code VARCHAR(64) NOT NULL,
+    level_no TINYINT NOT NULL,
+    amount_min DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    amount_max DECIMAL(15, 2) NULL,
+    approver_emails JSON NOT NULL,
+    approver_user_ids JSON NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_po_val_matrix_cat (category_code, level_no, is_active)
+  )`,
+  // RMC: PR approval matrix scaffold (upload later — plant / category / requester)
+  `CREATE TABLE IF NOT EXISTS pr_approval_matrix (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL DEFAULT 'Rule',
+    priority INT NOT NULL DEFAULT 100,
+    plant_name VARCHAR(200) NULL,
+    department_id INT NULL,
+    category_code VARCHAR(64) NULL,
+    requester_email VARCHAR(150) NULL,
+    approval_mode_default ENUM('matrix', 'manual') NOT NULL DEFAULT 'matrix',
+    stages_json JSON NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_pr_matrix_active (is_active, priority)
+  )`,
+  `ALTER TABLE purchase_requests ADD COLUMN po_release_category VARCHAR(64) NULL`,
+  `ALTER TABLE purchase_requests ADD COLUMN approval_mode ENUM('matrix', 'manual') NOT NULL DEFAULT 'manual'`,
+  `ALTER TABLE purchase_requests ADD COLUMN tm_pump_conversion TINYINT(1) NOT NULL DEFAULT 0`,
+  `ALTER TABLE purchase_orders ADD COLUMN po_release_category VARCHAR(64) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN matrix_amount_ex_gst DECIMAL(15, 2) NULL`,
+  `ALTER TABLE purchase_orders ADD COLUMN value_approval_level TINYINT NOT NULL DEFAULT 0`,
+  `ALTER TABLE purchase_orders ADD COLUMN value_approval_status VARCHAR(30) NULL`,
+  `ALTER TABLE workflow_tasks ADD COLUMN po_id INT NULL`,
+  `ALTER TABLE purchase_orders MODIFY COLUMN status ENUM(
+    'draft', 'imported', 'pending_value_approval', 'pending_approval', 'pending_buyer_verify', 'approved', 'rejected',
+    'sent_to_vendor', 'awaiting_grn', 'grn_completed', 'invoice_entry',
+    'pending_accounts_approval', 'approved_for_payment', 'paid', 'cancelled'
+  ) DEFAULT 'draft'`,
+  // RMC approver lists: tag users as RIL_RMC and/or P2P_RMC (no data wipe)
+  `ALTER TABLE users ADD COLUMN rmc_tags JSON NULL`,
+  // Manual PO value-approval tasks may have no PR
+  `ALTER TABLE workflow_tasks MODIFY COLUMN pr_id INT NULL`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */
@@ -847,5 +894,17 @@ export async function runStartupMigrations() {
     }
   } catch (err) {
     console.warn('Draft PO number rewrite skipped:', err.message);
+  }
+
+  try {
+    const { seedPoValueApprovalMatrix } = await import('./approvalMatrixService.js');
+    const seed = await seedPoValueApprovalMatrix();
+    if (seed.seeded) {
+      console.log(`PO value approval matrix seeded: ${seed.count} rows`);
+    } else {
+      console.log(`PO value approval matrix already present: ${seed.count} active rows`);
+    }
+  } catch (err) {
+    console.warn('PO value approval matrix seed skipped:', err.message);
   }
 }

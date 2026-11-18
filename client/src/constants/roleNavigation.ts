@@ -303,6 +303,20 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-quill-pen-line',
     group: 'Admin',
   },
+  'nav.admin_approval_matrix': {
+    code: 'nav.admin_approval_matrix',
+    label: 'Approval Matrix',
+    path: '/admin/approval-matrix',
+    icon: 'ri-organization-chart',
+    group: 'Admin',
+  },
+  'nav.po_value_approval': {
+    code: 'nav.po_value_approval',
+    label: 'PO Value Approval',
+    path: '/tasks',
+    icon: 'ri-money-rupee-circle-line',
+    group: 'Approvals',
+  },
 };
 
 const MASTER_NAV_CODES = [
@@ -338,7 +352,8 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval'],
+  'Business Head': ['nav.tasks', 'nav.po_value_approval', 'nav.track_pr'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
     'nav.create_pr',
@@ -403,6 +418,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.admin_users',
     'nav.admin_email_logs',
     'nav.admin_scm_signature',
+    'nav.admin_approval_matrix',
     'nav.track_pr',
     'nav.scm_rfq_entry',
     'nav.rfq_approval',

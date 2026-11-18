@@ -99,6 +99,8 @@ export const NAV_ITEMS = [
   { code: 'nav.admin_users', label: 'User Permissions', path: '/admin/user-permissions', icon: 'ri-shield-user-line', group: 'Admin', sort: 1 },
   { code: 'nav.admin_email_logs', label: 'Notification Logs', path: '/admin/email-logs', icon: 'ri-notification-3-line', group: 'Admin', sort: 2 },
   { code: 'nav.admin_scm_signature', label: 'SCM Signature', path: '/admin/scm-signature', icon: 'ri-quill-pen-line', group: 'Admin', sort: 3 },
+  { code: 'nav.admin_approval_matrix', label: 'Approval Matrix', path: '/admin/approval-matrix', icon: 'ri-organization-chart', group: 'Admin', sort: 4 },
+  { code: 'nav.po_value_approval', label: 'PO Value Approval', path: '/tasks', icon: 'ri-money-rupee-circle-line', group: 'Approvals', sort: 55 },
 ];
 
 export const ROLE_DEFAULT_PERMISSIONS = {
@@ -118,7 +120,8 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.project_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval'],
+  'Business Head': ['nav.tasks', 'nav.po_value_approval', 'nav.track_pr'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
     'nav.create_pr',

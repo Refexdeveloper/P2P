@@ -77,6 +77,7 @@ interface TaskItem {
   statusUI?: string;
   poId?: number;
   isPoSign?: boolean;
+  isPoValueApproval?: boolean;
   isPoRevise?: boolean;
   vendorSelection?: 'own' | 'scm';
   askBusinessApproval?: boolean;
@@ -159,6 +160,7 @@ export default function TasksPage() {
           statusUI: t.statusUI ? String(t.statusUI) : undefined,
           poId: t.poId ? Number(t.poId) : undefined,
           isPoSign: Boolean(t.isPoSign),
+          isPoValueApproval: Boolean(t.isPoValueApproval),
           isPoRevise: Boolean(t.isPoRevise),
           vendorSelection: t.vendorSelection === 'own' ? 'own' : 'scm',
           askBusinessApproval: Boolean(t.askBusinessApproval),
@@ -560,6 +562,7 @@ export default function TasksPage() {
       navigate(`/scm/po-approval?${params.toString()}`);
       return;
     }
+    // Value approval: stay on My Tasks modal (approve/reject, no PDF sign)
     setModalState({
       isOpen: true,
       type,
@@ -593,7 +596,16 @@ export default function TasksPage() {
     }
     const action = type === 'approve' ? 'approve' : type === 'return' ? 'return' : 'reject';
     try {
-      if (task.isPoSign && task.poId) {
+      if (task.isPoValueApproval && task.poId) {
+        if (type === 'return') {
+          throw new Error('Send-back is not available for value approval — approve or reject');
+        }
+        if (type === 'approve') {
+          await poApi.valueApprove(task.poId, remarks);
+        } else {
+          await poApi.valueReject(task.poId, remarks);
+        }
+      } else if (task.isPoSign && task.poId) {
         if (type === 'return') {
           await poApi.sendBack(task.poId, remarks);
         } else if (type === 'reject') {
@@ -887,11 +899,13 @@ export default function TasksPage() {
                 ? 'Upload Invoice'
                 : task.isPostRfq || task.actionPath?.includes('/rfq-approval/')
                   ? 'Approve (Vendor Comparison)'
-                  : task.isPoSign
-                    ? 'Sign & Approve'
-                    : task.actionPath?.includes('/scm/buyer-final-verify')
-                      ? 'Verify'
-                      : 'Approve'
+                  : task.isPoValueApproval
+                    ? 'Value Approve'
+                    : task.isPoSign
+                      ? 'Sign & Approve'
+                      : task.actionPath?.includes('/scm/buyer-final-verify')
+                        ? 'Verify'
+                        : 'Approve'
             }
           >
             <i
@@ -908,17 +922,19 @@ export default function TasksPage() {
             !task.isSassInvoiceUpload &&
             !task.isSubscriptionRenewal && (
             <>
-              <button
-                onClick={() => openModal(task.id, 'return')}
-                className="cursor-pointer rounded-xl bg-[#FFEDD5] p-2 text-[#F97316] transition-colors hover:bg-orange-100"
-                title={task.isPoSign ? 'Send Back to Buyer' : 'Send Back'}
-              >
-                <i className="ri-arrow-go-back-line"></i>
-              </button>
+              {!task.isPoValueApproval && (
+                <button
+                  onClick={() => openModal(task.id, 'return')}
+                  className="cursor-pointer rounded-xl bg-[#FFEDD5] p-2 text-[#F97316] transition-colors hover:bg-orange-100"
+                  title={task.isPoSign ? 'Send Back to Buyer' : 'Send Back'}
+                >
+                  <i className="ri-arrow-go-back-line"></i>
+                </button>
+              )}
               <button
                 onClick={() => openModal(task.id, 'reject')}
                 className="cursor-pointer rounded-xl bg-[#FFE4E6] p-2 text-[#F43F5E] transition-colors hover:bg-rose-100"
-                title="Reject"
+                title={task.isPoValueApproval ? 'Reject to Buyer Draft' : 'Reject'}
               >
                 <i className="ri-close-line"></i>
               </button>

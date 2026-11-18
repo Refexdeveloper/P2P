@@ -213,6 +213,9 @@ export default function CreatePRPage() {
   const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('functional');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
+  const [approvalMode, setApprovalMode] = useState<'matrix' | 'manual'>('manual');
+  const [poReleaseCategory, setPoReleaseCategory] = useState('');
+  const [tmPumpConversion, setTmPumpConversion] = useState(false);
   const [vendorMaster, setVendorMaster] = useState<VendorRecord[]>([]);
   const [rfqMaxRounds, setRfqMaxRounds] = useState(1);
   const [rfqVendors, setRfqVendors] = useState<FunctionalRfqVendorRow[]>([]);
@@ -434,6 +437,9 @@ export default function CreatePRPage() {
     setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
     setPrFlow(isEditMode && draft.prFlow !== 'functional' ? 'standard' : 'functional');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
+    setApprovalMode(draft.approvalMode === 'matrix' ? 'matrix' : 'manual');
+    setPoReleaseCategory(draft.poReleaseCategory || '');
+    setTmPumpConversion(Boolean(draft.tmPumpConversion));
     setRfqMaxRounds(draft.rfqMaxRounds || 1);
     setRfqRecommendedKey(draft.rfqRecommendedKey || null);
     setRfqRecommendedMeta({
@@ -690,6 +696,13 @@ export default function CreatePRPage() {
               ? [Number(pr.approvalUserId)]
               : []
         );
+        setApprovalMode(pr.approvalMode === 'matrix' ? 'matrix' : 'manual');
+        setPoReleaseCategory(
+          pr.requestType === 'Capex'
+            ? 'CAPEX'
+            : String(pr.poReleaseCategory || '')
+        );
+        setTmPumpConversion(Boolean(pr.tmPumpConversion));
         setPriority(pr.priority);
         setCurrency(normalizeCurrency(pr.currency));
         setBusinessJustification(pr.justification || '');
@@ -984,6 +997,9 @@ export default function CreatePRPage() {
       vendorSelection,
       prFlow,
       approvalUserIds,
+      approvalMode,
+      poReleaseCategory,
+      tmPumpConversion,
       rfqMaxRounds,
       rfqRecommendedKey,
       rfqRecommendedVendorId: rfqRecommendedMeta.vendorId || null,
@@ -1063,6 +1079,9 @@ export default function CreatePRPage() {
     vendorSelection,
     prFlow,
     approvalUserIds,
+    approvalMode,
+    poReleaseCategory,
+    tmPumpConversion,
     rfqMaxRounds,
     rfqVendors,
     rfqRecommendedKey,
@@ -1771,6 +1790,21 @@ export default function CreatePRPage() {
     if (!entityId) newErrors.entityId = 'Entity is required';
     if (!department) newErrors.department = 'Department is required';
     if (!requestCategory) newErrors.requestCategory = 'Request category is required';
+    if (
+      purchaseType !== 'sass' &&
+      purchaseType !== 'online_purchase' &&
+      requestType !== 'Capex' &&
+      !poReleaseCategory
+    ) {
+      newErrors.poReleaseCategory = 'PO Release Category is required';
+    }
+    if (
+      purchaseType !== 'sass' &&
+      purchaseType !== 'online_purchase' &&
+      !String(projectDetail || '').trim()
+    ) {
+      newErrors.projectDetail = 'Plant is required';
+    }
     if (!businessJustification.trim()) newErrors.businessJustification = 'Business justification is required';
     if (!requiredDate) newErrors.requiredDate = 'Required date is required';
     if (purchaseType === 'work_order') {
@@ -2011,11 +2045,26 @@ export default function CreatePRPage() {
         ? Number(approvalUserIds[0])
         : undefined,
     approvalUserIds:
-      prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase'
+      prFlow === 'functional' ||
+      purchaseType === 'sass' ||
+      purchaseType === 'online_purchase' ||
+      approvalMode === 'manual'
         ? purchaseType === 'sass' || purchaseType === 'online_purchase'
           ? approvalUserIds.slice(0, 1)
           : approvalUserIds
         : undefined,
+    approvalMode:
+      purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'manual' : approvalMode,
+    poReleaseCategory:
+      purchaseType === 'sass' || purchaseType === 'online_purchase'
+        ? undefined
+        : requestType === 'Capex'
+          ? 'CAPEX'
+          : poReleaseCategory || undefined,
+    tmPumpConversion:
+      purchaseType === 'sass' || purchaseType === 'online_purchase'
+        ? undefined
+        : Boolean(tmPumpConversion),
     vendorSelection:
       purchaseType === 'sass' || purchaseType === 'online_purchase' ? 'own' : vendorSelection,
     vendorId:
@@ -2981,7 +3030,7 @@ export default function CreatePRPage() {
 
             <div data-field="projectDetail">
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                Plant
+                Plant <span className="text-red-500">*</span>
               </label>
               <ProjectCombobox
                 projects={projects}
@@ -2990,6 +3039,9 @@ export default function CreatePRPage() {
                 onClear={() => setProjectDetail('')}
                 onCreated={rememberProject}
               />
+              {errors.projectDetail && (
+                <p className="text-xs text-red-500 mt-1">{errors.projectDetail}</p>
+              )}
             </div>
 
             {/* Department */}
@@ -3191,6 +3243,95 @@ export default function CreatePRPage() {
                 </p>
               )}
             </div>
+
+            {purchaseType !== 'sass' && purchaseType !== 'online_purchase' ? (
+              <>
+                <div className="sm:col-span-2" data-field="poReleaseCategory">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    PO Release Category <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={requestType === 'Capex' ? 'CAPEX' : poReleaseCategory}
+                    disabled={requestType === 'Capex'}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setPoReleaseCategory(next);
+                      if (next === 'SERVICE_TM_PUMP_CONVERSION') setTmPumpConversion(true);
+                    }}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white disabled:bg-slate-50"
+                  >
+                    <option value="">Select category for PO value approval…</option>
+                    <option value="RAW_MATERIALS">Raw Materials</option>
+                    <option value="SERVICE_TM_PUMP_CONVERSION">
+                      Service — TMs, Pumps &amp; Conversion
+                    </option>
+                    <option value="SERVICE_OTHER">All Service POs other than TMs/Pumps</option>
+                    <option value="CAPEX">CAPEX POs</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1.5">
+                    Used after PO create for value approvals (before SCM sign). Capex locks to CAPEX.
+                  </p>
+                  {errors.poReleaseCategory && (
+                    <p className="text-xs text-red-500 mt-1">{errors.poReleaseCategory}</p>
+                  )}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={
+                        tmPumpConversion || poReleaseCategory === 'SERVICE_TM_PUMP_CONVERSION'
+                      }
+                      onChange={(e) => {
+                        setTmPumpConversion(e.target.checked);
+                        if (e.target.checked && !poReleaseCategory) {
+                          setPoReleaseCategory('SERVICE_TM_PUMP_CONVERSION');
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    Includes TM / Pump / Conversion (suggests Service TM category)
+                  </label>
+                </div>
+
+                <div className="sm:col-span-2" data-field="approvalMode">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    PR Approver source
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        {
+                          id: 'manual' as const,
+                          label: 'Manual select',
+                          hint: 'Pick approvers yourself (current behaviour)',
+                        },
+                        {
+                          id: 'matrix' as const,
+                          label: 'Use matrix',
+                          hint: 'Admin PR matrix (upload later) — falls back to Refex L1/L2 until rows exist',
+                        },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setApprovalMode(opt.id)}
+                        className={`px-3 py-2 rounded-xl border text-left text-xs transition-all ${
+                          approvalMode === opt.id
+                            ? 'border-teal-500 bg-teal-50 text-teal-900'
+                            : 'border-gray-200 bg-white text-gray-600'
+                        }`}
+                      >
+                        <span className="font-semibold block">{opt.label}</span>
+                        <span className="text-[11px] opacity-80">{opt.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
 
             {/* Special Notes */}
             <div className="sm:col-span-2" data-field="specialNotes">

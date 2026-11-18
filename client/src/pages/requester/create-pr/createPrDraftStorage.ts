@@ -22,6 +22,9 @@ export type CreatePrDraftSnapshot = {
   sassVendorId?: string | null;
   prFlow: 'standard' | 'functional';
   approvalUserIds: number[];
+  approvalMode?: 'matrix' | 'manual';
+  poReleaseCategory?: string;
+  tmPumpConversion?: boolean;
   rfqMaxRounds: number;
   /** Functional Own — recommended vendor row key (or vendorId/email fallback). */
   rfqRecommendedKey?: string | null;

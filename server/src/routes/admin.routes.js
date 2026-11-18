@@ -69,8 +69,13 @@ router.get('/roles', async (_req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { role, permissions, entityId } = req.body || {};
-    const data = await updateUser(req.user, Number(req.params.id), { role, permissions, entityId });
+    const { role, permissions, entityId, rmcTags } = req.body || {};
+    const data = await updateUser(req.user, Number(req.params.id), {
+      role,
+      permissions,
+      entityId,
+      rmcTags,
+    });
     res.json({ data, message: 'User updated' });
   } catch (err) {
     res.status(400).json({ message: err.message });
@@ -239,6 +244,64 @@ router.post('/po/repair-manual-pending-approval', async (_req, res) => {
       data,
       message: `Repaired ${data.repaired} of ${data.scanned} unsigned manual PO(s) back to draft for SCM edit`,
     });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** RMC Approval Matrix — PO value (live) + PR matrix scaffold */
+router.get('/approval-matrix/po-value', async (_req, res) => {
+  try {
+    const {
+      listPoValueMatrix,
+      PO_RELEASE_CATEGORIES,
+    } = await import('../services/approvalMatrixService.js');
+    const data = await listPoValueMatrix();
+    res.json({ data, categories: PO_RELEASE_CATEGORIES });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.put('/approval-matrix/po-value', async (req, res) => {
+  try {
+    const { upsertPoValueMatrixRow } = await import('../services/approvalMatrixService.js');
+    const data = await upsertPoValueMatrixRow(req.body || {});
+    res.json({ data, message: 'PO value matrix row saved' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.delete('/approval-matrix/po-value/:id', async (req, res) => {
+  try {
+    const { deletePoValueMatrixRow } = await import('../services/approvalMatrixService.js');
+    await deletePoValueMatrixRow(Number(req.params.id));
+    res.json({ message: 'PO value matrix row deactivated' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.get('/approval-matrix/pr', async (_req, res) => {
+  try {
+    const { listPrApprovalMatrix } = await import('../services/approvalMatrixService.js');
+    const data = await listPrApprovalMatrix();
+    res.json({
+      data,
+      message:
+        'PR matrix scaffold ready — upload plant / category / requester rules later from Admin',
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.post('/approval-matrix/po-value/preview', async (req, res) => {
+  try {
+    const { previewPoValueRouting } = await import('../services/approvalMatrixService.js');
+    const data = await previewPoValueRouting(req.body || {});
+    res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

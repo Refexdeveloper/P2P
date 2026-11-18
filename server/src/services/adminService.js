@@ -69,6 +69,14 @@ async function mapUserRow(u, permissionCodes) {
     isActive: Boolean(u.is_active),
     departmentName: u.department_name || '',
     entityId: u.entity_id ? Number(u.entity_id) : null,
+    rmcTags: (() => {
+      try {
+        const v = typeof u.rmc_tags === 'string' ? JSON.parse(u.rmc_tags) : u.rmc_tags;
+        return Array.isArray(v) ? v : [];
+      } catch {
+        return [];
+      }
+    })(),
     entityName: u.entity_name || '',
     entityCode: u.entity_code || '',
     permissions,
@@ -80,7 +88,7 @@ async function mapUserRow(u, permissionCodes) {
 
 export async function listUsersForAdmin() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id,
+    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id, u.rmc_tags,
             d.name AS department_name, e.name AS entity_name, e.code AS entity_code
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id
@@ -140,7 +148,7 @@ export async function updateUserPermissions(adminUser, userId, permissionCodes) 
   return setUserPermissions(userId, permissionCodes);
 }
 
-export async function updateUser(adminUser, userId, { role, permissions, entityId }) {
+export async function updateUser(adminUser, userId, { role, permissions, entityId, rmcTags }) {
   if (!isSuperAdmin(adminUser.role)) {
     throw new Error('Only Super Admin can manage users');
   }
@@ -163,6 +171,15 @@ export async function updateUser(adminUser, userId, { role, permissions, entityI
       throw new Error(`Invalid role: ${role}`);
     }
     await pool.query(`UPDATE users SET role = ? WHERE id = ?`, [role, userId]);
+  }
+
+  if (rmcTags !== undefined) {
+    const { parseRmcTags } = await import('../utils/rmcUserTags.js');
+    const tags = parseRmcTags(rmcTags);
+    await pool.query(`UPDATE users SET rmc_tags = ? WHERE id = ?`, [
+      tags.length ? JSON.stringify(tags) : null,
+      userId,
+    ]);
   }
 
   if (entityId !== undefined) {
@@ -195,7 +212,7 @@ export async function updateUser(adminUser, userId, { role, permissions, entityI
   }
 
   const [final] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id,
+    `SELECT u.id, u.name, u.email, u.role, u.is_active, u.refexone_user_id, u.entity_id, u.rmc_tags,
             d.name AS department_name, e.name AS entity_name, e.code AS entity_code
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id

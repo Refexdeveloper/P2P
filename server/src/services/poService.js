@@ -44,6 +44,19 @@ import { getWhatsAppPublicBaseUrl } from './whatsappService.js';
 import { parseAnnexureIi, serializeAnnexureIi } from '../utils/annexureIi.js';
 import { wrapPortalUrlWithSso } from './refexOneSamlService.js';
 import { buildSignatureRenderOptions } from './signatureService.js';
+import {
+  startPoApprovalRouting,
+  actOnPoValueApproval,
+  normalizePoReleaseCategory,
+  poAmountExGst,
+  PO_RELEASE_CATEGORIES,
+} from './approvalMatrixService.js';
+
+export {
+  actOnPoValueApproval,
+  PO_RELEASE_CATEGORIES,
+  normalizePoReleaseCategory,
+};
 
 function todayYmd() {
   const d = new Date();
@@ -1038,6 +1051,7 @@ function mapPoStatusUI(status, acceptanceStatus, purchaseType) {
   const map = {
     draft: 'Draft',
     imported: 'Imported',
+    pending_value_approval: 'Pending Value Approval',
     pending_approval: 'Pending SCM Manager Sign',
     pending_buyer_verify: 'SCM Manager Signed — Buyer Verify',
     approved: `${doc} Approved`,
@@ -1864,6 +1878,60 @@ export async function buildPoPreviewForPo(user, poId, body) {
   );
 }
 
+function lineMatchKey(item = {}) {
+  const name = String(item.itemName || item.item_name || item.name || '').trim().toLowerCase();
+  const desc = String(item.description || '').trim().toLowerCase();
+  return name || desc || '';
+}
+
+/**
+ * Ensure sum of PO line qtys across active POs for this PR does not exceed PR line qty.
+ * Match by item name / description (case-insensitive).
+ */
+async function assertPrLineQtyNotExceeded(prId, incomingLineItems = [], excludePoId = null) {
+  const pr = await getPurchaseRequestById(prId);
+  if (!pr?.lineItems?.length) return;
+
+  const prQtyByKey = new Map();
+  for (const li of pr.lineItems) {
+    const key = lineMatchKey(li);
+    if (!key) continue;
+    prQtyByKey.set(key, (prQtyByKey.get(key) || 0) + (Number(li.quantity) || 0));
+  }
+  if (!prQtyByKey.size) return;
+
+  const [rows] = await pool.query(
+    `SELECT pli.item_name, pli.description, pli.quantity, po.id AS po_id
+     FROM po_line_items pli
+     JOIN purchase_orders po ON po.id = pli.po_id
+     WHERE po.pr_id = ?
+       AND po.status NOT IN ('cancelled', 'rejected')
+       ${excludePoId ? 'AND po.id <> ?' : ''}`,
+    excludePoId ? [prId, excludePoId] : [prId]
+  );
+
+  const used = new Map();
+  for (const r of rows || []) {
+    const key = lineMatchKey(r);
+    if (!key || !prQtyByKey.has(key)) continue;
+    used.set(key, (used.get(key) || 0) + (Number(r.quantity) || 0));
+  }
+  for (const item of incomingLineItems || []) {
+    const key = lineMatchKey(item);
+    if (!key || !prQtyByKey.has(key)) continue;
+    used.set(key, (used.get(key) || 0) + (Number(item.quantity) || 0));
+  }
+
+  for (const [key, usedQty] of used.entries()) {
+    const allowed = prQtyByKey.get(key) || 0;
+    if (usedQty > allowed + 0.0001) {
+      throw new Error(
+        `Quantity for "${key}" exceeds PR qty (${usedQty} > ${allowed}). Split POs without exceeding PR line quantity.`
+      );
+    }
+  }
+}
+
 export async function createPurchaseOrder(user, prId, body) {
   if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
     throw new Error('Only SCM Buyer or SCM Manager can create purchase orders');
@@ -1872,19 +1940,21 @@ export async function createPurchaseOrder(user, prId, body) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
 
+  // RMC: one or multiple POs per PR allowed. Reuse caller's draft if present.
   const [existingRows] = await pool.query(
     `SELECT id, status, created_by FROM purchase_orders
      WHERE pr_id = ?
-       AND status IN ('draft', 'pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
+       AND status IN ('draft', 'pending_value_approval', 'pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
      ORDER BY id DESC`,
     [prId]
   );
-  const existingNonDraft = existingRows.find((r) => String(r.status) !== 'draft');
-  if (existingNonDraft) throw new Error('A purchase order already exists for this PR');
 
-  // Save Draft / send-back revise → Send for Approval: promote draft to SCM Manager (Rajeev)
-  const existingDraft = existingRows.find((r) => String(r.status) === 'draft');
-  if (existingDraft) {
+  const existingDraft = existingRows.find((r) => {
+    if (String(r.status) !== 'draft') return false;
+    if (canEditAnyScmPurchaseOrder(user)) return true;
+    return Number(r.created_by) === Number(user.id);
+  });
+  if (existingDraft && !body?.forceNewPo) {
     if (
       user.role === 'SCM Buyer' &&
       Number(existingDraft.created_by) !== Number(user.id) &&
@@ -1956,6 +2026,8 @@ export async function createPurchaseOrder(user, prId, body) {
   if (!lineItems.length) throw new Error('At least one line item is required');
   if (!deliveryAddress?.trim()) throw new Error('Delivery address is required');
   if (!expectedDeliveryDate) throw new Error('Expected delivery date is required');
+
+  await assertPrLineQtyNotExceeded(prId, lineItems, null);
 
   const entityIdForNumber = Number(pr.entityId || body.entityId || 0);
   if (!entityIdForNumber) {
@@ -2038,10 +2110,18 @@ export async function createPurchaseOrder(user, prId, body) {
       );
     }
 
+    let routing = { status: initialStatus, skippedToSign: true };
     if (!skipApproval) {
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 2);
-      await insertScmManagerPoApprovalTask(conn, prId, dueDate.toISOString().split('T')[0], user.id);
+      const category =
+        normalizePoReleaseCategory(body.poReleaseCategory || body.po_release_category) ||
+        normalizePoReleaseCategory(pr.poReleaseCategory || pr.po_release_category, pr.requestType);
+      routing = await startPoApprovalRouting(conn, {
+        poId,
+        prId,
+        createdByUserId: user.id,
+        categoryCode: category,
+        amountExGst: poAmountExGst({ subtotal, tax_amount: taxAmount, grand_total: grandTotal }),
+      });
     }
 
     // Complete SCM Create PO step and mark PR as PO created
@@ -2068,7 +2148,9 @@ export async function createPurchaseOrder(user, prId, body) {
         user.id,
         skipApproval
           ? `Legacy/old PO ${poNumber} imported — created only (no approval workflow)`
-          : `PO ${poNumber} created and sent for SCM Manager approval`,
+          : routing.skippedToSign
+            ? `PO ${poNumber} created and sent for SCM Manager sign`
+            : `PO ${poNumber} created and sent for value approval before SCM sign`,
       ]
     );
 
@@ -2078,7 +2160,7 @@ export async function createPurchaseOrder(user, prId, body) {
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     po.pdfPath = fileName;
 
-    if (!skipApproval) {
+    if (!skipApproval && routing.skippedToSign) {
       const signer = await resolvePoSignRecipient(po);
       const attachments = await poPdfMailAttachment(po);
       queuePoWorkflowNotification(po, {
@@ -2093,6 +2175,23 @@ export async function createPurchaseOrder(user, prId, body) {
         ctaLabel: 'Open PO Approval',
         attachments,
       });
+    } else if (!skipApproval && !routing.skippedToSign) {
+      const emails = (routing.assignees || [])
+        .map((u) => String(u.email || '').trim().toLowerCase())
+        .filter(Boolean);
+      if (emails.length) {
+        queuePoWorkflowNotification(po, {
+          action: 'assign',
+          stageLabel: 'PO Value Approval',
+          recipientEmails: emails,
+          recipientName: routing.assignees?.[0]?.name || 'Value Approver',
+          actorName: user.name,
+          actorRole: user.role,
+          remarks: `PO ${poNumber} sent for value approval (L${routing.currentLevel}) before SCM sign`,
+          portalUrl: poPortalUrl('/tasks'),
+          ctaLabel: 'Open Tasks',
+        });
+      }
     }
 
     return po;
@@ -2312,6 +2411,21 @@ export async function createManualPurchaseOrder(user, body = {}) {
       );
     }
 
+    let routing = { status: initialStatus, skippedToSign: true };
+    if (!skipApproval) {
+      const category = normalizePoReleaseCategory(
+        body.poReleaseCategory || body.po_release_category,
+        body.requestType || body.request_type || ''
+      );
+      routing = await startPoApprovalRouting(conn, {
+        poId,
+        prId: null,
+        createdByUserId: user.id,
+        categoryCode: category,
+        amountExGst: poAmountExGst({ subtotal, tax_amount: taxAmount, grand_total: grandTotal }),
+      });
+    }
+
     await conn.commit();
 
     const [poRows] = await pool.query(`SELECT * FROM purchase_orders WHERE id = ?`, [poId]);
@@ -2323,7 +2437,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     await pool.query(`UPDATE purchase_orders SET pdf_path = ? WHERE id = ?`, [fileName, poId]);
     po.pdfPath = fileName;
 
-    if (!skipApproval) {
+    if (!skipApproval && routing.skippedToSign) {
       try {
         const signer = await resolvePoSignRecipient(po);
         const attachments = await poPdfMailAttachment(po);
@@ -2341,6 +2455,23 @@ export async function createManualPurchaseOrder(user, body = {}) {
         });
       } catch (err) {
         console.warn('Manual PO manager notify failed:', err.message);
+      }
+    } else if (!skipApproval && !routing.skippedToSign) {
+      const emails = (routing.assignees || [])
+        .map((u) => String(u.email || '').trim().toLowerCase())
+        .filter(Boolean);
+      if (emails.length) {
+        queuePoWorkflowNotification(po, {
+          action: 'assign',
+          stageLabel: 'PO Value Approval',
+          recipientEmails: emails,
+          recipientName: routing.assignees?.[0]?.name || 'Value Approver',
+          actorName: user.name,
+          actorRole: user.role,
+          remarks: `Manual ${poNumber} sent for value approval before SCM sign`,
+          portalUrl: poPortalUrl('/tasks'),
+          ctaLabel: 'Open Tasks',
+        });
       }
     }
 
@@ -2556,12 +2687,7 @@ export async function savePurchaseOrderDraft(user, body = {}) {
       throw new Error('You can only edit your own draft POs');
     }
   } else if (prId) {
-    const [active] = await pool.query(
-      `SELECT id FROM purchase_orders WHERE pr_id = ? AND status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor') LIMIT 1`,
-      [prId]
-    );
-    if (active.length) throw new Error('A purchase order already exists for this PR');
-
+    // RMC: allow multiple POs per PR (split vendors / partial lines). Reuse own draft if present.
     if (canEditAnyScmPurchaseOrder(user)) {
       const [draftRows] = await pool.query(
         `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
@@ -4486,17 +4612,7 @@ export async function retrieveCancelledPurchaseOrder(user, poId) {
         `A draft PO already exists for this PR (${otherDraft[0].po_number}). Open that draft instead.`
       );
     }
-    const [active] = await pool.query(
-      `SELECT id, po_number FROM purchase_orders
-       WHERE pr_id = ?
-         AND status IN ('pending_approval', 'pending_buyer_verify', 'approved', 'sent_to_vendor')
-         AND id <> ?
-       LIMIT 1`,
-      [row.pr_id, poId]
-    );
-    if (active.length) {
-      throw new Error(`An active PO already exists for this PR (${active[0].po_number}).`);
-    }
+    // RMC: multiple POs per PR allowed — do not block retrieve when another PO is in flight.
   }
 
   await pool.query(
@@ -4857,31 +4973,47 @@ export async function updatePurchaseOrder(user, poId, body) {
     }
 
     if (canBuyerRevise) {
-      await conn.query(
-        `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
-        [poId]
-      );
       if (existing.pr_id) {
+        await assertPrLineQtyNotExceeded(existing.pr_id, lineItems, poId);
         await conn.query(
           `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-           WHERE pr_id = ? AND task_type = 'PO_REVISION' AND assigned_role = 'SCM Buyer' AND status = 'pending'`,
-          [existing.pr_id]
+           WHERE pr_id = ? AND task_type IN ('PO_REVISION', 'PO_APPROVAL', 'PO_VALUE_APPROVAL')
+             AND status = 'pending'
+             AND (po_id IS NULL OR po_id = 0 OR po_id = ?)`,
+          [existing.pr_id, poId]
         );
-        // Drop any stale pending manager-sign tasks, then assign Rajeev
+        let category = normalizePoReleaseCategory(
+          body.poReleaseCategory || body.po_release_category || existing.po_release_category
+        );
+        if (!category) {
+          try {
+            const pr = await getPurchaseRequestById(existing.pr_id);
+            category = normalizePoReleaseCategory(
+              pr?.poReleaseCategory || pr?.po_release_category,
+              pr?.requestType
+            );
+          } catch {
+            category = '';
+          }
+        }
+        await startPoApprovalRouting(conn, {
+          poId,
+          prId: existing.pr_id,
+          createdByUserId: existing.created_by || user.id,
+          categoryCode: category,
+          amountExGst: poAmountExGst({
+            subtotal,
+            tax_amount: taxAmount,
+            grand_total: grandTotal,
+          }),
+        });
+      } else {
         await conn.query(
-          `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-           WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
-          [existing.pr_id]
+          `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
+          [poId]
         );
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + 2);
-        await insertScmManagerPoApprovalTask(
-          conn,
-          existing.pr_id,
-          dueDate.toISOString().split('T')[0],
-          existing.created_by
-        );
-      } else if (existing.manual_context_json) {
+      }
+      if (!existing.pr_id && existing.manual_context_json) {
         // Clear send-back marker on manual PO after resubmit to Rajeev
         try {
           const ctx =

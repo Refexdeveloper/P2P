@@ -163,6 +163,24 @@ function parseRequisitionExtras(body = {}, fallback = {}) {
     }
     return fallback[keys[0]] || '';
   };
+  const approvalModeRaw = String(
+    body.approvalMode ?? body.approval_mode ?? fallback.approvalMode ?? 'manual'
+  )
+    .trim()
+    .toLowerCase();
+  const tmPump =
+    body.tmPumpConversion ??
+    body.tm_pump_conversion ??
+    fallback.tmPumpConversion ??
+    false;
+  let poReleaseCategory = String(
+    body.poReleaseCategory ?? body.po_release_category ?? fallback.poReleaseCategory ?? ''
+  )
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+  const requestTypeHint = String(body.requestType || body.request_type || fallback.requestType || '');
+  if (String(requestTypeHint).toLowerCase() === 'capex') poReleaseCategory = 'CAPEX';
   return {
     deliveryPoc: pick(['deliveryPoc', 'pocForDelivery']),
     placeOfDelivery: pick(['placeOfDelivery'], 4000),
@@ -176,6 +194,9 @@ function parseRequisitionExtras(body = {}, fallback = {}) {
     projectManagerHo: pick(['projectManagerHo', 'project_manager_ho']),
     projectManagerContact: pick(['projectManagerContact', 'project_manager_contact']),
     projectManagerEmail: pick(['projectManagerEmail', 'project_manager_email']),
+    poReleaseCategory: poReleaseCategory || null,
+    approvalMode: approvalModeRaw === 'matrix' ? 'matrix' : 'manual',
+    tmPumpConversion: tmPump === true || tmPump === 1 || tmPump === '1' || tmPump === 'yes' ? 1 : 0,
   };
 }
 
@@ -786,6 +807,9 @@ async function enrichPR(row) {
     requestCategory: normalizeRequestCategory(row.request_category),
     projectDetail: row.project_detail || '',
     specialNotes: row.special_notes || '',
+    poReleaseCategory: row.po_release_category || '',
+    approvalMode: row.approval_mode === 'matrix' ? 'matrix' : 'manual',
+    tmPumpConversion: Boolean(Number(row.tm_pump_conversion)),
     vendorId: row.vendor_id || null,
     vendorName: row.vendor_name || '',
     vendorEmail: row.vendor_email || '',
@@ -1178,13 +1202,22 @@ function queuePrSubmitNotifications({
 }
 
 export async function listApprovalUsers(user) {
+  const { rmcTaggedUserSql, parseRmcTags } = await import('../utils/rmcUserTags.js');
+  const taggedSql = rmcTaggedUserSql('u');
+  // Prefer RIL_RMC / P2P_RMC tagged users only. If none tagged yet, fall back to all
+  // active users so local/UAT is not blocked before Admin tags the lists.
+  const [taggedCountRows] = await pool.query(
+    `SELECT COUNT(*) AS c FROM users u WHERE u.is_active = 1 AND ${taggedSql}`
+  );
+  const hasTagged = Number(taggedCountRows[0]?.c || 0) > 0;
   const [rows] = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, d.name AS department
+    `SELECT u.id, u.name, u.email, u.role, u.rmc_tags, d.name AS department
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id
      WHERE u.is_active = 1
        AND u.role <> 'Super Admin'
        AND u.id <> ?
+       ${hasTagged ? `AND ${taggedSql}` : ''}
      ORDER BY u.name ASC, u.email ASC`,
     [user.id]
   );
@@ -1194,6 +1227,7 @@ export async function listApprovalUsers(user) {
     email: r.email,
     role: r.role,
     department: r.department || '',
+    rmcTags: parseRmcTags(r.rmc_tags),
   }));
 }
 
@@ -1405,8 +1439,9 @@ export async function createPurchaseRequest(user, body) {
           billing_location_id, billing_location, billing_gst_no, billing_address, delivery_poc, place_of_delivery, expected_delivery_timeline, payment_terms,
           request_category, project_detail, special_notes,
           delivery_poc_email, delivery_poc_phone, project_manager_ho, project_manager_contact, project_manager_email,
-          vendor_id, vendor_name, vendor_email)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          vendor_id, vendor_name, vendor_email,
+          po_release_category, approval_mode, tm_pump_conversion)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             number,
             prTitle,
@@ -1446,6 +1481,9 @@ export async function createPurchaseRequest(user, body) {
             sassVendor?.vendorId || null,
             sassVendor?.vendorName || null,
             sassVendor?.vendorEmail || null,
+            extras.poReleaseCategory || null,
+            extras.approvalMode || 'manual',
+            extras.tmPumpConversion || 0,
           ]
         );
         return res;
@@ -3540,6 +3578,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
            request_category = ?, project_detail = ?, special_notes = ?,
            delivery_poc_email = ?, delivery_poc_phone = ?,
            project_manager_ho = ?, project_manager_contact = ?, project_manager_email = ?,
+           po_release_category = ?, approval_mode = ?, tm_pump_conversion = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -3573,6 +3612,9 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
         extras.projectManagerHo || null,
         extras.projectManagerContact || null,
         extras.projectManagerEmail || null,
+        extras.poReleaseCategory || null,
+        extras.approvalMode || 'manual',
+        extras.tmPumpConversion || 0,
         prId,
       ]
     );
@@ -3841,6 +3883,7 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
            request_category = ?, project_detail = ?, special_notes = ?,
            delivery_poc_email = ?, delivery_poc_phone = ?,
            project_manager_ho = ?, project_manager_contact = ?, project_manager_email = ?,
+           po_release_category = ?, approval_mode = ?, tm_pump_conversion = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -3874,6 +3917,9 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         extras.projectManagerHo || null,
         extras.projectManagerContact || null,
         extras.projectManagerEmail || null,
+        extras.poReleaseCategory || null,
+        extras.approvalMode || 'manual',
+        extras.tmPumpConversion || 0,
         prId,
       ]
     );
@@ -4818,6 +4864,78 @@ export async function listTasks(user) {
         isPostRfq: false,
         isPoRevise: true,
         actionPath: `/scm/create-po?poId=${row.po_id}`,
+      });
+    }
+  }
+
+  // RMC: PO value approval (before SCM sign) — CFO / Business Head / assigned users
+  if (['CFO', 'Business Head', 'Super Admin'].includes(user.role) || userEmail) {
+    const [valueRows] = await pool.query(
+      `SELECT po.id AS po_id, po.po_number, po.grand_total, po.subtotal, po.tax_amount,
+              po.pr_id, po.updated_at, po.po_release_category, po.value_approval_level,
+              po.matrix_amount_ex_gst,
+              COALESCE(NULLIF(TRIM(pr.title), ''), po.vendor_name, po.po_number) AS title,
+              COALESCE(pr.priority, 'MEDIUM') AS priority,
+              COALESCE(d.name, '') AS department_name,
+              COALESCE(u.name, 'SCM Buyer') AS requester_name,
+              wt.id AS task_id, wt.created_at AS task_created_at, wt.due_date,
+              e.id AS entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM purchase_orders po
+       LEFT JOIN purchase_requests pr ON pr.id = po.pr_id
+       LEFT JOIN departments d ON d.id = pr.department_id
+       LEFT JOIN users u ON u.id = COALESCE(pr.requester_id, po.created_by)
+       LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)
+       INNER JOIN workflow_tasks wt ON wt.po_id = po.id
+         AND wt.task_type = 'PO_VALUE_APPROVAL' AND wt.status = 'pending'
+       WHERE po.status = 'pending_value_approval'
+         AND (
+           wt.assigned_user_id = ?
+           OR (? = 1)
+           OR (
+             wt.assigned_user_id IS NULL
+             AND wt.assigned_role = ?
+           )
+         )
+       ORDER BY po.updated_at DESC`,
+      [user.id, user.role === 'Super Admin' ? 1 : 0, user.role]
+    );
+    const seenPo = new Set();
+    for (const row of valueRows) {
+      if (seenPo.has(row.po_id)) continue;
+      seenPo.add(row.po_id);
+      const sla = buildPoTaskSlaFields(row.task_created_at, row.due_date, APPROVAL_SLA_HOURS * 2);
+      const amount =
+        row.matrix_amount_ex_gst != null
+          ? Number(row.matrix_amount_ex_gst)
+          : Number(row.subtotal) || Number(row.grand_total) - Number(row.tax_amount || 0);
+      tasks.push({
+        id: `po-value-${row.po_id}`,
+        taskId: row.task_id,
+        poId: row.po_id,
+        prId: row.pr_id || null,
+        prNumber: row.po_number,
+        title: `${row.title} — Value Approval L${row.value_approval_level || 1}`,
+        requester: row.requester_name,
+        department: row.department_name || '—',
+        entityId: row.entity_id || null,
+        entityName: row.entity_name || '',
+        entityCode: row.entity_code || '',
+        totalAmount: amount,
+        priority: mapPriorityToFrontend(row.priority),
+        status: 'pending_approval',
+        statusUI: `Pending Value Approval L${row.value_approval_level || 1}`,
+        submittedDate: sla.submittedDate,
+        dueDate: sla.dueDate,
+        slaRemaining: sla.slaRemaining,
+        isOverdue: sla.isOverdue,
+        lineItems: 0,
+        requestType: 'PO',
+        requesterRole: 'SCM Buyer',
+        requesterAvatar: 'V',
+        justification: `Category ${row.po_release_category || '—'} — approve amount ex-GST before SCM sign`,
+        isPostRfq: false,
+        isPoValueApproval: true,
+        actionPath: '/tasks',
       });
     }
   }
