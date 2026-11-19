@@ -3963,7 +3963,7 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
           } catch (err) {
             console.warn('PR/FSD attachments for RFQ Entry mail skipped:', err.message);
           }
-          voidPrApprovalPendingNotification(
+          queuePrApprovalPendingNotification(
             updatedPr,
             'Requester',
             rfqEntryTo,

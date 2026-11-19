@@ -1,5 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { DepartmentRecord, EntityRecord } from '../../../services/api';
+import {
+  downloadJoinerExcelTemplate,
+  isJoinerExcelFile,
+  parseJoinerExcelFile,
+} from '../../../utils/joinerExcelImport';
 import SearchCreateField from './SearchCreateField';
 
 export type JoinerRow = {
@@ -88,6 +93,10 @@ export default function NewJoinersLaptopSection({
   const [bulkFrom, setBulkFrom] = useState(1);
   const [bulkTo, setBulkTo] = useState(1);
   const [bulkRequesterId, setBulkRequesterId] = useState<number | ''>('');
+  const excelInputRef = useRef<HTMLInputElement>(null);
+  const [excelParsing, setExcelParsing] = useState(false);
+  const [excelError, setExcelError] = useState('');
+  const [excelInfo, setExcelInfo] = useState('');
 
   const entityLabel = (ent: EntityRecord) =>
     formatEntityLabel
@@ -201,6 +210,47 @@ export default function NewJoinersLaptopSection({
     onChange(rows.filter((_, i) => i !== index));
   };
 
+  const handleExcelUpload = async (file: File | null) => {
+    setExcelError('');
+    setExcelInfo('');
+    if (!file) return;
+    if (!isJoinerExcelFile(file)) {
+      setExcelError('Please upload an Excel (.xlsx / .xls) or CSV (.csv) file');
+      return;
+    }
+    setExcelParsing(true);
+    try {
+      const parsed = await parseJoinerExcelFile(file);
+      if (!parsed.length) {
+        setExcelError('No joiner rows found in the file. Check the header row and data.');
+        return;
+      }
+      // Company + Reporting Head stay blank for HR to pick in UI (not from Excel).
+      // If PR entity is already selected, seed Company from Entity Master only.
+      const selectedEnt = entityId ? entities.find((e) => e.id === entityId) || null : null;
+      const seedCompany = selectedEnt ? entityCompanyValue(selectedEnt) : '';
+      const next: JoinerRow[] = parsed.map((row) => ({
+        ...row,
+        company: seedCompany,
+        reportingHead: '',
+        reportingHeadEmail: '',
+        reportingHeadName: '',
+        reportingHeadUserId: null,
+      }));
+      onChange(next);
+      setBulkFrom(1);
+      setBulkTo(next.length);
+      setExcelInfo(
+        `Loaded ${next.length} joiner row${next.length === 1 ? '' : 's'} from ${file.name}. Select Company and Reporting Head in the table.`
+      );
+    } catch (err) {
+      setExcelError(err instanceof Error ? err.message : 'Could not read the Excel file');
+    } finally {
+      setExcelParsing(false);
+      if (excelInputRef.current) excelInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="sm:col-span-2 space-y-3">
       {errors.entityId ? (
@@ -216,6 +266,48 @@ export default function NewJoinersLaptopSection({
           No entities in Entity Master — Company dropdown will be empty until entities are added.
         </p>
       ) : null}
+
+      <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-sky-950">Upload Excel to fill table</p>
+            <p className="text-xs text-sky-800/90">
+              Uses RIL New Joinee columns: HR Updated Date, Joining Date, First/Last Name, Mobile,
+              Designation, Department, Location, HR Name, On Rolls / Contract, Email ID, Laptop /
+              Desktop. Company and Reporting Head are not taken from Excel — select them in the table.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => downloadJoinerExcelTemplate()}
+              className="inline-flex h-10 items-center rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-900 hover:bg-sky-50"
+            >
+              Download template
+            </button>
+            <button
+              type="button"
+              disabled={excelParsing}
+              onClick={() => excelInputRef.current?.click()}
+              className="inline-flex h-10 items-center rounded-lg bg-sky-700 px-3 text-xs font-semibold text-white hover:bg-sky-800 disabled:opacity-60"
+            >
+              {excelParsing ? 'Reading…' : 'Upload Excel'}
+            </button>
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0] || null;
+                void handleExcelUpload(f);
+              }}
+            />
+          </div>
+        </div>
+        {excelError ? <p className="text-sm text-red-600">{excelError}</p> : null}
+        {excelInfo ? <p className="text-sm text-emerald-700">{excelInfo}</p> : null}
+      </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-3 space-y-2">
         <p className="text-xs text-emerald-900">

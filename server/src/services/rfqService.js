@@ -2749,7 +2749,18 @@ export async function queuePostQuotationApprovalMail(pr, assignedRole, options =
   }
 
   const prId = pr?.id || pr?.prId;
-  const pack = prId ? await getRfqEmailPack(prId) : { rfqSummary: null, attachments: [] };
+  let pack = { rfqSummary: null, attachments: [] };
+  if (prId) {
+    try {
+      pack = await getRfqEmailPack(prId);
+    } catch (err) {
+      // Never block step mail if quotation pack fails (SCM Buyer still needs Create PO / RFQ mail)
+      console.warn(
+        `RFQ email pack failed for PR ${pr?.prNumber || prId} → ${assignedRole}:`,
+        err.message
+      );
+    }
+  }
   const namedFiles = [];
   for (const vendor of pack.rfqSummary?.vendors || []) {
     for (const round of vendor.rounds || []) {
@@ -2767,8 +2778,18 @@ export async function queuePostQuotationApprovalMail(pr, assignedRole, options =
 
   let approverEmails = [...(options.approverEmails || [])].map((e) => String(e || '').trim()).filter(Boolean);
   if (assignedRole === 'SCM Buyer') {
-    const buyers = await getScmBuyerNotifyEmails();
-    approverEmails = [...new Set([...approverEmails, ...buyers])];
+    try {
+      const buyers = await getScmBuyerNotifyEmails();
+      approverEmails = [...new Set([...approverEmails, ...buyers])];
+    } catch (err) {
+      console.warn('getScmBuyerNotifyEmails failed:', err.message);
+    }
+  }
+
+  if (!approverEmails.length && assignedRole === 'SCM Buyer') {
+    console.warn(
+      `No SCM Buyer emails resolved for PR ${pr?.prNumber || prId} — step mail may be skipped`
+    );
   }
 
   queuePrApprovalPendingNotification(
@@ -3845,6 +3866,17 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
         );
         if (roleUser?.email) {
           nextAssignee = { email: roleUser.email, name: roleUser.name, userId: roleUser.id };
+        } else if (nextRole === 'SCM Buyer') {
+          // Ensure Create PO / buyer step mail has buyer addresses even when role-queued
+          const buyerEmails = await getScmBuyerNotifyEmails(conn);
+          if (buyerEmails.length) {
+            nextAssignee = {
+              email: buyerEmails.join(', '),
+              name: 'SCM Buyer',
+              userId: null,
+              emails: buyerEmails,
+            };
+          }
         }
       }
     }
@@ -3885,13 +3917,21 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
     } else if (nextRole && action === 'approve') {
       const nextCfg = POST_RFQ_ROLE_MAP[nextRole];
       const nextLabel = nextCfg?.label || (nextRole === 'SCM Buyer' ? 'SCM PO Create' : nextRole);
+      const nextApproverEmails = Array.isArray(nextAssignee?.emails)
+        ? nextAssignee.emails
+        : nextAssignee?.email
+          ? String(nextAssignee.email)
+              .split(/[,;]+/)
+              .map((e) => e.trim())
+              .filter(Boolean)
+          : undefined;
       // L2 / CFO / SCM Buyer (and SCM Manager → Create PO) get negotiation + quotation files
       await queuePostQuotationApprovalMail(updatedPr, nextRole, {
         requester,
         postRfq: true,
         createPo: nextRole === 'SCM Buyer',
         stageLabel: nextLabel,
-        approverEmails: nextAssignee?.email ? [nextAssignee.email] : undefined,
+        approverEmails: nextApproverEmails,
         approverName: nextAssignee?.name || (nextRole === 'SCM Buyer' ? 'SCM Buyer' : undefined),
         // Create PO mail: buyers only — do not CC SCM Manager (Rajeev)
         ccEmails: nextRole === 'SCM Buyer' ? [] : undefined,
