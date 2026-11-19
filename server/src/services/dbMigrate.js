@@ -817,6 +817,27 @@ export async function runStartupMigrations() {
 
   try {
     const {
+      healMisroutedNewJoinersLaptopPrs,
+      healNewJoinersLaptopLineItems,
+    } = await import('./newJoinersLaptopWorkflow.js');
+    const njlHeal = await healMisroutedNewJoinersLaptopPrs();
+    if (njlHeal.healed) {
+      console.log(
+        `New Joiners Laptop heal: scanned=${njlHeal.scanned}, healed=${njlHeal.healed} → Mugesh approval`
+      );
+    }
+    const lineHeal = await healNewJoinersLaptopLineItems();
+    if (lineHeal.healed) {
+      console.log(
+        `New Joiners Laptop lines: scanned=${lineHeal.scanned}, healed=${lineHeal.healed} → Laptop × qty`
+      );
+    }
+  } catch (err) {
+    console.warn('New Joiners Laptop heal skipped:', err.message);
+  }
+
+  try {
+    const {
       rewriteConsumedCloudSubscriptionPoNumbers,
       rerouteMugeshRequesterSassToInvoiceUpload,
       clearStaleSassPrApprovalTasks,

@@ -120,8 +120,8 @@ export function tempDraftPoNumber(userId) {
  */
 async function maxExistingDocumentSeq(docType, entityCode, fyLabel, connection = pool) {
   const type = String(docType || '').toUpperCase();
-  const prefix = `${type}-${entityCode}-${fyLabel}-`;
-  if (type === 'PR') {
+  const prefix = likePrefixForDocType(type, entityCode, fyLabel);
+  if (type === 'PR' || type === 'NJL') {
     const [rows] = await connection.query(
       `SELECT MAX(CAST(SUBSTRING_INDEX(pr_number, '-', -1) AS UNSIGNED)) AS max_seq
        FROM purchase_requests
@@ -144,17 +144,48 @@ async function maxExistingDocumentSeq(docType, entityCode, fyLabel, connection =
 }
 
 /**
- * Assign official PR-{ENTITY}-{FY}-{seq} when a draft is submitted.
+ * Sequence / LIKE prefix key for document_number_sequences.doc_type.
+ * New Joiners Laptop PRs use NJL → printed as PR-NJL-{ENTITY}-{FY}-{seq}.
+ */
+export function resolveDocTypeKey(docType, purchaseType = null) {
+  const raw = String(docType || '').toUpperCase();
+  if (raw === 'PO' || raw === 'WO' || raw === 'OP') return raw;
+  if (raw === 'PRNJL' || raw === 'PR-NJL' || raw === 'NJL') return 'NJL';
+  if (raw === 'PR' && normalizePurchaseType(purchaseType) === 'new_joiners_laptop') return 'NJL';
+  return 'PR';
+}
+
+function formatDocumentNumber(typeKey, entityCode, fyLabel, seq) {
+  const n = String(seq).padStart(4, '0');
+  if (typeKey === 'NJL') return `PR-NJL-${entityCode}-${fyLabel}-${n}`;
+  return `${typeKey}-${entityCode}-${fyLabel}-${n}`;
+}
+
+function likePrefixForDocType(typeKey, entityCode, fyLabel) {
+  if (typeKey === 'NJL') return `PR-NJL-${entityCode}-${fyLabel}-`;
+  return `${typeKey}-${entityCode}-${fyLabel}-`;
+}
+
+/**
+ * Assign official PR-{ENTITY}-{FY}-{seq} (or PR-NJL-… for New Joiners) when a draft is submitted.
  * No-op if the PR already has a real number (e.g. returned for rework).
  */
-export async function assignOfficialPrNumberIfNeeded(prId, entityId, currentPrNumber, connection = pool) {
+export async function assignOfficialPrNumberIfNeeded(
+  prId,
+  entityId,
+  currentPrNumber,
+  connection = pool,
+  purchaseType = null
+) {
   if (!isDraftPlaceholderPrNumber(currentPrNumber)) {
     return String(currentPrNumber || '');
   }
 
   let lastErr;
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const prNumber = await nextDocumentNumber('PR', Number(entityId), connection);
+    const prNumber = await nextDocumentNumber('PR', Number(entityId), connection, {
+      purchaseType,
+    });
     try {
       await connection.query(`UPDATE purchase_requests SET pr_number = ? WHERE id = ?`, [prNumber, prId]);
       return prNumber;
@@ -172,14 +203,11 @@ export async function assignOfficialPrNumberIfNeeded(prId, entityId, currentPrNu
 
 /**
  * Atomically increments and returns next number:
- * PR-RGML-2025-26-0001 / PO-RGML-2025-26-0001 / WO-RGML-2025-26-0001
- * PO and WO sequences increment separately per entity + FY.
+ * PR-RGML-2025-26-0001 / PR-NJL-RGML-2025-26-0001 / PO-… / WO-…
  * Sequence is floored to max(existing documents) so submit never reuses a number.
  */
-export async function nextDocumentNumber(docType, entityId, connection = pool) {
-  const raw = String(docType || '').toUpperCase();
-  const type =
-    raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : raw === 'OP' ? 'OP' : 'PR';
+export async function nextDocumentNumber(docType, entityId, connection = pool, options = {}) {
+  const type = resolveDocTypeKey(docType, options?.purchaseType);
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
   const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);
@@ -198,18 +226,16 @@ export async function nextDocumentNumber(docType, entityId, connection = pool) {
     [type, entity.id, fyLabel]
   );
 
-  const seq = String(Number(rows[0]?.last_seq || maxExisting + 1)).padStart(4, '0');
-  return `${type}-${entity.code}-${fyLabel}-${seq}`;
+  const seq = Number(rows[0]?.last_seq || maxExisting + 1);
+  return formatDocumentNumber(type, entity.code, fyLabel, seq);
 }
 
 /**
  * Preview next number without consuming the sequence (UI only).
  * Actual assignment still happens on save via nextDocumentNumber.
  */
-export async function peekNextDocumentNumber(docType, entityId, connection = pool) {
-  const raw = String(docType || '').toUpperCase();
-  const type =
-    raw === 'PO' ? 'PO' : raw === 'WO' ? 'WO' : raw === 'OP' ? 'OP' : 'PR';
+export async function peekNextDocumentNumber(docType, entityId, connection = pool, options = {}) {
+  const type = resolveDocTypeKey(docType, options?.purchaseType);
   const entity = await resolveEntityForNumbering(entityId, connection);
   const fyLabel = getIndianFinancialYearLabel();
   const maxExisting = await maxExistingDocumentSeq(type, entity.code, fyLabel, connection);
@@ -221,5 +247,5 @@ export async function peekNextDocumentNumber(docType, entityId, connection = poo
   );
   const lastSeq = Number(rows[0]?.last_seq) || 0;
   const nextSeq = Math.max(lastSeq, maxExisting) + 1;
-  return `${type}-${entity.code}-${fyLabel}-${String(nextSeq).padStart(4, '0')}`;
+  return formatDocumentNumber(type, entity.code, fyLabel, nextSeq);
 }

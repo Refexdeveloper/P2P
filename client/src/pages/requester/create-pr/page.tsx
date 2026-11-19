@@ -204,6 +204,11 @@ export default function CreatePRPage() {
   const wantFreshStart = !editPrId && searchParams.get('new') === '1';
   const freshHandledRef = useRef(false);
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
+  /** HR login Create PR is always New Joiners Laptop — hide standard fields for this role only. */
+  const isHrLogin =
+    String(user?.role || '') === 'HR' ||
+    /^hr$/i.test(String(user?.role || '')) ||
+    /\bhr\b/i.test(String(user?.name || ''));
   const [activeTab, setActiveTab] = useState<CreatePrTab>('basic');
 
   const [prNumber, setPrNumber] = useState(isEditMode ? '' : 'Auto on save');
@@ -218,7 +223,7 @@ export default function CreatePRPage() {
   const [specialNotes, setSpecialNotes] = useState('');
   const [purchaseType, setPurchaseType] = useState<
     'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop'
-  >('purchase_order');
+  >(isHrLogin ? 'new_joiners_laptop' : 'purchase_order');
   const [sassSubscriptionMode, setSassSubscriptionMode] = useState<'one_time' | 'recurring' | null>(
     null
   );
@@ -234,10 +239,8 @@ export default function CreatePRPage() {
     'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop'
   >('purchase_order');
   const [joinerDetails, setJoinerDetails] = useState<JoinerRow[]>([EMPTY_JOINER_ROW()]);
-  const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>('scm');
+  const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>(isHrLogin ? 'own' : 'scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
-  /** HR login Create PR is always New Joiners Laptop — hide standard fields for this role only. */
-  const isHrLogin = String(user?.role || '') === 'HR';
   const isNewJoinersLaptop = isHrLogin || purchaseType === 'new_joiners_laptop';
   const [poCreationBy, setPoCreationBy] = useState<'scm' | 'requester'>('scm');
   const [approvalUserIds, setApprovalUserIds] = useState<number[]>([]);
@@ -394,11 +397,20 @@ export default function CreatePRPage() {
     Number(prRequesterId) === Number(user?.id);
   /** Admin editing any PR (including in-flight) — save via admin API, all fields unlocked */
   const isAdminEditFlow = isEditMode && isAdminEditor && !isOwnDraftEdit;
+  /** HR may edit New Joiners roster anytime after Mugesh / RFQ — Save Changes only (no resubmit). */
+  const isHrNewJoinersAnytimeEdit =
+    isEditMode &&
+    isHrLogin &&
+    isNewJoinersLaptop &&
+    !isOwnDraftEdit &&
+    !isReturned &&
+    String(prStatus).toUpperCase() !== 'REJECTED';
   const isPendingEditFlow =
     isEditMode &&
     !isAdminEditFlow &&
     !isReturned &&
-    ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(prStatus);
+    (['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(prStatus) ||
+      isHrNewJoinersAnytimeEdit);
   const isResubmitFlow = isEditMode && isReturned && !isAdminEditFlow;
   const backTo = isAdminEditFlow || isEditMode ? '/requester/track-pr' : '/requester/dashboard';
   const persistPrId = editPrId || savedDraftId;
@@ -489,6 +501,101 @@ export default function CreatePRPage() {
 
   const restoredKeyRef = useRef('');
 
+  const mapJoinerRowsFromApi = (raw: unknown): JoinerRow[] => {
+    if (!Array.isArray(raw) || !raw.length) return [EMPTY_JOINER_ROW()];
+    return raw.map((row) => {
+      const r = (row || {}) as Record<string, unknown>;
+      return {
+        ...EMPTY_JOINER_ROW(),
+        hrUpdatedDate: String(r.hrUpdatedDate || r.hr_updated_date || '').slice(0, 10),
+        joiningDate: String(r.joiningDate || r.joining_date || '').slice(0, 10),
+        firstName: String(r.firstName || r.first_name || '').trim(),
+        lastName: String(r.lastName || r.last_name || '').trim(),
+        mobileNumber: String(r.mobileNumber || r.mobile_number || r.mobile || '').trim(),
+        designation: String(r.designation || '').trim(),
+        department: String(r.department || '').trim(),
+        company: String(r.company || '').trim(),
+        location: String(r.location || '').trim(),
+        address: String(r.address || r.fullAddress || r.full_address || '').trim(),
+        hrName: String(r.hrName || r.hr_name || r.createdByName || '').trim(),
+        reportingHead: String(
+          r.reportingHead || r.reporting_head || r.reportingHeadEmail || ''
+        ).trim(),
+        reportingHeadUserId: Number(r.reportingHeadUserId || r.reporting_head_user_id || 0) || null,
+        reportingHeadName: String(r.reportingHeadName || r.reporting_head_name || '').trim(),
+        reportingHeadEmail: String(r.reportingHeadEmail || r.reporting_head_email || '').trim(),
+        onRollsOrContract: String(
+          r.onRollsOrContract || r.on_rolls_or_contract || 'On Rolls'
+        ).trim(),
+        emailRequired: String(r.emailRequired || r.email_id || r.emailId || 'Yes').trim(),
+        deviceTypes: (() => {
+          const normalizeOne = (raw: string) => {
+            const d = String(raw || '').trim();
+            if (/desk\s*top|desktop/i.test(d)) return 'Desktop';
+            if (/smart\s*phone|smartphone|mobile\s*phone|\btab\b|tablet/i.test(d)) {
+              return 'Smartphone / Tab';
+            }
+            if (/laptop/i.test(d)) return 'Laptop';
+            return d || 'Laptop';
+          };
+          const fromArr = Array.isArray(r.deviceTypes)
+            ? r.deviceTypes
+            : Array.isArray(r.deviceType)
+              ? r.deviceType
+              : null;
+          if (fromArr?.length) {
+            return [...new Set(fromArr.map((x) => normalizeOne(String(x))))];
+          }
+          const single = String(r.deviceType || r.laptop_desktop || 'Laptop').trim() || 'Laptop';
+          if (single.includes(',')) {
+            return [...new Set(single.split(/[,|;]+/).map((x) => normalizeOne(x)))];
+          }
+          return [normalizeOne(single)];
+        })(),
+        deviceType: (() => {
+          const normalizeOne = (raw: string) => {
+            const d = String(raw || '').trim();
+            if (/desk\s*top|desktop/i.test(d)) return 'Desktop';
+            if (/smart\s*phone|smartphone|mobile\s*phone|\btab\b|tablet/i.test(d)) {
+              return 'Smartphone / Tab';
+            }
+            if (/laptop/i.test(d)) return 'Laptop';
+            return d || 'Laptop';
+          };
+          const fromArr = Array.isArray(r.deviceTypes)
+            ? r.deviceTypes
+            : Array.isArray(r.deviceType)
+              ? r.deviceType
+              : null;
+          if (fromArr?.length) return normalizeOne(String(fromArr[0]));
+          const single = String(r.deviceType || r.laptop_desktop || 'Laptop').trim() || 'Laptop';
+          return normalizeOne(single.split(/[,|;]+/)[0] || 'Laptop');
+        })(),
+        linkedRequesterId: Number(r.linkedRequesterId || r.linked_requester_id || 0) || null,
+      };
+    });
+  };
+
+  const normalizeLoadedPurchaseType = (
+    raw: unknown
+  ): 'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop' => {
+    const t = String(raw || '')
+      .toLowerCase()
+      .replace(/[\s-]+/g, '_');
+    if (t === 'work_order') return 'work_order';
+    if (t === 'sass' || t === 'saas' || t === 'cloud_subscription') return 'sass';
+    if (t === 'online_purchase' || t === 'op') return 'online_purchase';
+    if (
+      t === 'new_joiners_laptop' ||
+      t === 'new_joiner_laptop' ||
+      t === 'newjoinerslaptop' ||
+      t === 'njl'
+    ) {
+      return 'new_joiners_laptop';
+    }
+    return 'purchase_order';
+  };
+
   const applyDraftSnapshot = (draft: CreatePrDraftSnapshot, options?: { preserveRicherLineItems?: boolean }) => {
     const preserveRicher = options?.preserveRicherLineItems !== false;
     setPrTitle(draft.prTitle || '');
@@ -498,15 +605,8 @@ export default function CreatePRPage() {
     setRequestCategory(normalizeRequestCategory(draft.requestCategory) || 'Product');
     setProjectDetail(draft.projectDetail || '');
     setSpecialNotes(draft.specialNotes || '');
-    setPurchaseType(
-      draft.purchaseType === 'work_order'
-        ? 'work_order'
-        : draft.purchaseType === 'sass'
-          ? 'sass'
-          : draft.purchaseType === 'online_purchase'
-            ? 'online_purchase'
-            : 'purchase_order'
-    );
+    const draftPurchaseType = normalizeLoadedPurchaseType(draft.purchaseType);
+    setPurchaseType(isHrLogin ? 'new_joiners_laptop' : draftPurchaseType);
     setSassSubscriptionMode(
       draft.sassSubscriptionMode === 'recurring'
         ? 'recurring'
@@ -651,6 +751,13 @@ export default function CreatePRPage() {
       if (!persisted.length) return prev;
       return mergeAttachedFiles(prev, persisted);
     });
+    if (Array.isArray(draft.joinerDetails)) {
+      const mapped = mapJoinerRowsFromApi(draft.joinerDetails);
+      const hasNames = mapped.some((j) => j.firstName.trim());
+      if (hasNames || draftPurchaseType === 'new_joiners_laptop' || isHrLogin) {
+        setJoinerDetails(hasNames ? mapped : [EMPTY_JOINER_ROW()]);
+      }
+    }
     if (draft.prNumber) setPrNumber(draft.prNumber);
   };
 
@@ -758,7 +865,7 @@ export default function CreatePRPage() {
           vendorEmail?: string;
           status: string;
           requesterId?: number;
-          requesterId?: number;
+          joinerDetails?: unknown[];
           lineItems: { id?: number; description: string; quantity: number; unitCost: number; category: string; unit?: string; gstPercentage?: number }[];
           approvalHistory?: { stage: string; user: string; role: string; date: string; status: string; remarks: string }[];
           attachments?: PrAttachmentRecord[];
@@ -767,25 +874,12 @@ export default function CreatePRPage() {
         setPrTitle(pr.title || '');
         setDepartment(pr.department || '');
         setEntityId(pr.entityId ? Number(pr.entityId) : '');
-        const loadedPurchaseType =
-          pr.purchaseType === 'work_order' || pr.purchaseType === 'Work Order'
-            ? 'work_order'
-            : pr.purchaseType === 'sass' ||
-                pr.purchaseType === 'SASS' ||
-                pr.purchaseType === 'SAAS' ||
-                pr.purchaseType === 'saas' ||
-                String(pr.purchaseType || '')
-                  .toLowerCase()
-                  .replace(/[\s-]+/g, '_') === 'cloud_subscription'
-              ? 'sass'
-              : String(pr.purchaseType || '')
-                    .toLowerCase()
-                    .replace(/[\s-]+/g, '_') === 'online_purchase' ||
-                  String(pr.purchaseType || '')
-                    .toLowerCase()
-                    .replace(/[\s-]+/g, '_') === 'op'
-                ? 'online_purchase'
-                : 'purchase_order';
+        const titleLooksNjl = /new\s*joiners?\s*laptop/i.test(String(pr.title || ''));
+        const loadedPurchaseType = isHrLogin
+          ? 'new_joiners_laptop'
+          : titleLooksNjl
+            ? 'new_joiners_laptop'
+            : normalizeLoadedPurchaseType(pr.purchaseType);
         setPurchaseType(loadedPurchaseType);
         if (loadedPurchaseType === 'sass') {
           const mode =
@@ -829,12 +923,28 @@ export default function CreatePRPage() {
         setProjectDetail(pr.projectDetail || '');
         setSpecialNotes(pr.specialNotes || '');
         setVendorSelection(
-          loadedPurchaseType === 'sass' || pr.vendorSelection === 'own' ? 'own' : 'scm'
+          loadedPurchaseType === 'sass' ||
+            loadedPurchaseType === 'new_joiners_laptop' ||
+            pr.vendorSelection === 'own'
+            ? 'own'
+            : 'scm'
         );
-        setPrFlow(pr.prFlow === 'functional' ? 'functional' : 'standard');
+        setPrFlow(
+          loadedPurchaseType === 'new_joiners_laptop'
+            ? 'standard'
+            : pr.prFlow === 'functional'
+              ? 'functional'
+              : 'standard'
+        );
         setPoCreationBy(
           (pr as { poCreationBy?: string }).poCreationBy === 'requester' ? 'requester' : 'scm'
         );
+        if (loadedPurchaseType === 'new_joiners_laptop' || Array.isArray(pr.joinerDetails)) {
+          const mappedJoiners = mapJoinerRowsFromApi(pr.joinerDetails);
+          setJoinerDetails(
+            mappedJoiners.some((j) => j.firstName.trim()) ? mappedJoiners : [EMPTY_JOINER_ROW()]
+          );
+        }
         setApprovalUserIds(
           Array.isArray(pr.approvalUserIds) && pr.approvalUserIds.length
             ? pr.approvalUserIds.map((id) => Number(id)).filter((id) => id > 0)
@@ -933,12 +1043,25 @@ export default function CreatePRPage() {
         // Prefer newer local auto-draft (justification / address) over stale server — line items already merged above.
         const local = readCreatePrDraft(user?.id, editPrId);
         if (local && hasMeaningfulCreatePrDraft(local)) {
+          const serverJoinerCount = Array.isArray(pr.joinerDetails)
+            ? pr.joinerDetails.filter((j) =>
+                String((j as { firstName?: string }).firstName || '').trim()
+              ).length
+            : 0;
+          const localJoinerCount = Array.isArray(local.joinerDetails)
+            ? local.joinerDetails.filter((j) => String(j?.firstName || '').trim()).length
+            : 0;
           const serverScore =
             (pr.lineItems?.length || 0) * 10 +
+            serverJoinerCount * 12 +
             (pr.justification?.trim() ? 8 : 0) +
             (pr.billingAddress?.trim() ? 4 : 0) +
             (pr.placeOfDelivery?.trim() ? 4 : 0);
-          if (draftContentScore(local) >= serverScore) {
+          // Never let an empty local joiner draft wipe saved New Joiners roster
+          const localWins =
+            draftContentScore(local) >= serverScore &&
+            !(serverJoinerCount > 0 && localJoinerCount === 0);
+          if (localWins) {
             applyDraftSnapshot(local, { preserveRicherLineItems: true });
             setSoftSaveHint('Restored your unsaved changes');
           }
@@ -1195,6 +1318,7 @@ export default function CreatePRPage() {
       expectedDeliveryTimeline,
       paymentTerms,
       lineItems,
+      joinerDetails: isNewJoinersLaptop ? joinerDetails : undefined,
       attachedFiles: attachedFiles.map((f) => ({
         id: f.id,
         name: f.name,
@@ -1223,6 +1347,7 @@ export default function CreatePRPage() {
     entityId,
     requestType,
     purchaseType,
+    joinerDetails,
     sassSubscriptionMode,
     sassBillingFrequency,
     sassSubscriptionStartDate,
@@ -1985,7 +2110,14 @@ export default function CreatePRPage() {
           if (!j.reportingHead?.trim() && !j.reportingHeadEmail?.trim()) {
             newErrors.joinerDetails = `Joiner #${i + 1}: Reporting Head is required`;
           }
-          if (!j.deviceType.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Laptop / Desktop is required`;
+          const devices =
+            Array.isArray(j.deviceTypes) && j.deviceTypes.length
+              ? j.deviceTypes
+              : j.deviceType?.trim()
+                ? [j.deviceType]
+                : [];
+          if (!devices.length)
+            newErrors.joinerDetails = `Joiner #${i + 1}: Select at least one device (Laptop / Desktop / Smartphone/Tab)`;
         });
       }
       setErrors(newErrors);
@@ -2253,13 +2385,13 @@ export default function CreatePRPage() {
   };
 
   const buildPayload = (items: LineItem[] = lineItems) => ({
-    title:
-      prTitle.trim() ||
-      (isNewJoinersLaptop
-        ? `New Joiners Laptop Purchase (${joinerDetails.filter((j) => j.firstName).length || joinerDetails.length})`
-        : items[0]?.description || `${requestType} Request`),
+    title: isNewJoinersLaptop
+      ? `New Joiners Laptop Purchase (${
+          joinerDetails.filter((j) => j.firstName).length || joinerDetails.length || 1
+        })`
+      : prTitle.trim() || items[0]?.description || `${requestType} Request`,
     requestType,
-    purchaseType,
+    purchaseType: isNewJoinersLaptop ? 'new_joiners_laptop' : purchaseType,
     requestCategory: isNewJoinersLaptop ? 'Product' : requestCategory,
     projectDetail: isNewJoinersLaptop ? undefined : projectDetail.trim() || undefined,
     specialNotes: isNewJoinersLaptop ? undefined : specialNotes.trim() || undefined,
@@ -2483,9 +2615,12 @@ export default function CreatePRPage() {
           expectedDeliveryTimeline,
           paymentTerms,
           lineItems: itemsForSave,
+          joinerDetails: isNewJoinersLaptop ? joinerDetails : undefined,
           attachedFiles: [],
         }),
         lineItems: itemsForSave,
+        joinerDetails: isNewJoinersLaptop ? joinerDetails : snapshotRef.current?.joinerDetails,
+        purchaseType: isNewJoinersLaptop ? 'new_joiners_laptop' : purchaseType,
         businessJustification,
         scopeOfWork,
         billingAddress,
@@ -2973,6 +3108,8 @@ export default function CreatePRPage() {
                 ? 'Update any PR field or line item, then save changes'
                 : isReturned
                 ? 'Update the fields based on feedback, then resubmit for approval'
+                : isHrNewJoinersAnytimeEdit
+                ? 'Update joiner details anytime. Workflow stays on the current RFQ / approval step.'
                 : isPendingEditFlow
                 ? 'Update the request. It stays in the current approval step.'
                 : isEditMode
@@ -3017,11 +3154,15 @@ export default function CreatePRPage() {
               </div>
               <div className="cpr-stat" style={{ '--i': 2 } as React.CSSProperties}>
                 <span className="cpr-stat-ic tone-violet">
-                  <i className="ri-shopping-cart-2-line"></i>
+                  <i className={isNewJoinersLaptop ? 'ri-user-add-line' : 'ri-shopping-cart-2-line'}></i>
                 </span>
                 <div className="min-w-0">
-                  <small>Line Items</small>
-                  <b className="tabular-nums">{lineItems.length}</b>
+                  <small>{isNewJoinersLaptop ? 'Joiners' : 'Line Items'}</small>
+                  <b className="tabular-nums">
+                    {isNewJoinersLaptop
+                      ? joinerDetails.filter((j) => String(j.firstName || '').trim()).length
+                      : lineItems.length}
+                  </b>
                 </div>
               </div>
             </div>
@@ -3033,24 +3174,36 @@ export default function CreatePRPage() {
                   (isEditMode || isAdminEditFlow ? 'Editing purchase requisition' : 'Starting a new purchase requisition')}
               </span>
               <span className="cpr-status-count">
-                {lineItems.length === 0
-                  ? 'No items yet'
-                  : hideLinePricing
-                    ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
-                    : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
+                {isNewJoinersLaptop
+                  ? (() => {
+                      const n = joinerDetails.filter((j) => String(j.firstName || '').trim()).length;
+                      return n ? `${n} joiner${n === 1 ? '' : 's'} → Laptop qty ${n}` : 'Add joiners';
+                    })()
+                  : lineItems.length === 0
+                    ? 'No items yet'
+                    : hideLinePricing
+                      ? `${lineItems.filter((i) => i.description || i.itemName).length}/${lineItems.length} items filled`
+                      : `${lineItems.filter((i) => i.description && i.estimatedCost > 0).length}/${lineItems.length} items filled`}
               </span>
               <div className="cpr-status-track">
                 <div
                   className="cpr-status-fill"
                   style={{
                     width: `${
-                      lineItems.length > 0
-                        ? ((hideLinePricing
-                            ? lineItems.filter((i) => i.description || i.itemName).length
-                            : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
-                            lineItems.length) *
-                          100
-                        : 0
+                      isNewJoinersLaptop
+                        ? Math.min(
+                            100,
+                            (joinerDetails.filter((j) => String(j.firstName || '').trim()).length /
+                              Math.max(1, joinerDetails.length)) *
+                              100
+                          )
+                        : lineItems.length > 0
+                          ? ((hideLinePricing
+                              ? lineItems.filter((i) => i.description || i.itemName).length
+                              : lineItems.filter((i) => i.description && i.estimatedCost > 0).length) /
+                              lineItems.length) *
+                            100
+                          : 0
                     }%`,
                   }}
                 />

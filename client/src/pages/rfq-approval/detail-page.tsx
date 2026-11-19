@@ -6,6 +6,7 @@ import ManagerRfqQuoteSummary from '../../components/rfq/ManagerRfqQuoteSummary'
 import PostRfqApprovalModal from './components/PostRfqApprovalModal';
 import { rfqApi, VendorComparisonData } from '../../services/api';
 import PrDocumentsPanel from '../../components/feature/PrDocumentsPanel';
+import NewJoinersRfqPanel, { type JoinerDetail } from '../requester/rfq-entry/NewJoinersRfqPanel';
 import { useAuth } from '../../contexts/AuthContext';
 import { isL1OrL2Manager } from '../../utils/roleDisplay';
 import '../../styles/dashboard-fx.css';
@@ -284,7 +285,7 @@ export default function RfqApprovalDetailPage() {
           </div>
         </section>
 
-        <div className="relative z-[4] mx-auto max-w-6xl space-y-4 px-4 pb-10 pt-0 sm:px-6" style={{ marginTop: '-48px' }}>
+        <div className="relative z-[4] mx-auto max-w-6xl space-y-4 px-3 pb-10 pt-2 sm:px-6 sm:pt-0 sm:-mt-12">
           {String(data.sendBackRemarks || '').trim() ? (
             <div
               className="dfx-alert"
@@ -306,7 +307,7 @@ export default function RfqApprovalDetailPage() {
 
           {data.canApprove ? (
             <div
-              className="tfx-panel flex flex-col gap-2 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:p-4"
+              className="tfx-panel sticky top-2 z-20 flex flex-col gap-2 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:static sm:flex-row sm:flex-wrap sm:items-center sm:gap-3 sm:p-4"
               style={{ animation: 'tfx-fadeUp .55s cubic-bezier(.2,.8,.2,1) both' }}
             >
               <button
@@ -353,6 +354,24 @@ export default function RfqApprovalDetailPage() {
               style={{ animation: 'tfx-fadeUp .6s cubic-bezier(.2,.8,.2,1) .08s both' }}
             >
               <PrDocumentsPanel prId={Number(prId)} compact />
+            </div>
+          ) : null}
+
+          {(data.pr.isNewJoinersLaptop ||
+            data.pr.purchaseType === 'new_joiners_laptop' ||
+            (Array.isArray(data.pr.joinerDetails) && data.pr.joinerDetails.length > 0)) &&
+          Array.isArray(data.pr.joinerDetails) &&
+          data.pr.joinerDetails.length > 0 ? (
+            <div
+              className="tfx-panel min-w-0 overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:p-5"
+              style={{ animation: 'tfx-fadeUp .6s cubic-bezier(.2,.8,.2,1) .06s both' }}
+            >
+              <NewJoinersRfqPanel
+                prId={Number(prId)}
+                joiners={data.pr.joinerDetails as JoinerDetail[]}
+                readOnly
+                approvalView
+              />
             </div>
           ) : null}
 

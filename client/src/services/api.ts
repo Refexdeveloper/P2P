@@ -341,6 +341,17 @@ export const prApi = {
         body: JSON.stringify({ joinerDetails }),
       }
     ),
+  updateLineItemFields: (
+    id: number,
+    lineItems: Array<{ id: number | string; itemName?: string; description?: string; category?: string }>
+  ) =>
+    request<{ data: { lineItems: unknown[] }; message: string }>(
+      `/api/purchase-requests/${id}/line-items`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ lineItems }),
+      }
+    ),
   listApprovalUsers: () =>
     request<{
       data: Array<{ id: number; name: string; email: string; role: string; department: string }>;
@@ -839,6 +850,7 @@ export interface VendorComparisonData {
     entityName?: string;
     entityCode?: string;
     requestType: string;
+    purchaseType?: string | null;
     totalAmount: number;
     estimatedBudget: number;
     status: string;
@@ -847,6 +859,8 @@ export interface VendorComparisonData {
     prFlow?: 'standard' | 'functional';
     justification: string;
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;
+    isNewJoinersLaptop?: boolean;
+    joinerDetails?: Array<Record<string, unknown>>;
     lineItems?: Array<{
       id: number | string;
       description: string;

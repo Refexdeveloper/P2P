@@ -452,6 +452,11 @@ export default function RfqEntryDetailPage() {
         pr.isNewJoinersLaptop ||
         (Array.isArray(pr.joinerDetails) && pr.joinerDetails.length > 0))
   );
+  const [lineEdits, setLineEdits] = useState<
+    Record<string, { itemName: string; category: string }>
+  >({});
+  const [savingLineEdits, setSavingLineEdits] = useState(false);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(['IT Hardware']);
 
   /** Changes when PR lines are edited — forces comparison refetch so preview isn't stale. */
   const prLinesFingerprint = useMemo(
@@ -460,6 +465,8 @@ export default function RfqEntryDetailPage() {
         prLineItems.map((li) => ({
           id: li.id,
           description: li.description,
+          itemName: li.itemName || li.item || '',
+          category: li.category || '',
           quantity: li.quantity,
           unitCost: li.unitCost,
           total: li.total,
@@ -468,6 +475,101 @@ export default function RfqEntryDetailPage() {
       ),
     [prLineItems]
   );
+
+  useEffect(() => {
+    const next: Record<string, { itemName: string; category: string }> = {};
+    for (const li of prLineItems) {
+      next[String(li.id)] = {
+        itemName: String(li.itemName || li.description || li.item || ''),
+        category: String(li.category || ''),
+      };
+    }
+    setLineEdits(next);
+  }, [prLinesFingerprint]);
+
+  useEffect(() => {
+    if (!isNewJoinersLaptopPr) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await masterApi.listCategories({ status: 'active' });
+        const names = (Array.isArray(res.data) ? res.data : [])
+          .map((c) => String(c.name || '').trim())
+          .filter(Boolean);
+        if (!cancelled && names.length) {
+          setCategoryOptions((prev) => [...new Set(['IT Hardware', ...names, ...prev])]);
+        }
+      } catch {
+        /* keep defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewJoinersLaptopPr]);
+
+  const saveLineItemEdits = async () => {
+    if (!prId || isFinalized) return;
+    const payload = prLineItems
+      .map((li) => {
+        const edit = lineEdits[String(li.id)];
+        if (!edit) return null;
+        const itemName = edit.itemName.trim();
+        const category = edit.category.trim();
+        if (!itemName) return null;
+        return {
+          id: li.id,
+          itemName,
+          description: itemName,
+          category: category || 'IT Hardware',
+        };
+      })
+      .filter(Boolean) as Array<{
+      id: number | string;
+      itemName: string;
+      description: string;
+      category: string;
+    }>;
+    if (!payload.length) {
+      showToast('Enter an item name for each line', 'err');
+      return;
+    }
+    setSavingLineEdits(true);
+    try {
+      const res = await prApi.updateLineItemFields(Number(prId), payload);
+      const nextLines = Array.isArray(res.data?.lineItems) ? res.data.lineItems : null;
+      if (nextLines) {
+        setPr((prev) =>
+          prev
+            ? {
+                ...prev,
+                lineItems: nextLines as NonNullable<typeof prev.lineItems>,
+              }
+            : prev
+        );
+      }
+      showToast(res.message || 'Item name & category saved');
+      setManualDrafts((prev) => {
+        const next: Record<number, Record<string, unknown>> = {};
+        for (const [key, draft] of Object.entries(prev)) {
+          if (!draft || typeof draft !== 'object') continue;
+          const {
+            quoteLineItems: _qli,
+            removedQuoteLineIds: _rm,
+            lineItemsTotal: _lit,
+            ...rest
+          } = draft as Record<string, unknown>;
+          next[Number(key)] = rest;
+        }
+        return next;
+      });
+      void loadRfq({ soft: true });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to save line items', 'err');
+    } finally {
+      setSavingLineEdits(false);
+    }
+  };
 
   /** Prefer live PR lines over cached comparison.pr (after Edit PR). */
   const comparisonForView = useMemo((): VendorComparisonData | null => {
@@ -1285,10 +1387,11 @@ export default function RfqEntryDetailPage() {
   };
 
   const startEditExistingQuote = (row: TableRow, quoteOverride?: ReturnType<typeof getDisplayQuote>) => {
+    const invitationId = Number(row.invitationId);
     const quote = quoteOverride || getDisplayQuote(row);
     const vals = quoteFieldValues(quote, row);
     const savedLines = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
-    const quoteLineItems = withoutRemovedLines(row.invitationId, seedQuoteLines(savedLines));
+    const quoteLineItems = withoutRemovedLines(invitationId, seedQuoteLines(savedLines));
     const lineTotal = quoteLineItems.reduce((sum, l) => sum + (Number(l.quotedTotal) || 0), 0);
     const savedPrice = Number(vals.quotedPrice) || 0;
     const quotedPriceManual =
@@ -1297,13 +1400,13 @@ export default function RfqEntryDetailPage() {
 
     setManualDrafts((prev) => ({
       ...prev,
-      [row.invitationId]: {
+      [invitationId]: {
         ...vals,
         quotedPrice,
         quotedPriceManual,
         lineItemsTotal: lineTotal,
         quoteLineItems,
-        removedQuoteLineIds: manualDrafts[row.invitationId]?.removedQuoteLineIds || [],
+        removedQuoteLineIds: manualDrafts[invitationId]?.removedQuoteLineIds || [],
         leadTime: vals.leadTime ?? '',
         paymentTerms: vals.paymentTerms ?? 'Net 30',
         warranty: vals.warranty ?? '',
@@ -1315,36 +1418,37 @@ export default function RfqEntryDetailPage() {
         overallScore: vals.overallScore ?? 0,
       },
     }));
-    setEditingQuoteIds((prev) => new Set(prev).add(row.invitationId));
+    setEditingQuoteIds((prev) => new Set(prev).add(invitationId));
     if (quote?.round) {
-      setEditingRoundById((prev) => ({ ...prev, [row.invitationId]: Number(quote.round) }));
+      setEditingRoundById((prev) => ({ ...prev, [invitationId]: Number(quote.round) }));
     }
   };
 
   const cancelEditExistingQuote = (invitationId: number) => {
+    const id = Number(invitationId);
     setEditingQuoteIds((prev) => {
       const next = new Set(prev);
-      next.delete(invitationId);
+      next.delete(id);
       return next;
     });
     setManualDrafts((prev) => {
       const next = { ...prev };
-      delete next[invitationId];
+      delete next[id];
       return next;
     });
     setManualFiles((prev) => {
       const next = { ...prev };
-      delete next[invitationId];
+      delete next[id];
       return next;
     });
     setRemovedQuoteFileKeys((prev) => {
       const next = { ...prev };
-      delete next[invitationId];
+      delete next[id];
       return next;
     });
     setEditingRoundById((prev) => {
       const next = { ...prev };
-      delete next[invitationId];
+      delete next[id];
       return next;
     });
   };
@@ -2191,6 +2295,7 @@ export default function RfqEntryDetailPage() {
     if (!canEditQuoteAmounts) return;
     setError('');
     setQuotePopupError('');
+    const invitationId = Number(row.invitationId);
     const existingRound = latestExistingRound(row);
     const wanted = targetRound && targetRound > 0 ? targetRound : existingRound || row.round || 1;
     const existingForWanted = quoteForRound(row, wanted);
@@ -2198,8 +2303,20 @@ export default function RfqEntryDetailPage() {
     if (existingForWanted) {
       startEditExistingQuote(row, existingForWanted);
       setPreferredTab(wanted);
-      setQuotePopupId(row.invitationId);
+      setQuotePopupId(invitationId);
       return;
+    }
+
+    // Received quote with sparse quotes[] — still enter edit mode from row field values
+    if (row.hasActiveQuote || existingRound > 0 || row.status === 'submitted') {
+      const quote = quoteForRound(row, existingRound) || getDisplayQuote(row);
+      // Prefer editing the latest received round over starting Q2+ when Edit is tapped
+      if (wanted <= existingRound || quote || row.hasActiveQuote) {
+        startEditExistingQuote(row, quote || undefined);
+        setPreferredTab(existingRound || wanted);
+        setQuotePopupId(invitationId);
+        return;
+      }
     }
 
     // After finalize, Super Admin may only edit existing quotes (not start new rounds)
@@ -2220,20 +2337,11 @@ export default function RfqEntryDetailPage() {
       return;
     }
 
-    if (row.hasActiveQuote || existingRound > 0 || row.status === 'submitted') {
-      const quote = quoteForRound(row, existingRound) || getDisplayQuote(row);
-      if (quote) {
-        startEditExistingQuote(row, quote);
-        setQuotePopupId(row.invitationId);
-        return;
-      }
-    }
-
     const quote = getDisplayQuote(row);
     const vals = quoteFieldValues(quote, row);
     const saved = (Array.isArray(vals.quoteLineItems) ? vals.quoteLineItems : []) as ManualQuoteLine[];
-    persistWorkingLines(row.invitationId, withoutRemovedLines(row.invitationId, seedQuoteLines(saved)));
-    setQuotePopupId(row.invitationId);
+    persistWorkingLines(invitationId, withoutRemovedLines(invitationId, seedQuoteLines(saved)));
+    setQuotePopupId(invitationId);
   };
 
   const handleNextRoundTab = (nextRound: number) => {
@@ -2260,6 +2368,22 @@ export default function RfqEntryDetailPage() {
     setQuotePopupError('');
     setQuotePopupId(null);
   };
+
+  // Keep line-item inputs wired: seed draft whenever Edit popup opens on a received quote
+  useEffect(() => {
+    if (quotePopupId == null || !canEditQuoteAmounts || !canEditExistingQuote) return;
+    const row = tableRows.find((r) => Number(r.invitationId) === Number(quotePopupId));
+    if (!row?.hasActiveQuote) return;
+    if (editingQuoteIds.has(Number(row.invitationId))) return;
+    const preferred = editingRoundById[Number(row.invitationId)];
+    const quote =
+      (preferred ? quoteForRound(row, preferred) : null) ||
+      quoteForRound(row, latestExistingRound(row)) ||
+      getDisplayQuote(row);
+    startEditExistingQuote(row, quote || undefined);
+    // intentionally only when popup id / rows change — avoid re-seeding mid-edit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quotePopupId, tableRows, canEditQuoteAmounts, canEditExistingQuote]);
 
   const openRecommendModal = (invitationId: number, vendorName: string) => {
     setRecommendDraft(recommendationJustification);
@@ -2380,16 +2504,16 @@ export default function RfqEntryDetailPage() {
           }}
         />
         <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <Link to={listPath} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-transparent bg-white text-slate-600 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.10)] hover:border-[#90CAF9] hover:text-[#1E88E5]" title="Back to list">
             <i className="ri-arrow-left-line text-lg"></i>
           </Link>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Purchase request {pr?.prNumber || '—'}</p>
-            <h1 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+            <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900 sm:text-2xl">
               {isScm ? 'SCM RFQ entry' : 'Collect vendor quotes'}
             </h1>
-            <p className="mt-1 max-w-xl text-sm text-slate-500">
+            <p className="mt-1 max-w-xl text-sm text-slate-500 break-words">
               {pr?.title || 'Add vendors, get their prices, then pick one to send for approval.'}
             </p>
               {isScm && config?.requesterSubmittedAt && !config?.finalizedAt && (
@@ -2399,20 +2523,21 @@ export default function RfqEntryDetailPage() {
               )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-xl bg-[#E3F2FD] p-1">
-            <button type="button" onClick={() => setMode('entry')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === 'entry' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
+          <div className="flex w-full rounded-xl bg-[#E3F2FD] p-1 sm:w-auto">
+            <button type="button" onClick={() => setMode('entry')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold sm:flex-none sm:px-4 sm:text-sm ${mode === 'entry' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
               Work on quotes
                 </button>
-            <button type="button" onClick={() => setMode('preview')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === 'preview' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
+            <button type="button" onClick={() => setMode('preview')} className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold sm:flex-none sm:px-4 sm:text-sm ${mode === 'preview' ? 'bg-[#1E88E5] text-white shadow-sm' : 'text-[#1565C0] hover:bg-white/70'}`}>
               Compare prices
             </button>
             </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           {prId && !isFinalized && (
             <button
               type="button"
               onClick={() => setEditPrOpen(true)}
-              className="px-5 py-2.5 border border-[#64B5F6] text-[#1565C0] bg-[#E3F2FD] text-sm font-semibold rounded-xl hover:bg-[#BBDEFB]"
+              className="px-3 py-2.5 border border-[#64B5F6] text-[#1565C0] bg-[#E3F2FD] text-xs font-semibold rounded-xl hover:bg-[#BBDEFB] sm:px-5 sm:text-sm"
             >
               <i className="ri-edit-line mr-1.5"></i>
               Edit PR
@@ -2422,7 +2547,7 @@ export default function RfqEntryDetailPage() {
             <button
               type="button"
               onClick={() => setShowPrStepSendBack(true)}
-              className="px-5 py-2.5 border border-orange-300 text-orange-800 bg-orange-50 text-sm font-semibold rounded-xl hover:bg-orange-100"
+              className="px-3 py-2.5 border border-orange-300 text-orange-800 bg-orange-50 text-xs font-semibold rounded-xl hover:bg-orange-100 sm:px-5 sm:text-sm"
               title="Send this PR back to a previous workflow step"
             >
               <i className="ri-arrow-go-back-line mr-1.5"></i>
@@ -2434,7 +2559,7 @@ export default function RfqEntryDetailPage() {
               type="button"
               onClick={() => void (adminEdit ? handleAdminSave() : handleSaveDraft())}
               disabled={savingDraft || submitting || loading}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-xl disabled:opacity-50 ${
+              className={`px-3 py-2.5 text-xs font-semibold rounded-xl disabled:opacity-50 sm:px-5 sm:text-sm ${
                 adminEdit
                   ? 'bg-[#1E88E5] text-white shadow-sm hover:bg-[#1565C0]'
                   : isDirty
@@ -2460,11 +2585,12 @@ export default function RfqEntryDetailPage() {
                       ? 'Write why you picked this vendor'
                       : undefined
               }
-              className="rounded-xl bg-[#1E88E5] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#1565C0] disabled:opacity-50"
+              className="col-span-2 rounded-xl bg-[#1E88E5] px-3 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-[#1565C0] disabled:opacity-50 sm:col-span-1 sm:px-5 sm:text-sm"
             >
               {submitting ? (isScm ? 'Create PO…' : 'Submitting...') : isScm ? 'Create PO' : 'Send for approval'}
             </button>
           )}
+          </div>
         </div>
         </div>
       </div>
@@ -2477,9 +2603,9 @@ export default function RfqEntryDetailPage() {
       )}
 
       {prId && pr && (
-        <div className="relative mb-5 overflow-hidden rounded-2xl border border-transparent bg-white p-4 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-5">
+        <div className="relative mb-5 min-w-0 overflow-hidden rounded-2xl border border-transparent bg-white p-3 shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px] sm:p-5">
       {isNewJoinersLaptopPr ? (
-        <div className="mb-4 space-y-4">
+        <div className="mb-4 min-w-0 space-y-4">
           <NewJoinersRfqPanel
             prId={Number(prId)}
             joiners={Array.isArray(pr.joinerDetails) ? pr.joinerDetails : []}
@@ -2521,13 +2647,24 @@ export default function RfqEntryDetailPage() {
             }}
           />
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
-            <div className="border-b border-slate-200 bg-white px-4 py-3">
-              <h3 className="text-sm font-semibold text-slate-900">RFQ laptop line items</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Same as standard RFQ Entry: these lines appear when you edit a vendor quote (upload
-                quotation file + unit price / GST). Use <strong>Compare prices</strong> for
-                side-by-side comparison.
-              </p>
+            <div className="border-b border-slate-200 bg-white px-4 py-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">RFQ laptop line items</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Edit <strong>Item</strong> and <strong>Category</strong>, then save — same lines
+                  appear in vendor quotes / Compare prices.
+                </p>
+              </div>
+              {!isFinalized && prLineItems.length ? (
+                <button
+                  type="button"
+                  disabled={savingLineEdits}
+                  onClick={() => void saveLineItemEdits()}
+                  className="rounded-lg bg-[#1E88E5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-60"
+                >
+                  {savingLineEdits ? 'Saving…' : 'Save item & category'}
+                </button>
+              ) : null}
             </div>
             {prLineItems.length ? (
               <div className="overflow-x-auto">
@@ -2535,32 +2672,84 @@ export default function RfqEntryDetailPage() {
                   <thead className="bg-slate-100 text-slate-600">
                     <tr>
                       <th className="px-3 py-2 font-semibold">#</th>
-                      <th className="px-3 py-2 font-semibold">Item</th>
-                      <th className="px-3 py-2 font-semibold">Category</th>
+                      <th className="px-3 py-2 font-semibold min-w-[10rem]">Item</th>
+                      <th className="px-3 py-2 font-semibold min-w-[9rem]">Category</th>
                       <th className="px-3 py-2 font-semibold text-center">Qty</th>
                       <th className="px-3 py-2 font-semibold text-right">Est. unit (₹)</th>
                       <th className="px-3 py-2 font-semibold text-right">Total (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {prLineItems.map((li, idx) => (
-                      <tr key={String(li.id)} className="border-t border-slate-100 bg-white">
-                        <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
-                        <td className="px-3 py-2 font-medium text-slate-900">
-                          {li.description || li.itemName || li.item || 'Laptop'}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">{li.category || '—'}</td>
-                        <td className="px-3 py-2 text-center">
-                          {Number(li.quantity) || 0} {li.uom || li.unit || 'Nos'}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {(Number(li.unitCost) || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums font-medium">
-                          {(Number(li.total) || 0).toLocaleString('en-IN')}
-                        </td>
-                      </tr>
-                    ))}
+                    {prLineItems.map((li, idx) => {
+                      const edit = lineEdits[String(li.id)] || {
+                        itemName: String(li.itemName || li.description || li.item || ''),
+                        category: String(li.category || ''),
+                      };
+                      return (
+                        <tr key={String(li.id)} className="border-t border-slate-100 bg-white">
+                          <td className="px-3 py-2 text-slate-400">{idx + 1}</td>
+                          <td className="px-3 py-2">
+                            {isFinalized ? (
+                              <span className="font-medium text-slate-900">
+                                {edit.itemName || 'Laptop'}
+                              </span>
+                            ) : (
+                              <input
+                                type="text"
+                                className="w-full min-w-[9rem] rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-900 focus:border-[#1E88E5] focus:outline-none focus:ring-1 focus:ring-[#1E88E5]"
+                                value={edit.itemName}
+                                placeholder="e.g. Laptop"
+                                onChange={(e) =>
+                                  setLineEdits((prev) => ({
+                                    ...prev,
+                                    [String(li.id)]: {
+                                      ...edit,
+                                      itemName: e.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {isFinalized ? (
+                              <span className="text-slate-600">{edit.category || '—'}</span>
+                            ) : (
+                              <input
+                                type="text"
+                                list={`rfq-line-cat-${li.id}`}
+                                className="w-full min-w-[8rem] rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-800 focus:border-[#1E88E5] focus:outline-none focus:ring-1 focus:ring-[#1E88E5]"
+                                value={edit.category}
+                                placeholder="e.g. IT Hardware"
+                                onChange={(e) =>
+                                  setLineEdits((prev) => ({
+                                    ...prev,
+                                    [String(li.id)]: {
+                                      ...edit,
+                                      category: e.target.value,
+                                    },
+                                  }))
+                                }
+                              />
+                            )}
+                            <datalist id={`rfq-line-cat-${li.id}`}>
+                              {categoryOptions.map((c) => (
+                                <option key={c} value={c} />
+                              ))}
+                            </datalist>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {Number(li.quantity) || 0} {li.uom || li.unit || 'Nos'}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {(Number(li.unitCost) || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums font-medium">
+                            {(Number(li.total) || 0).toLocaleString('en-IN')}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2813,7 +3002,7 @@ export default function RfqEntryDetailPage() {
                 }}
               />
 
-              {tableRows.filter((row) => row.invitationId === quotePopupId).map((row, i) => {
+              {tableRows.filter((row) => Number(row.invitationId) === Number(quotePopupId)).map((row, i) => {
                   const quote = getDisplayQuote(row, editingRoundById[row.invitationId]);
                   const vals = quoteFieldValues(quote, row);
                   const submissionId = quote?.submissionId || row.submissionId;
@@ -2822,13 +3011,15 @@ export default function RfqEntryDetailPage() {
                   const awaitingManualEntry =
                     !row.hasActiveQuote &&
                     (row.status === 'invited' || row.status === 'sent_back' || isManualRow);
-                  const isEditingExisting = editingQuoteIds.has(row.invitationId);
+                  const isEditingExisting = editingQuoteIds.has(Number(row.invitationId));
+                  // Match Save changes: received quotes stay editable in this popup
                   const quoteFieldsEditable =
                     mode === 'entry' &&
                     canEditQuoteAmounts &&
                     (awaitingManualEntry
                       ? !isFinalized
-                      : isEditingExisting && canEditExistingQuote);
+                      : canEditExistingQuote &&
+                        (isEditingExisting || Boolean(row.hasActiveQuote)));
                   const awaitingVendorEmail =
                     isEmailRow &&
                     !row.hasActiveQuote &&
@@ -3589,8 +3780,8 @@ export default function RfqEntryDetailPage() {
                   const { row, existingRound } = quoteAsk;
                   const quote = quoteForRound(row, existingRound);
                   setQuoteAsk(null);
-                  startEditExistingQuote(row, quote);
-                  setQuotePopupId(row.invitationId);
+                  startEditExistingQuote(row, quote || undefined);
+                  setQuotePopupId(Number(row.invitationId));
                 }}
                 className="rounded-lg bg-[#1E88E5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1565C0]"
               >

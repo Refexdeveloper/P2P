@@ -76,6 +76,7 @@ import {
   saveJoinerDetails,
   stampJoinerCreator,
   lineItemsFromNewPurchaseJoiners,
+  syncNewJoinersRfqEntryTasks,
   NEW_JOINERS_RFQ_EMAIL,
 } from './newJoinersLaptopWorkflow.js';
 import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } from '../utils/scmAssignee.js';
@@ -1544,20 +1545,26 @@ export async function createPurchaseRequest(user, body) {
   const billing = await resolvePrBilling(entityId ? Number(entityId) : null, body);
 
   const prFlow = parsePrFlow(prFlowRaw, 'standard');
-  const normalizedPurchaseType = normalizePurchaseType(purchaseType);
+  const joinerDetailsInput = body.joinerDetails || body.joiner_details || body.joiners || [];
+  const parsedJoinersPreview = parseJoinerDetails(joinerDetailsInput);
+  const forceNewJoiners =
+    String(user?.role || '') === 'HR' ||
+    parsedJoinersPreview.some((j) => j.firstName || j.lastName) ||
+    /new\s*joiners?\s*laptop/i.test(String(title || body.title || ''));
+  let normalizedPurchaseType = normalizePurchaseType(purchaseType);
+  if (forceNewJoiners) normalizedPurchaseType = 'new_joiners_laptop';
   const isSass = normalizedPurchaseType === 'sass';
   const isOnline = normalizedPurchaseType === 'online_purchase';
   const isNewJoiners = isNewJoinersLaptopType(normalizedPurchaseType);
   const isInvoiceFlow = isSass || isOnline;
   // Invoice-flow types (Cloud / Online): known vendor path, never SCM RFQ
-  // New Joiners: own-vendor after Mugesh so Reginold RFQ → L1/L2 → SCM Final RFQ
+  // New Joiners: own-vendor after Mugesh so Reginold RFQ → Mugesh L1 → Srivaths L2 → SCM Final RFQ
   const vendorMode = isInvoiceFlow || isNewJoiners
     ? 'own'
     : vendorSelection === 'own'
       ? 'own'
       : 'scm';
   const normalizedCurrency = normalizeCurrency(currency);
-  const joinerDetailsInput = body.joinerDetails || body.joiner_details || body.joiners || [];
   let joinerDetails = isNewJoiners
     ? stampJoinerCreator(joinerDetailsInput, user)
     : parseJoinerDetails(joinerDetailsInput);
@@ -1691,11 +1698,10 @@ export async function createPurchaseRequest(user, body) {
   if (!entityRows.length) throw new Error('Invalid or inactive entity');
 
   const totalAmount = lineItemsEstimatedTotal(effectiveLineItems);
-  const prTitle =
-    title ||
-    (isNewJoiners
-      ? `New Joiners Laptop Purchase (${joinerDetails.length})`
-      : effectiveLineItems[0]?.description || `${requestType} Request`);
+  const joinerCount = joinerDetails.filter((j) => j.firstName || j.lastName).length || joinerDetails.length;
+  const prTitle = isNewJoiners
+    ? `New Joiners Laptop Purchase (${joinerCount || 1})`
+    : title || effectiveLineItems[0]?.description || `${requestType} Request`;
   const status = submit
     ? isNewJoiners
       ? PR_STATUS.PENDING_CFO_APPROVAL
@@ -1807,7 +1813,9 @@ export async function createPurchaseRequest(user, body) {
     if (submit) {
       let lastErr;
       for (let attempt = 0; attempt < 8; attempt += 1) {
-        prNumber = await nextDocumentNumber('PR', Number(entityId), conn);
+        prNumber = await nextDocumentNumber('PR', Number(entityId), conn, {
+          purchaseType: normalizedPurchaseType,
+        });
         try {
           result = await insertPrRow(prNumber);
           prId = result.insertId;
@@ -1881,7 +1889,7 @@ export async function createPurchaseRequest(user, body) {
 
     if (submit) {
       const pathLabel = isNewJoiners
-        ? `New Joiners Laptop Purchase — Mugesh approval → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → vendor rounds → L1/L2 → SCM RFQ → SCM PO`
+        ? `New Joiners Laptop Purchase — Mugesh approval → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → vendor rounds → Mugesh L1 → Srivaths L2 → SCM RFQ → SCM PO`
         : isOnline
         ? `Online Purchase � User Approver: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh L1 ? Srivaths L2 ? Mugesh Invoice Upload ? Completed (SCM skipped)`
         : isSass
@@ -3670,11 +3678,17 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
     let rfqEntryRequester = null;
     let newJoinersRfqAssignee = null;
     if (isNewJoiners && actingRole === 'CFO' && action === 'approve') {
-      newJoinersRfqAssignee = await createNewJoinersRfqEntryTask(conn, prId, pr.department_id);
+      newJoinersRfqAssignee = await createNewJoinersRfqEntryTask(
+        conn,
+        prId,
+        pr.department_id,
+        parseJoinerDetails(pr.joiner_details_json)
+      );
       rfqEntryRequester = {
         id: newJoinersRfqAssignee.userId,
         email: newJoinersRfqAssignee.email,
         name: newJoinersRfqAssignee.name,
+        assignees: newJoinersRfqAssignee.assignees || [newJoinersRfqAssignee],
       };
     } else if (
       !isFunctional &&
@@ -3930,10 +3944,15 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
       });
       notifyWorkflowStepProgress(nextLabel);
     } else if (rfqEntryRequester?.email) {
-      // Particular requester — RFQ entry step (include FSD / PR documents)
+      // Particular requester(s) — RFQ entry step (one task/set per linked requester)
+      const rfqAssignees =
+        Array.isArray(rfqEntryRequester.assignees) && rfqEntryRequester.assignees.length
+          ? rfqEntryRequester.assignees
+          : [{ name: rfqEntryRequester.name, email: rfqEntryRequester.email }];
+      const rfqEmails = rfqAssignees.map((a) => a.email).filter(Boolean);
       const rfqEntryTo = {
-        name: rfqEntryRequester.name,
-        email: rfqEntryRequester.email,
+        name: rfqAssignees.map((a) => a.name).filter(Boolean).join(', ') || rfqEntryRequester.name,
+        email: rfqEmails[0] || rfqEntryRequester.email,
       };
       setImmediate(() => {
         (async () => {
@@ -3944,15 +3963,18 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
           } catch (err) {
             console.warn('PR/FSD attachments for RFQ Entry mail skipped:', err.message);
           }
-          queuePrApprovalPendingNotification(
+          voidPrApprovalPendingNotification(
             updatedPr,
             'Requester',
             rfqEntryTo,
             updatedPr.departmentId,
             {
-              approverEmails: [rfqEntryTo.email],
+              approverEmails: rfqEmails,
               approverName: rfqEntryTo.name,
-              stageLabel: 'RFQ Entry Required',
+              stageLabel:
+                rfqEmails.length > 1
+                  ? `RFQ Entry Required (${rfqEmails.length} sets)`
+                  : 'RFQ Entry Required',
               attachments,
             }
           );
@@ -4222,8 +4244,9 @@ export async function updateJoinerDetails(user, prId, body = {}) {
     throw new Error('Joiner details are only for New Joiners Laptop Purchase');
   }
   const isOwner = Number(pr.requester_id) === Number(user.id);
+  const isHrEditor = user.role === 'HR';
   const isRfqEditor = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role);
-  if (!isOwner && !isRfqEditor) throw new Error('Unauthorized');
+  if (!isOwner && !isRfqEditor && !isHrEditor) throw new Error('Unauthorized');
   if (!isOwner && user.role === 'Requester') {
     const email = String(user.email || '').trim().toLowerCase();
     const [tasks] = await pool.query(
@@ -4246,13 +4269,36 @@ export async function updateJoinerDetails(user, prId, body = {}) {
     ? body
     : body.joinerDetails || body.joiner_details || body.joiners || [];
   const savedJoiners = stampJoinerCreator(rawList, user);
-  await saveJoinerDetails(pool, prId, savedJoiners);
-
-  // Sync PR line items: N new-purchase joiners → N laptop purchase tasks
-  const purchaseLines = lineItemsFromNewPurchaseJoiners(savedJoiners);
+  const linkedIds = [
+    ...new Set(
+      savedJoiners
+        .map((j) => Number(j.linkedRequesterId || 0))
+        .filter((id) => id > 0)
+    ),
+  ];
+  const requesterLabelById = {};
+  if (linkedIds.length) {
+    const [uRows] = await pool.query(
+      `SELECT id, name FROM users WHERE id IN (${linkedIds.map(() => '?').join(',')})`,
+      linkedIds
+    );
+    for (const u of uRows) requesterLabelById[u.id] = u.name;
+  }
+  // One RFQ line per device type (or per linked-requester set when multiple)
+  const purchaseLines = lineItemsFromNewPurchaseJoiners(savedJoiners, requesterLabelById);
+  const newPurchaseCount = savedJoiners.filter((j) => {
+    const status = String(j.inventoryStatus || '').trim().toLowerCase();
+    if (status === 'from_inventory') return false;
+    return status === 'new_purchase' || !status;
+  }).length;
+  const inventoryCount = savedJoiners.filter(
+    (j) => String(j.inventoryStatus || '').toLowerCase() === 'from_inventory'
+  ).length;
   const conn = await pool.getConnection();
+  let rfqTasksSynced = { created: 0, assignees: [] };
   try {
     await conn.beginTransaction();
+    await saveJoinerDetails(conn, prId, savedJoiners);
     await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
     for (const item of purchaseLines) {
       await insertPrLineItem(conn, prId, item);
@@ -4265,6 +4311,12 @@ export async function updateJoinerDetails(user, prId, body = {}) {
       total,
       prId,
     ]);
+    rfqTasksSynced = await syncNewJoinersRfqEntryTasks(
+      conn,
+      prId,
+      pr.department_id,
+      savedJoiners
+    );
     await conn.commit();
   } catch (err) {
     await conn.rollback();
@@ -4277,11 +4329,94 @@ export async function updateJoinerDetails(user, prId, body = {}) {
   return {
     joinerDetails: updated?.joinerDetails || savedJoiners,
     lineItems: updated?.lineItems || purchaseLines,
-    newPurchaseCount: purchaseLines.length,
-    inventoryCount: savedJoiners.filter(
-      (j) => String(j.inventoryStatus || '').toLowerCase() === 'from_inventory'
-    ).length,
+    newPurchaseCount,
+    inventoryCount,
+    laptopQty: purchaseLines.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+    rfqEntryTasksCreated: rfqTasksSynced.created,
+    rfqEntryAssignees: rfqTasksSynced.assignees,
   };
+}
+
+/** RFQ Entry: edit PR line item name / category (keeps qty & cost). */
+export async function updatePrLineItemFields(user, prId, body = {}) {
+  const [prRows] = await pool.query('SELECT * FROM purchase_requests WHERE id = ?', [prId]);
+  if (!prRows.length) throw new Error('PR not found');
+  const pr = prRows[0];
+  const isOwner = Number(pr.requester_id) === Number(user.id);
+  const isRfqEditor = ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role);
+  if (!isOwner && !isRfqEditor) throw new Error('Unauthorized');
+  if (!isOwner && user.role === 'Requester') {
+    const email = String(user.email || '').trim().toLowerCase();
+    const [tasks] = await pool.query(
+      `SELECT wt.id
+       FROM workflow_tasks wt
+       LEFT JOIN users au ON au.id = wt.assigned_user_id
+       WHERE wt.pr_id = ?
+         AND wt.task_type = 'RFQ_ENTRY'
+         AND wt.assigned_role = 'Requester'
+         AND (
+           wt.assigned_user_id = ?
+           OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+         )
+       LIMIT 1`,
+      [prId, user.id, email, email]
+    );
+    if (!tasks.length) throw new Error('Unauthorized');
+  }
+
+  const items = Array.isArray(body.lineItems) ? body.lineItems : Array.isArray(body) ? body : [];
+  if (!items.length) throw new Error('No line items to update');
+
+  for (const item of items) {
+    const id = Number(item.id || item.lineItemId || 0);
+    if (!id) continue;
+    const [owned] = await pool.query(
+      `SELECT id FROM pr_line_items WHERE id = ? AND pr_id = ? LIMIT 1`,
+      [id, prId]
+    );
+    if (!owned.length) throw new Error(`Line item #${id} not found on this PR`);
+
+    const itemName = String(item.itemName || item.item_name || item.item || '').trim();
+    const description = String(
+      item.description || itemName || item.itemName || item.item_name || ''
+    ).trim();
+    const category = String(item.category || '').trim();
+    if (!itemName && !description && !category) {
+      throw new Error('Enter item name or category');
+    }
+
+    const nameVal = itemName || description;
+    const descVal = description || itemName;
+    try {
+      await pool.query(
+        `UPDATE pr_line_items
+         SET item_name = COALESCE(?, item_name),
+             description = COALESCE(?, description),
+             category = COALESCE(?, category)
+         WHERE id = ? AND pr_id = ?`,
+        [
+          nameVal || null,
+          descVal || null,
+          category || null,
+          id,
+          prId,
+        ]
+      );
+    } catch (err) {
+      if (err?.code === 'ER_BAD_FIELD_ERROR' && String(err.message || '').includes('item_name')) {
+        await pool.query(
+          `UPDATE pr_line_items SET description = COALESCE(?, description), category = COALESCE(?, category)
+           WHERE id = ? AND pr_id = ?`,
+          [descVal || null, category || null, id, prId]
+        );
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  const updated = await getPurchaseRequestById(prId);
+  return { lineItems: updated?.lineItems || [] };
 }
 
 export async function updatePrBillingDelivery(user, prId, body = {}) {
@@ -4290,7 +4425,12 @@ export async function updatePrBillingDelivery(user, prId, body = {}) {
   const pr = prRows[0];
   const isOwner = Number(pr.requester_id) === Number(user.id);
   const isRfqEditor = ['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role);
-  if (!isOwner && !isRfqEditor) throw new Error('Unauthorized');
+  const isRfqAgent =
+    !isOwner &&
+    !isRfqEditor &&
+    user.role === 'Requester' &&
+    (await userHasRequesterRfqEntryAssignment(user, prId));
+  if (!isOwner && !isRfqEditor && !isRfqAgent) throw new Error('Unauthorized');
 
   const extras = parseRequisitionExtras(body, {
     deliveryPoc: pr.delivery_poc,
@@ -4352,7 +4492,13 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     PR_STATUS.PENDING_PR_MANAGER_APPROVAL,
     PR_STATUS.PENDING_CFO_APPROVAL,
   ]);
-  if (!requesterEditable.has(pr.status)) {
+  // HR may update New Joiners roster anytime (incl. after RFQ approval) — does not restart workflow
+  const hrMayEditNewJoinersAnytime =
+    user.role === 'HR' &&
+    isNewJoinersLaptopPr(pr) &&
+    pr.status !== PR_STATUS.REJECTED &&
+    String(pr.status || '').toUpperCase() !== 'CANCELLED';
+  if (!requesterEditable.has(pr.status) && !hrMayEditNewJoinersAnytime) {
     throw new Error('This PR can no longer be edited. Ask an approver to send it back if changes are needed.');
   }
 
@@ -4389,9 +4535,6 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
   const requestCategory = normalizeRequestCategory(
     body.requestCategory ?? body.request_category ?? pr.request_category
   );
-  if (!lineItems.length && pr.status !== PR_STATUS.DRAFT && pr.status !== PR_STATUS.RETURNED) {
-    throw new Error('At least one line item is required');
-  }
 
   const isDraftLike = pr.status === PR_STATUS.DRAFT || pr.status === PR_STATUS.RETURNED;
   let nextDepartmentId = await resolveDepartmentIdForSave(department, user.id, {
@@ -4409,8 +4552,51 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     nextEntityId = Number(entityId) || null;
   }
 
-  const totalAmount = lineItemsEstimatedTotal(lineItems);
-  const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
+  const joinerDetailsInput = body.joinerDetails || body.joiner_details || body.joiners;
+  const hasJoinerPayload = joinerDetailsInput !== undefined;
+  const forceNewJoinersUpdate =
+    String(user?.role || '') === 'HR' ||
+    isNewJoinersLaptopType(purchaseType || pr.purchase_type) ||
+    (hasJoinerPayload &&
+      parseJoinerDetails(joinerDetailsInput).some((j) => j.firstName || j.lastName)) ||
+    /new\s*joiners?\s*laptop/i.test(String(title || pr.title || ''));
+  let nextJoiners = null;
+  if (hasJoinerPayload) {
+    nextJoiners = stampJoinerCreator(joinerDetailsInput, user);
+  } else if (forceNewJoinersUpdate) {
+    nextJoiners = parseJoinerDetails(pr.joiner_details_json);
+  }
+  if (forceNewJoinersUpdate && nextJoiners && !isDraftLike && hasJoinerPayload) {
+    nextJoiners = assertJoinerDetailsForSubmit(nextJoiners, user);
+  }
+
+  // New Joiners: catalogue line items are optional — roster becomes Laptop × qty on save
+  if (
+    !lineItems.length &&
+    !forceNewJoinersUpdate &&
+    pr.status !== PR_STATUS.DRAFT &&
+    pr.status !== PR_STATUS.RETURNED
+  ) {
+    throw new Error('At least one line item is required');
+  }
+  if (forceNewJoinersUpdate && hasJoinerPayload && !(nextJoiners || []).length && !isDraftLike) {
+    throw new Error('Add at least one new joiner (line items are created from the roster)');
+  }
+
+  let effectiveUpdateLineItems = Array.isArray(lineItems) ? lineItems : [];
+  if (forceNewJoinersUpdate && nextJoiners?.length) {
+    effectiveUpdateLineItems = lineItemsFromJoiners(nextJoiners, effectiveUpdateLineItems);
+  }
+
+  const totalAmount = lineItemsEstimatedTotal(
+    forceNewJoinersUpdate && nextJoiners?.length ? effectiveUpdateLineItems : lineItems
+  );
+  const joinerCountForTitle = nextJoiners
+    ? nextJoiners.filter((j) => j.firstName || j.lastName).length || nextJoiners.length
+    : 0;
+  const prTitle = forceNewJoinersUpdate
+    ? `New Joiners Laptop Purchase (${joinerCountForTitle || 1})`
+    : title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   const needsSelectedApprover =
     prFlow === 'functional' ||
@@ -4423,9 +4609,10 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
     needsSelectedApprover && currentPendingId && approvalUserIds.includes(currentPendingId)
       ? currentPendingId
       : approvalUserId;
-  const normalizedPurchaseType = purchaseType
+  let normalizedPurchaseType = purchaseType
     ? normalizePurchaseType(purchaseType)
     : normalizePurchaseType(pr.purchase_type);
+  if (forceNewJoinersUpdate) normalizedPurchaseType = 'new_joiners_laptop';
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
   const billing = await resolvePrBilling(nextEntityId, body, pr);
   const workStart =
@@ -4443,16 +4630,26 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
   }
 
   // Draft: never wipe existing line items with an accidental empty payload (autosave / race).
+  // New Joiners: always refresh lines from joiner roster when we have joiners.
   const shouldReplaceLineItems =
-    !isDraftLike || (Array.isArray(lineItems) && lineItems.length > 0);
+    (forceNewJoinersUpdate && nextJoiners?.length > 0) ||
+    !isDraftLike ||
+    (Array.isArray(lineItems) && lineItems.length > 0);
+  const linesForReplace =
+    forceNewJoinersUpdate && nextJoiners?.length
+      ? effectiveUpdateLineItems
+      : lineItems;
   const nextTotalAmount = shouldReplaceLineItems
     ? totalAmount
     : Number(pr.total_amount) || 0;
-  const nextTitle =
-    title ||
-    (shouldReplaceLineItems ? lineItems[0]?.description : null) ||
-    pr.title ||
-    `${requestType || pr.request_type} Request`;
+  const nextTitle = forceNewJoinersUpdate
+    ? prTitle
+    : title ||
+      (shouldReplaceLineItems ? lineItems[0]?.description : null) ||
+      pr.title ||
+      `${requestType || pr.request_type} Request`;
+  const nextVendorMode = forceNewJoinersUpdate ? 'own' : vendorMode;
+  const nextPrFlow = forceNewJoinersUpdate ? 'standard' : prFlow;
 
   const run = async (db) => {
     await db.query(
@@ -4477,8 +4674,8 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
         requiredDate || null,
         normalizedCurrency,
         nextTotalAmount,
-        vendorMode,
-        prFlow,
+        nextVendorMode,
+        nextPrFlow,
         nextCurrentApproverId,
         approvalUserIds.length ? JSON.stringify(approvalUserIds) : null,
         billing.billingLocationId,
@@ -4502,7 +4699,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
       ]
     );
 
-    if (prFlow === 'functional' && nextCurrentApproverId && pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
+    if (nextPrFlow === 'functional' && nextCurrentApproverId && pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
       await db.query(
         `UPDATE workflow_tasks
          SET assigned_user_id = ?
@@ -4511,9 +4708,13 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
       );
     }
 
+    if (hasJoinerPayload || (forceNewJoinersUpdate && nextJoiners)) {
+      await saveJoinerDetails(db, prId, nextJoiners || []);
+    }
+
     if (shouldReplaceLineItems) {
       await db.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
-      for (const item of lineItems) {
+      for (const item of linesForReplace) {
         await insertPrLineItem(db, prId, item);
       }
     }
@@ -4535,7 +4736,7 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
       db,
       prId,
       resolvePoCreationBy(body, {
-        prFlow,
+        prFlow: nextPrFlow,
         purchaseType: normalizedPurchaseType,
         existing: pr.po_creation_by,
       })
@@ -4693,8 +4894,29 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
   const requestCategory = normalizeRequestCategory(
     body.requestCategory ?? body.request_category ?? pr.request_category
   );
-  if (!Array.isArray(lineItems) || !lineItems.length) {
+
+  const joinerDetailsInputAdmin = body.joinerDetails || body.joiner_details || body.joiners;
+  const hasJoinerPayloadAdmin = joinerDetailsInputAdmin !== undefined;
+  const forceNewJoinersAdmin =
+    String(user?.role || '') === 'HR' ||
+    isNewJoinersLaptopType(purchaseType || pr.purchase_type) ||
+    (hasJoinerPayloadAdmin &&
+      parseJoinerDetails(joinerDetailsInputAdmin).some((j) => j.firstName || j.lastName)) ||
+    /new\s*joiners?\s*laptop/i.test(String(title || pr.title || ''));
+  let nextJoinersAdmin = hasJoinerPayloadAdmin
+    ? stampJoinerCreator(joinerDetailsInputAdmin, user)
+    : forceNewJoinersAdmin
+      ? parseJoinerDetails(pr.joiner_details_json)
+      : null;
+  let effectiveAdminLineItems = Array.isArray(lineItems) ? lineItems : [];
+  if (forceNewJoinersAdmin && nextJoinersAdmin?.length) {
+    effectiveAdminLineItems = lineItemsFromJoiners(nextJoinersAdmin, effectiveAdminLineItems);
+  }
+  if (!effectiveAdminLineItems.length && !forceNewJoinersAdmin) {
     throw new Error('At least one line item is required');
+  }
+  if (forceNewJoinersAdmin && !(nextJoinersAdmin || []).length) {
+    throw new Error('Add at least one new joiner (line items are created from the roster)');
   }
 
   let departmentId = pr.department_id;
@@ -4713,8 +4935,13 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     nextEntityId = Number(entityId) || null;
   }
 
-  const totalAmount = lineItemsEstimatedTotal(lineItems);
-  const prTitle = title || lineItems[0]?.description || `${requestType || pr.request_type} Request`;
+  const totalAmount = lineItemsEstimatedTotal(effectiveAdminLineItems);
+  const joinerCountAdmin = nextJoinersAdmin
+    ? nextJoinersAdmin.filter((j) => j.firstName || j.lastName).length || nextJoinersAdmin.length
+    : 0;
+  const prTitle = forceNewJoinersAdmin
+    ? `New Joiners Laptop Purchase (${joinerCountAdmin || 1})`
+    : title || effectiveAdminLineItems[0]?.description || `${requestType || pr.request_type} Request`;
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   const needsSelectedApprover =
     prFlow === 'functional' ||
@@ -4727,9 +4954,12 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
     needsSelectedApprover && currentPendingId && approvalUserIds.includes(currentPendingId)
       ? currentPendingId
       : approvalUserId;
-  const normalizedPurchaseType = purchaseType
+  let normalizedPurchaseType = purchaseType
     ? normalizePurchaseType(purchaseType)
     : normalizePurchaseType(pr.purchase_type);
+  if (forceNewJoinersAdmin) normalizedPurchaseType = 'new_joiners_laptop';
+  const nextVendorModeAdmin = forceNewJoinersAdmin ? 'own' : vendorMode;
+  const nextPrFlowAdmin = forceNewJoinersAdmin ? 'standard' : prFlow;
   const normalizedCurrency = normalizeCurrency(currency ?? pr.currency);
   const billing = await resolvePrBilling(nextEntityId, body, pr);
   const workStart =
@@ -4789,8 +5019,8 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
         requiredDate || null,
         normalizedCurrency,
         totalAmount,
-        vendorMode,
-        prFlow,
+        nextVendorModeAdmin,
+        nextPrFlowAdmin,
         nextCurrentApproverId,
         approvalUserIds.length ? JSON.stringify(approvalUserIds) : null,
         billing.billingLocationId,
@@ -4840,14 +5070,18 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
       conn,
       prId,
       resolvePoCreationBy(body, {
-        prFlow: body.prFlow || body.pr_flow || pr.pr_flow,
+        prFlow: nextPrFlowAdmin,
         purchaseType: normalizedPurchaseType,
         existing: pr.po_creation_by,
       })
     );
 
+    if (forceNewJoinersAdmin && nextJoinersAdmin) {
+      await saveJoinerDetails(conn, prId, nextJoinersAdmin);
+    }
+
     await conn.query('DELETE FROM pr_line_items WHERE pr_id = ?', [prId]);
-    for (const item of lineItems) {
+    for (const item of effectiveAdminLineItems) {
       await insertPrLineItem(conn, prId, item);
     }
 
@@ -5134,23 +5368,59 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     }
 
     const [numberRows] = await conn.query(
-      `SELECT entity_id, pr_number FROM purchase_requests WHERE id = ?`,
+      `SELECT entity_id, pr_number, purchase_type, title, joiner_details_json FROM purchase_requests WHERE id = ?`,
       [prId]
     );
     const numberRow = numberRows[0] || pr;
+    const joinerFromBody = body.joinerDetails || body.joiner_details || body.joiners;
+    const forceNewJoinersResubmit =
+      String(user?.role || '') === 'HR' ||
+      isNewJoinersLaptopType(numberRow.purchase_type) ||
+      isNewJoinersLaptopType(body.purchaseType || body.purchase_type) ||
+      parseJoinerDetails(joinerFromBody || numberRow.joiner_details_json).some(
+        (j) => j.firstName || j.lastName
+      ) ||
+      /new\s*joiners?\s*laptop/i.test(String(body.title || numberRow.title || ''));
+    if (forceNewJoinersResubmit && !isNewJoinersLaptopType(numberRow.purchase_type)) {
+      await conn.query(
+        `UPDATE purchase_requests SET purchase_type = 'new_joiners_laptop', vendor_selection = 'own', pr_flow = 'standard' WHERE id = ?`,
+        [prId]
+      );
+      numberRow.purchase_type = 'new_joiners_laptop';
+    }
+    const isNewJoinersResubmit = isNewJoinersLaptopType(numberRow.purchase_type);
     await assignOfficialPrNumberIfNeeded(
       prId,
       numberRow.entity_id,
       numberRow.pr_number,
-      conn
+      conn,
+      numberRow.purchase_type
     );
 
-    await conn.query(
-      `UPDATE purchase_requests
-       SET status = ?, current_stage = ?, submitted_at = NOW(), updated_at = NOW()
-       WHERE id = ?`,
-      [PR_STATUS.PENDING_HOD_APPROVAL, STAGE.HOD_REVIEW, prId]
-    );
+    if (isNewJoinersResubmit) {
+      const joinerCount =
+        parseJoinerDetails(joinerFromBody || numberRow.joiner_details_json).filter(
+          (j) => j.firstName || j.lastName
+        ).length || 1;
+      await conn.query(
+        `UPDATE purchase_requests
+         SET title = ?, status = ?, current_stage = ?, submitted_at = NOW(), updated_at = NOW()
+         WHERE id = ?`,
+        [
+          `New Joiners Laptop Purchase (${joinerCount})`,
+          PR_STATUS.PENDING_CFO_APPROVAL,
+          STAGE.CFO_REVIEW,
+          prId,
+        ]
+      );
+    } else {
+      await conn.query(
+        `UPDATE purchase_requests
+         SET status = ?, current_stage = ?, submitted_at = NOW(), updated_at = NOW()
+         WHERE id = ?`,
+        [PR_STATUS.PENDING_HOD_APPROVAL, STAGE.HOD_REVIEW, prId]
+      );
+    }
 
     await conn.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks) VALUES (?, ?, ?, ?, ?)`,
@@ -5159,7 +5429,10 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         STAGE.SUBMITTED,
         user.id,
         'resubmitted',
-        remarks?.trim() || 'PR resubmitted after rework',
+        remarks?.trim() ||
+          (isNewJoinersResubmit
+            ? 'New Joiners Laptop PR resubmitted for Mugesh approval'
+            : 'PR resubmitted after rework'),
       ]
     );
 
@@ -5176,6 +5449,7 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     const current = freshRows[0] || pr;
     const isFunctional = current.pr_flow === 'functional';
     const isSass = isSassPurchaseType(current.purchase_type);
+    const isNewJoiners = isNewJoinersLaptopType(current.purchase_type);
     let chain = functionalApprovalChainFromPr(current);
     if (isSass) {
       const extended = await appendCloudSubscriptionApproverIds(
@@ -5200,7 +5474,9 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     }
 
     let hodAssignment;
-    if (isSass || isFunctional) {
+    if (isNewJoiners) {
+      hodAssignment = await createMugeshApprovalTaskForNewJoiners(conn, prId, current.department_id);
+    } else if (isSass || isFunctional) {
       if (!firstApproverId) throw new Error('Select L1 Manager / User Approver before resubmitting');
       hodAssignment = await createSelectedUserApprovalTask(conn, prId, firstApproverId);
     } else {
@@ -5225,7 +5501,9 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     }
     const updatedPr = await getPurchaseRequestById(prId);
     const chainLen = functionalApprovalChainFromPr(current).length;
-    const nextStep = isSass
+    const nextStep = isNewJoiners
+      ? 'Mugesh Approval'
+      : isSass
       ? 'L1 Manager Approval'
       : isFunctional
       ? chainLen > 1
@@ -5247,8 +5525,8 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       ...updatedPr,
       nextStep,
       l1Manager: {
-        name: hodAssignment?.hodName || null,
-        email: hodAssignment?.hodEmail || null,
+        name: hodAssignment?.hodName || hodAssignment?.name || null,
+        email: hodAssignment?.hodEmail || hodAssignment?.email || null,
       },
     };
   } catch (err) {
@@ -5445,6 +5723,28 @@ export async function listRequesterTasks(userOrId) {
   });
 }
 
+/** PR owner or assigned RFQ Entry agent (e.g. Reginold on New Joiners Laptop). */
+async function userHasRequesterRfqEntryAssignment(user, prId) {
+  if (!user?.id || !prId) return false;
+  const email = String(user.email || '').trim().toLowerCase();
+  const [tasks] = await pool.query(
+    `SELECT wt.id
+     FROM workflow_tasks wt
+     LEFT JOIN users au ON au.id = wt.assigned_user_id
+     WHERE wt.pr_id = ?
+       AND wt.task_type = 'RFQ_ENTRY'
+       AND wt.assigned_role = 'Requester'
+       AND wt.status IN ('pending', 'in_progress', 'completed')
+       AND (
+         wt.assigned_user_id = ?
+         OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
+       )
+     LIMIT 1`,
+    [prId, user.id, email, email]
+  );
+  return Boolean(tasks.length);
+}
+
 export async function completeRequesterTask(user, taskId) {
   const [rows] = await pool.query(
     `SELECT wt.*, pr.requester_id FROM workflow_tasks wt
@@ -5453,7 +5753,12 @@ export async function completeRequesterTask(user, taskId) {
     [taskId]
   );
   if (!rows.length) throw new Error('Task not found');
-  if (rows[0].requester_id !== user.id) throw new Error('Unauthorized');
+  const task = rows[0];
+  const isPrOwner = Number(task.requester_id) === Number(user.id);
+  const isDirectAssignee = Number(task.assigned_user_id) === Number(user.id);
+  const isRfqAgent =
+    isDirectAssignee || (await userHasRequesterRfqEntryAssignment(user, task.pr_id));
+  if (!isPrOwner && !isRfqAgent) throw new Error('Unauthorized');
 
   await pool.query(
     `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW() WHERE id = ?`,

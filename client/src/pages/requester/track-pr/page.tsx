@@ -1406,11 +1406,23 @@ export default function TrackPRPage() {
                                   pr.status === 'returned' ||
                                   ['PENDING_HOD_APPROVAL', 'PENDING_PR_MANAGER_APPROVAL', 'PENDING_CFO_APPROVAL'].includes(
                                     asText(pr.statusRaw).toUpperCase()
-                                  )) && (
+                                  ) ||
+                                  (user?.role === 'HR' &&
+                                    asText(pr.purchaseType).toLowerCase().replace(/[\s-]+/g, '_') ===
+                                      'new_joiners_laptop' &&
+                                    asText(pr.statusRaw).toUpperCase() !== 'REJECTED' &&
+                                    asText(pr.status).toLowerCase() !== 'rejected')) && (
                                   <button
                                     type="button"
                                     onClick={() => navigate(`/requester/edit-pr/${pr.prId}`)}
                                     className="tpr-act inline-flex h-8 cursor-pointer items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                    title={
+                                      user?.role === 'HR' &&
+                                      asText(pr.purchaseType).toLowerCase().replace(/[\s-]+/g, '_') ===
+                                        'new_joiners_laptop'
+                                        ? 'Edit New Joiners details anytime'
+                                        : undefined
+                                    }
                                   >
                                     <i className="ri-edit-line"></i>
                                     {pr.status === 'returned' && Number(pr.requesterId) === Number(user?.id)

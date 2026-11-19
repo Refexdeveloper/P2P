@@ -19,6 +19,7 @@ import {
   updatePurchaseRequest,
   updatePrBillingDelivery,
   updateJoinerDetails,
+  updatePrLineItemFields,
   adminUpdatePurchaseRequest,
   adminSendBackPurchaseRequest,
   resubmitPurchaseRequest,
@@ -44,7 +45,7 @@ const canApproveAdmin = requireRolesOrPermissions(
   ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard']
 );
 const canEditPrDetails = requireRolesOrPermissions(
-  ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO', 'Requester'],
+  ['Super Admin', 'SCM Manager', 'SCM Buyer', 'HOD Approver', 'PR Manager', 'CFO', 'Requester', 'HR'],
   ['nav.rfq_approval', 'nav.track_pr', 'nav.tasks', 'nav.pr_manager_dashboard', 'nav.rfq_entry', 'nav.scm_rfq_entry', 'nav.create_pr']
 );
 
@@ -74,6 +75,15 @@ router.patch('/:id/joiner-details', canEditPrDetails, async (req, res) => {
   try {
     const data = await updateJoinerDetails(req.user, Number(req.params.id), req.body || {});
     res.json({ data, message: 'Joiner details updated' });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.patch('/:id/line-items', canEditPrDetails, async (req, res) => {
+  try {
+    const data = await updatePrLineItemFields(req.user, Number(req.params.id), req.body || {});
+    res.json({ data, message: 'Line items updated' });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

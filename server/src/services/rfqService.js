@@ -28,10 +28,15 @@ import { resolveScmBuyerUser, getScmBuyerNotifyEmails, resolveScmManagerUser } f
 import { applySendBackToTarget, queueSendBackNotifications } from './sendBackService.js';
 import { canUseAdminSendBackCatalog } from '../utils/sendBackTargets.js';
 import { formatCurrency, normalizeEmailCurrency } from '../templates/emailUtils.js';
-import { isSassPurchaseType } from './sassWorkflow.js';
+import {
+  isSassPurchaseType,
+  SASS_MUGESH_EMAIL,
+  SASS_MUGESH_NAME,
+  SASS_L2_EMAIL,
+  SASS_L2_NAME,
+} from './sassWorkflow.js';
 import {
   isNewJoinersLaptopPr,
-  NEW_JOINERS_RFQ_EMAIL,
 } from './newJoinersLaptopWorkflow.js';
 
 function currencySymbolForCode(currency) {
@@ -1583,9 +1588,7 @@ export async function removeRfqInvitation(user, invitationId) {
   if (!rows.length) throw new Error('Vendor invitation not found');
 
   const inv = rows[0];
-  if (user.role === 'Requester' && inv.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: inv.pr_id, requesterId: inv.requester_id });
 
   const config = await getOrCreateRfqConfig(inv.pr_id);
   if (config.finalizedAt) throw new Error('Cannot remove vendor after RFQ is finalized');
@@ -1650,7 +1653,10 @@ async function userCanViewPrQuotes(user, pr) {
  *  Do not treat SCM/Admin as requester here — that breaks Create PO finalize. */
 async function userCanActOnRequesterRfq(user, pr) {
   if (!user || !pr) return false;
-  if (Number(pr.requesterId) === Number(user.id)) return true;
+  const prId = Number(pr.id || pr.prId || 0);
+  const requesterId = Number(pr.requesterId ?? pr.requester_id ?? 0);
+  if (requesterId && Number(user.id) === requesterId) return true;
+  if (!prId) return false;
   const email = String(user.email || '').trim().toLowerCase();
   const [tasks] = await pool.query(
     `SELECT wt.id
@@ -1665,9 +1671,17 @@ async function userCanActOnRequesterRfq(user, pr) {
          OR (? <> '' AND LOWER(TRIM(au.email)) = ?)
        )
      LIMIT 1`,
-    [pr.id, user.id, email, email]
+    [prId, user.id, email, email]
   );
   return Boolean(tasks.length);
+}
+
+/** Requester role must own the PR or hold an RFQ_ENTRY assignment (New Joiners agents). */
+async function assertRequesterRfqAccess(user, prLike) {
+  if (user.role !== 'Requester') return;
+  if (!(await userCanActOnRequesterRfq(user, prLike))) {
+    throw new Error('Unauthorized');
+  }
 }
 
 export async function getRfqByPrId(user, prId) {
@@ -1852,9 +1866,7 @@ export async function submitManualVendorQuotation(user, invitationId, body = {})
   if (!rows.length) throw new Error('RFQ invitation not found');
 
   const inv = rows[0];
-  if (user.role === 'Requester' && inv.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: inv.pr_id, requesterId: inv.requester_id });
   if (inv.status !== 'invited' && inv.status !== 'sent_back') {
     throw new Error('Quotation already submitted. Use Send Back if vendor must revise.');
   }
@@ -1997,9 +2009,7 @@ export async function resendRfqInvitationEmail(user, invitationId) {
   if (!rows.length) throw new Error('RFQ invitation not found');
 
   const inv = rows[0];
-  if (user.role === 'Requester' && inv.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: inv.pr_id, requesterId: inv.requester_id });
   if (inv.invite_mode !== 'email') {
     throw new Error('Manual-entry vendors do not receive RFQ email. Edit the row directly in the table.');
   }
@@ -2021,9 +2031,7 @@ export async function sendBackVendorQuote(user, invitationId, reason, fields = [
   if (!rows.length) throw new Error('RFQ invitation not found');
 
   const inv = rows[0];
-  if (user.role === 'Requester' && inv.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: inv.pr_id, requesterId: inv.requester_id });
   if (inv.status !== 'submitted') {
     throw new Error('Can only send back submitted quotations');
   }
@@ -2121,7 +2129,7 @@ export async function updateSubmissionReviewFields(user, submissionId, requester
   );
   if (!rows.length) throw new Error('Submission not found');
   const row = rows[0];
-  if (user.role === 'Requester' && row.requester_id !== user.id) throw new Error('Unauthorized');
+  await assertRequesterRfqAccess(user, { id: row.pr_id, requesterId: row.requester_id });
 
   const existing = parseJsonObject(row.requester_fields);
   const merged = { ...existing, ...(requesterFields || {}) };
@@ -2154,7 +2162,21 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   const config = await getOrCreateRfqConfig(prId);
   if (config.finalizedAt) throw new Error('RFQ already finalized');
   if (isRequester && config.requesterSubmittedAt) {
-    throw new Error('RFQ already submitted for vendor approval');
+    // Allow retry when a prior submit marked the config but failed before L1 task creation
+    const [postTasks] = await pool.query(
+      `SELECT id FROM workflow_tasks
+       WHERE pr_id = ? AND task_type = 'RFQ_POST_APPROVAL' AND status = 'pending'
+       LIMIT 1`,
+      [prId]
+    );
+    const postRfqStarted =
+      Boolean(postTasks.length) ||
+      pr.status === PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL ||
+      pr.status === PR_STATUS.PENDING_BUSINESS_APPROVAL ||
+      pr.status === PR_STATUS.PENDING_CFO_APPROVAL;
+    if (postRfqStarted) {
+      throw new Error('RFQ already submitted for vendor approval');
+    }
   }
   // Own SCM final only after HOD → L2 → CFO post-RFQ (status back to APPROVED)
   if (isOwnVendor && isScmBuyer) {
@@ -2212,6 +2234,23 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
 
   // Own vendor + Requester → HOD vendor final → L2 → CFO
   if (isOwnVendor && isRequester) {
+    // Complete RFQ Entry task first (Reginold is assignee, not always pr.requester_id)
+    if (taskId) {
+      try {
+        await completeRequesterTask(user, taskId);
+      } catch {
+        await pool.query(
+          `UPDATE workflow_tasks
+           SET status = 'completed', completed_at = NOW()
+           WHERE pr_id = ?
+             AND task_type = 'RFQ_ENTRY'
+             AND assigned_role = 'Requester'
+             AND status = 'pending'
+             AND (assigned_user_id = ? OR id = ?)`,
+          [prId, user.id, taskId]
+        );
+      }
+    }
     await pool.query(
       `UPDATE rfq_configs
        SET recommended_invitation_id = ?, recommendation_justification = ?,
@@ -2219,9 +2258,6 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
        WHERE pr_id = ?`,
       [recommendedInvitationId, justification, prId]
     );
-    if (taskId) {
-      await completeRequesterTask(user, taskId);
-    }
     await pool.query(
       `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
        VALUES (?, ?, ?, 'submitted', ?)`,
@@ -2351,21 +2387,81 @@ async function resolvePostRfqManager(requesterEmail, departmentId, level) {
   };
 }
 
+/** New Joiners post-RFQ: pending L1 → Mugesh, pending L2 → Srivaths. */
+async function healNewJoinersPostRfqAssignees(prId, departmentId = null) {
+  try {
+    const pr = await getPurchaseRequestById(prId);
+    if (!isNewJoinersLaptopPr(pr)) return;
+    const dept = departmentId ?? pr.departmentId ?? pr.department_id ?? null;
+    const mugeshId = await ensureApproverUser(
+      { email: SASS_MUGESH_EMAIL, name: SASS_MUGESH_NAME },
+      'HOD Approver',
+      dept
+    );
+    const l2Id = await ensureApproverUser(
+      { email: SASS_L2_EMAIL, name: SASS_L2_NAME },
+      'PR Manager',
+      dept
+    );
+    if (mugeshId) {
+      await pool.query(
+        `UPDATE workflow_tasks
+         SET assigned_user_id = ?, assigned_role = 'HOD Approver'
+         WHERE pr_id = ?
+           AND task_type = 'RFQ_POST_APPROVAL'
+           AND status = 'pending'
+           AND assigned_role = 'HOD Approver'
+           AND (assigned_user_id IS NULL OR assigned_user_id <> ?)`,
+        [mugeshId, prId, mugeshId]
+      );
+    }
+    if (l2Id) {
+      await pool.query(
+        `UPDATE workflow_tasks
+         SET assigned_user_id = ?, assigned_role = 'PR Manager'
+         WHERE pr_id = ?
+           AND task_type = 'RFQ_POST_APPROVAL'
+           AND status = 'pending'
+           AND assigned_role = 'PR Manager'
+           AND (assigned_user_id IS NULL OR assigned_user_id <> ?)`,
+        [l2Id, prId, l2Id]
+      );
+    }
+  } catch (err) {
+    console.warn('healNewJoinersPostRfqAssignees:', err.message);
+  }
+}
+
 async function createPostRfqApprovalTask(conn, prId, level) {
   const requester = await getRequesterEmailForPr(prId);
-  // New Joiners: L1/L2 follow Reginold (RFQ owner), not HR and not a selected reporting head
-  let managerEmail = requester.email;
+  let assignee;
+
+  // New Joiners: Reginold RFQ → fixed L1 Mugesh → L2 Srivaths (not RefexOne manager lookup)
   if (level === 'hod' || level === 'l2') {
     try {
       const pr = await getPurchaseRequestById(prId);
       if (isNewJoinersLaptopPr(pr)) {
-        managerEmail = NEW_JOINERS_RFQ_EMAIL;
+        const workflowRole = level === 'hod' ? 'HOD Approver' : 'PR Manager';
+        const person =
+          level === 'hod'
+            ? { email: SASS_MUGESH_EMAIL, name: SASS_MUGESH_NAME }
+            : { email: SASS_L2_EMAIL, name: SASS_L2_NAME };
+        const userId = await ensureApproverUser(person, workflowRole, requester.departmentId);
+        assignee = {
+          userId,
+          email: person.email,
+          name: person.name,
+          workflowRole,
+        };
       }
     } catch (err) {
-      console.warn('New Joiners L1/L2 (Reginold) resolve skipped:', err.message);
+      console.warn('New Joiners L1/L2 (Mugesh/Srivaths) resolve skipped:', err.message);
     }
   }
-  const assignee = await resolvePostRfqManager(managerEmail, requester.departmentId, level);
+
+  if (!assignee) {
+    assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
+  }
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 2);
@@ -2709,13 +2805,15 @@ async function startOwnVendorPostRfqWorkflow(prId) {
   const pr = await getPurchaseRequestById(prId);
 
   const isNjl = isNewJoinersLaptopPr(pr);
-  // New Joiners: L1/L2 = Reginold's managers (no reporting-head / selected L1)
-  const l1StageLabel = 'L1 Manager Vendor Final Approval';
+  // New Joiners: L1 = Mugesh, L2 = Srivaths
+  const l1StageLabel = isNjl
+    ? 'Mugesh (L1) Vendor Final Approval'
+    : 'L1 Manager Vendor Final Approval';
   await queuePostQuotationApprovalMail(pr, 'HOD Approver', {
     postRfq: true,
     stageLabel: l1StageLabel,
     approverEmails: assignee.email ? [assignee.email] : undefined,
-    approverName: assignee.name || undefined,
+    approverName: assignee.name || (isNjl ? SASS_MUGESH_NAME : undefined),
   });
   queueRequesterStepProgressNotification(pr, {
     action: 'submitted',
@@ -3004,6 +3102,9 @@ function shouldIncludeComparisonField(field, vendors) {
 export async function getVendorComparisonMatrix(user, prId) {
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
+  if (isNewJoinersLaptopPr(pr)) {
+    await healNewJoinersPostRfqAssignees(prId, pr.departmentId || pr.department_id);
+  }
 
   const pendingTask = await getPendingPostRfqTask(prId);
   const assignedRoleConfig =
@@ -3128,6 +3229,9 @@ export async function getVendorComparisonMatrix(user, prId) {
   );
   const configuredMaxRounds = config.maxRounds != null ? Number(config.maxRounds) : null;
 
+  const joinerDetails = Array.isArray(pr.joinerDetails) ? pr.joinerDetails : [];
+  const isNewJoinersLaptop = Boolean(pr.isNewJoinersLaptop || isNewJoinersLaptopPr(pr));
+
   return {
     pr: {
       id: pr.id,
@@ -3138,6 +3242,7 @@ export async function getVendorComparisonMatrix(user, prId) {
       entityName: pr.entityName || '',
       entityCode: pr.entityCode || '',
       requestType: pr.requestType,
+      purchaseType: pr.purchaseType || pr.purchase_type || null,
       totalAmount: pr.totalAmount,
       estimatedBudget: pr.totalAmount,
       status: pr.status,
@@ -3146,6 +3251,8 @@ export async function getVendorComparisonMatrix(user, prId) {
       prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
+      isNewJoinersLaptop,
+      joinerDetails,
       lineItems: (pr.lineItems || []).map((li) => ({
         id: li.id,
         description: li.description || li.itemName || li.item || '',
@@ -3916,9 +4023,7 @@ export async function adminUpdateVendorQuotationSubmission(user, submissionId, b
   if (!rows.length) throw new Error('Submission not found');
   const row = rows[0];
 
-  if (user.role === 'Requester' && row.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: row.pr_id, requesterId: row.requester_id });
   {
     const config = await getOrCreateRfqConfig(row.pr_id);
     const isPrivilegedAdmin =
@@ -4085,9 +4190,7 @@ export async function attachQuotationFileToSubmission(user, submissionId, body) 
   );
   if (!rows.length) throw new Error('Submission not found');
   const row = rows[0];
-  if (user.role === 'Requester' && row.requester_id !== user.id) {
-    throw new Error('Unauthorized');
-  }
+  await assertRequesterRfqAccess(user, { id: row.pr_id, requesterId: row.requester_id });
   // Super Admin / SCM Manager may repair files anytime; others only on submitted quotes
   if (
     !['Super Admin', 'SCM Manager'].includes(user.role) &&

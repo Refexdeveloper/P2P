@@ -26,11 +26,30 @@ const REQUESTER_EDITABLE_STATUSES = new Set([
   'PENDING_CFO_APPROVAL',
 ]);
 
-function canRequesterEditPr(pr: { status?: string; statusFrontend?: string } | null) {
+function isNewJoinersPurchaseType(value?: string) {
+  const t = String(value || '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return t === 'new_joiners_laptop' || t === 'new_joiner_laptop' || t === 'njl';
+}
+
+function canRequesterEditPr(
+  pr: { status?: string; statusFrontend?: string; purchaseType?: string } | null,
+  opts?: { isHr?: boolean }
+) {
   if (!pr) return false;
   const raw = String(pr.status || '').toUpperCase();
   const front = String(pr.statusFrontend || pr.status || '').toLowerCase();
-  return REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned';
+  if (REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned') return true;
+  if (
+    opts?.isHr &&
+    isNewJoinersPurchaseType(pr.purchaseType) &&
+    raw !== 'REJECTED' &&
+    front !== 'rejected'
+  ) {
+    return true;
+  }
+  return false;
 }
 
 interface LineItem {
@@ -238,7 +257,9 @@ export default function PRDetailDrawer({
   if (!pr && !loading) return null;
 
   const isAdminEditor = Boolean(user?.role && ADMIN_EDIT_ROLES.includes(user.role));
-  const canEdit = Boolean(pr && (isAdminEditor || canRequesterEditPr(pr)));
+  const canEdit = Boolean(
+    pr && (isAdminEditor || canRequesterEditPr(pr, { isHr: user?.role === 'HR' }))
+  );
   const isReturned =
     pr?.status === 'RETURNED' ||
     pr?.statusFrontend === 'returned' ||

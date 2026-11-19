@@ -12,9 +12,11 @@ export type CreatePrDraftSnapshot = {
   department: string;
   entityId: number | '';
   requestType: 'Capex' | 'Opex' | 'Service';
-  purchaseType: 'purchase_order' | 'work_order' | 'sass' | 'online_purchase';
+  purchaseType: 'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop';
   /** Cloud Subscription: one_time | recurring */
   sassSubscriptionMode?: 'one_time' | 'recurring' | null;
+  /** New Joiners Laptop — roster rows (edit/resume must restore these) */
+  joinerDetails?: Array<Record<string, unknown>>;
   sassBillingFrequency?: 'monthly' | 'quarterly' | 'yearly' | null;
   sassSubscriptionStartDate?: string;
   vendorSelection: 'own' | 'scm';
@@ -114,8 +116,12 @@ function activeDraftKey(userId: number | string | undefined) {
 
 export function draftContentScore(draft: CreatePrDraftSnapshot | null | undefined): number {
   if (!draft) return 0;
+  const joinerCount = Array.isArray(draft.joinerDetails)
+    ? draft.joinerDetails.filter((j) => String(j?.firstName || j?.first_name || '').trim()).length
+    : 0;
   return (
     (draft.lineItems?.length || 0) * 10 +
+    joinerCount * 12 +
     (draft.businessJustification?.trim() ? 8 : 0) +
     (draft.billingAddress?.trim() ? 4 : 0) +
     (draft.placeOfDelivery?.trim() ? 4 : 0) +
@@ -124,7 +130,8 @@ export function draftContentScore(draft: CreatePrDraftSnapshot | null | undefine
     (draft.paymentTerms?.trim() ? 2 : 0) +
     (draft.prTitle?.trim() ? 2 : 0) +
     (draft.rfqVendors?.length || 0) * 3 +
-    (draft.entityId ? 1 : 0)
+    (draft.entityId ? 1 : 0) +
+    (draft.purchaseType === 'new_joiners_laptop' ? 2 : 0)
   );
 }
 

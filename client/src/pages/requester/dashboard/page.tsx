@@ -50,11 +50,32 @@ const REQUESTER_EDITABLE_STATUSES = new Set([
   'PENDING_CFO_APPROVAL',
 ]);
 
-function canEditRequesterPr(request: RequesterPR, isAdminEditor: boolean) {
+function isNewJoinersPurchaseType(value?: string) {
+  const t = String(value || '')
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return t === 'new_joiners_laptop' || t === 'new_joiner_laptop' || t === 'njl';
+}
+
+function canEditRequesterPr(
+  request: RequesterPR,
+  isAdminEditor: boolean,
+  opts?: { isHr?: boolean }
+) {
   if (isAdminEditor) return true;
   const raw = String(request.statusRaw || '').toUpperCase();
   const front = String(request.status || '').toLowerCase();
-  return REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned';
+  if (REQUESTER_EDITABLE_STATUSES.has(raw) || front === 'draft' || front === 'returned') return true;
+  // HR: New Joiners roster editable anytime after RFQ approval
+  if (
+    opts?.isHr &&
+    isNewJoinersPurchaseType(request.purchaseType) &&
+    raw !== 'REJECTED' &&
+    front !== 'rejected'
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function isDraftRequesterPr(request: RequesterPR) {
@@ -611,7 +632,7 @@ export default function RequesterDashboard() {
                         PO
                       </button>
                     ) : null}
-                    {(canEditRequesterPr(request, isAdminEditor) ||
+                    {(canEditRequesterPr(request, isAdminEditor, { isHr: user?.role === 'HR' }) ||
                       String(request.status || '').toLowerCase() === 'draft' ||
                       String(request.statusUI || '').toLowerCase().includes('return')) && (
                       <button
@@ -674,7 +695,7 @@ export default function RequesterDashboard() {
                 {requesterPRs.map((request, rowIndex) => {
                   const tone = rowTone(request);
                   const showEdit =
-                    canEditRequesterPr(request, isAdminEditor) ||
+                    canEditRequesterPr(request, isAdminEditor, { isHr: user?.role === 'HR' }) ||
                     String(request.status || '').toLowerCase() === 'draft' ||
                     String(request.statusUI || '').toLowerCase().includes('return');
                   return (
