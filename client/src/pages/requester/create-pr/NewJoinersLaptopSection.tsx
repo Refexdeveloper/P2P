@@ -210,6 +210,47 @@ export default function NewJoinersLaptopSection({
     onChange(rows.filter((_, i) => i !== index));
   };
 
+  const matchReportingFromExcel = (row: {
+    reportingHeadEmail?: string;
+    reportingHeadName?: string;
+    reportingHead?: string;
+  }) => {
+    const emailRaw = String(row.reportingHeadEmail || '').trim();
+    const nameRaw = String(row.reportingHeadName || row.reportingHead || '').trim();
+    const emailLower = emailRaw.toLowerCase();
+    const nameLower = nameRaw.toLowerCase();
+
+    const byEmail =
+      emailLower && reportingUsers.length
+        ? reportingUsers.find((u) => String(u.email || '').trim().toLowerCase() === emailLower) ||
+          null
+        : null;
+    const byName =
+      !byEmail && nameLower && reportingUsers.length
+        ? reportingUsers.find((u) => String(u.name || '').trim().toLowerCase() === nameLower) ||
+          reportingUsers.find((u) =>
+            String(u.name || '').trim().toLowerCase().includes(nameLower)
+          ) ||
+          null
+        : null;
+    const user = byEmail || byName;
+    if (user) {
+      return {
+        reportingHead: user.email || emailRaw || user.name,
+        reportingHeadEmail: user.email || emailRaw,
+        reportingHeadName: user.name || nameRaw,
+        reportingHeadUserId: user.id as number | null,
+      };
+    }
+    // Keep Excel mail id / name even if user master has no match
+    return {
+      reportingHead: emailRaw || nameRaw,
+      reportingHeadEmail: emailRaw,
+      reportingHeadName: nameRaw,
+      reportingHeadUserId: null as number | null,
+    };
+  };
+
   const handleExcelUpload = async (file: File | null) => {
     setExcelError('');
     setExcelInfo('');
@@ -225,23 +266,28 @@ export default function NewJoinersLaptopSection({
         setExcelError('No joiner rows found in the file. Check the header row and data.');
         return;
       }
-      // Company + Reporting Head stay blank for HR to pick in UI (not from Excel).
-      // If PR entity is already selected, seed Company from Entity Master only.
+      // Company stays blank (or seeded from selected PR entity). Reporting Manager mail id comes from Excel.
       const selectedEnt = entityId ? entities.find((e) => e.id === entityId) || null : null;
       const seedCompany = selectedEnt ? entityCompanyValue(selectedEnt) : '';
-      const next: JoinerRow[] = parsed.map((row) => ({
-        ...row,
-        company: seedCompany,
-        reportingHead: '',
-        reportingHeadEmail: '',
-        reportingHeadName: '',
-        reportingHeadUserId: null,
-      }));
+      let withManagerMail = 0;
+      const next: JoinerRow[] = parsed.map((row) => {
+        const head = matchReportingFromExcel(row);
+        if (head.reportingHeadEmail || head.reportingHeadName) withManagerMail += 1;
+        return {
+          ...row,
+          company: seedCompany,
+          ...head,
+        };
+      });
       onChange(next);
       setBulkFrom(1);
       setBulkTo(next.length);
       setExcelInfo(
-        `Loaded ${next.length} joiner row${next.length === 1 ? '' : 's'} from ${file.name}. Select Company and Reporting Head in the table.`
+        `Loaded ${next.length} joiner row${next.length === 1 ? '' : 's'} from ${file.name}` +
+          (withManagerMail
+            ? ` · Reporting Manager mail set on ${withManagerMail} row${withManagerMail === 1 ? '' : 's'}`
+            : '') +
+          '. Select Company in the table if needed.'
       );
     } catch (err) {
       setExcelError(err instanceof Error ? err.message : 'Could not read the Excel file');
@@ -273,8 +319,9 @@ export default function NewJoinersLaptopSection({
             <p className="text-sm font-semibold text-sky-950">Upload Excel to fill table</p>
             <p className="text-xs text-sky-800/90">
               Uses RIL New Joinee columns: HR Updated Date, Joining Date, First/Last Name, Mobile,
-              Designation, Department, Location, HR Name, On Rolls / Contract, Email ID, Laptop /
-              Desktop. Company and Reporting Head are optional (not taken from Excel).
+              Designation, Department, Location, HR Name, Reporting Head Email Id, On Rolls /
+              Contract, Email ID, Laptop / Desktop. Reporting Manager mail id is filled from Excel;
+              Company stays optional in the table.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

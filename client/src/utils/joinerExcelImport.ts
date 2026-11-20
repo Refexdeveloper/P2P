@@ -1,12 +1,13 @@
 /** Parse New Joiners Laptop Excel (.xlsx/.xls/.csv) into joiner table rows.
- * Matches `RIL - New Joinee.xlsx` columns. Company + Reporting Head are NOT imported —
- * HR fills those in the UI.
+ * Matches `RIL - New Joinee.xlsx` columns.
+ * Company is NOT imported (HR selects in UI).
+ * Reporting Manager mail id IS imported into Reporting Head Email.
  */
 import * as XLSX from 'xlsx';
 
 const DEVICE_OPTIONS = ['Laptop', 'Desktop', 'Smartphone / Tab'] as const;
 
-/** Template headers aligned with RIL New Joinee sheet (no Company / Reporting Head). */
+/** Template headers aligned with RIL New Joinee sheet (Company still manual). */
 export const JOINER_EXCEL_HEADERS = [
   'HR Updated Date',
   'Joining Date',
@@ -17,6 +18,7 @@ export const JOINER_EXCEL_HEADERS = [
   'Department',
   'LOCATION',
   'HR NAME',
+  'REPORTING HEAD Email Id',
   'ON ROLLS / CONTRACT',
   'EMAIL ID',
   'LAPTOP / DESKTOP',
@@ -81,20 +83,14 @@ type HeaderKey =
   | 'location'
   | 'address'
   | 'hrName'
+  | 'reportingHeadEmail'
   | 'onRollsOrContract'
   | 'emailRequired'
   | 'device'
   | 'hrUpdatedDate';
 
 /** Headers we deliberately ignore from Excel (filled manually in UI). */
-const SKIP_HEADERS = [
-  'company',
-  'reporting head email id',
-  'reporting head email',
-  'reporting head',
-  'reporting manager',
-  'reporting manager email',
-];
+const SKIP_HEADERS = ['company'];
 
 const HEADER_ALIASES: Record<HeaderKey, string[]> = {
   joiningDate: ['joining date', 'joiningdate', 'joining_date', 'date of joining', 'doj'],
@@ -114,6 +110,20 @@ const HEADER_ALIASES: Record<HeaderKey, string[]> = {
   location: ['location', 'site', 'city', 'office location'],
   address: ['address', 'full address', 'delivery address', 'shipping address'],
   hrName: ['hr name', 'hrname', 'hr_name'],
+  reportingHeadEmail: [
+    'reporting head email id',
+    'reporting head email',
+    'reportingheademail',
+    'reporting_head_email',
+    'reporting head',
+    'reporting manager email',
+    'reporting manager email id',
+    'reporting manager mail id',
+    'reporting manager mail',
+    'reporting manager',
+    'manager email',
+    'manager mail id',
+  ],
   onRollsOrContract: [
     'on rolls / contract',
     'on rolls or contract',
@@ -265,6 +275,36 @@ function normalizeEmailRequired(raw: string): string {
   return 'Yes';
 }
 
+function looksLikeEmail(raw: string): boolean {
+  const s = String(raw || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+/** REPORTING HEAD Email Id may be a real email or a manager name. */
+function parseReportingHead(raw: string): {
+  reportingHead: string;
+  reportingHeadEmail: string;
+  reportingHeadName: string;
+} {
+  const s = String(raw || '').trim();
+  if (!s) {
+    return { reportingHead: '', reportingHeadEmail: '', reportingHeadName: '' };
+  }
+  if (looksLikeEmail(s)) {
+    return {
+      reportingHead: s,
+      reportingHeadEmail: s,
+      reportingHeadName: '',
+    };
+  }
+  // Name-only cell (legacy RIL sheet) — keep as display name; email filled later if matched
+  return {
+    reportingHead: s,
+    reportingHeadEmail: '',
+    reportingHeadName: s,
+  };
+}
+
 function parseDevices(raw: string): string[] {
   const s = String(raw || '').trim();
   if (!s) return ['Laptop'];
@@ -311,6 +351,7 @@ function mapRow(raw: Record<string, string>): JoinerExcelRow | null {
   }
 
   const deviceTypes = parseDevices(mapped.device || '');
+  const reporting = parseReportingHead(mapped.reportingHeadEmail || '');
   const base = emptyJoinerRow();
   return {
     ...base,
@@ -321,14 +362,14 @@ function mapRow(raw: Record<string, string>): JoinerExcelRow | null {
     mobileNumber,
     designation: String(mapped.designation || '').trim(),
     department: String(mapped.department || '').trim(),
-    // Company + Reporting Head: left blank — HR selects in UI
+    // Company left blank — HR selects in UI
     company: '',
     location: String(mapped.location || '').trim(),
     address: String(mapped.address || '').trim(),
     hrName: String(mapped.hrName || '').trim(),
-    reportingHead: '',
-    reportingHeadEmail: '',
-    reportingHeadName: '',
+    reportingHead: reporting.reportingHead,
+    reportingHeadEmail: reporting.reportingHeadEmail,
+    reportingHeadName: reporting.reportingHeadName,
     reportingHeadUserId: null,
     onRollsOrContract: normalizeOnRolls(mapped.onRollsOrContract || ''),
     emailRequired: normalizeEmailRequired(mapped.emailRequired || ''),
@@ -372,7 +413,7 @@ export function isJoinerExcelFile(file: File): boolean {
   );
 }
 
-/** Download a blank template matching RIL New Joinee columns (no Company / Reporting). */
+/** Download a blank template matching RIL New Joinee columns (Company still manual). */
 export function downloadJoinerExcelTemplate(): void {
   const ws = XLSX.utils.aoa_to_sheet([
     [...JOINER_EXCEL_HEADERS],
@@ -386,6 +427,7 @@ export function downloadJoinerExcelTemplate(): void {
       'IT',
       'Chennai',
       'HR Name',
+      'manager@example.com',
       'On Rolls',
       'Yes',
       'Laptop',
