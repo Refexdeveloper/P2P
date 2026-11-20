@@ -1238,14 +1238,16 @@ export async function getPoCreateContext(user, prId) {
 
   const lineItems = await lookupUnitsFromItemMaster(pr.lineItems || []);
 
-  let draftSql = `SELECT id FROM purchase_orders WHERE pr_id = ? AND status = 'draft'`;
-  const draftParams = [prId];
-  if (!canEditAnyScmPurchaseOrder(user)) {
-    draftSql += ` AND created_by = ?`;
-    draftParams.push(user.id);
+  // Any SCM Buyer / Manager / Super Admin can open a draft after send-back.
+  // Requester may open draft on their own PR only.
+  if (user.role === 'Requester' && Number(pr.requesterId || pr.requester_id) !== Number(user.id)) {
+    throw new Error('Unauthorized');
   }
-  draftSql += ` ORDER BY updated_at DESC, id DESC LIMIT 1`;
-  const [draftRows] = await pool.query(draftSql, draftParams);
+  const [draftRows] = await pool.query(
+    `SELECT id FROM purchase_orders WHERE pr_id = ? AND status = 'draft'
+     ORDER BY updated_at DESC, id DESC LIMIT 1`,
+    [prId]
+  );
 
   return {
     pr: {
@@ -1933,14 +1935,17 @@ async function assertPrLineQtyNotExceeded(prId, incomingLineItems = [], excludeP
 }
 
 export async function createPurchaseOrder(user, prId, body) {
-  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('Only SCM Buyer or SCM Manager can create purchase orders');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role)) {
+    throw new Error('Only SCM Buyer, SCM Manager, or Requester can create purchase orders');
   }
 
   const pr = await getPurchaseRequestById(prId);
   if (!pr) throw new Error('PR not found');
+  if (user.role === 'Requester' && Number(pr.requesterId || pr.requester_id) !== Number(user.id)) {
+    throw new Error('You can only create POs for your own purchase requests');
+  }
 
-  // RMC: one or multiple POs per PR allowed. Reuse caller's draft if present.
+  // RMC: one or multiple POs per PR allowed. Reuse draft if present.
   const [existingRows] = await pool.query(
     `SELECT id, status, created_by FROM purchase_orders
      WHERE pr_id = ?
@@ -1951,17 +1956,12 @@ export async function createPurchaseOrder(user, prId, body) {
 
   const existingDraft = existingRows.find((r) => {
     if (String(r.status) !== 'draft') return false;
+    // SCM team and requester may continue any draft on this PR after send-back
+    if (['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) return true;
     if (canEditAnyScmPurchaseOrder(user)) return true;
     return Number(r.created_by) === Number(user.id);
   });
   if (existingDraft && !body?.forceNewPo) {
-    if (
-      user.role === 'SCM Buyer' &&
-      Number(existingDraft.created_by) !== Number(user.id) &&
-      !canEditAnyScmPurchaseOrder(user)
-    ) {
-      throw new Error('You can only send your own draft POs');
-    }
     return updatePurchaseOrder(user, existingDraft.id, {
       ...(body || {}),
       resubmitForApproval: true,
@@ -2219,14 +2219,7 @@ export async function createManualPurchaseOrder(user, body = {}) {
     );
     const draftRow = draftRows[0];
     if (draftRow && String(draftRow.status) === 'draft' && !draftRow.pr_id) {
-      if (
-        user.role === 'SCM Buyer' &&
-        Number(draftRow.created_by) !== Number(user.id) &&
-        !canEditAnyScmPurchaseOrder(user)
-      ) {
-        throw new Error('You can only send your own draft POs');
-      }
-      // updatePurchaseOrder (canBuyerRevise) assigns official number + pending_approval → Rajeev
+      // Any SCM Buyer/Manager may resubmit a manual draft after send-back
       const promoted = await updatePurchaseOrder(user, draftPoId, {
         ...(body || {}),
         resubmitForApproval: true,
@@ -2668,10 +2661,28 @@ async function persistDraftLineItems(conn, poId, lineItems) {
   }
 }
 
+/** True when Requester owns the PR linked to this PO (functional Create PO). */
+async function requesterOwnsDraftPo(user, poRow, prIdHint = null) {
+  if (user?.role !== 'Requester') return false;
+  const prId = Number(poRow?.pr_id || prIdHint || 0) || null;
+  if (!prId) {
+    // Manual PO drafts are SCM-only
+    return Number(poRow?.created_by) === Number(user.id);
+  }
+  const [prRows] = await pool.query(
+    `SELECT requester_id, po_creation_by FROM purchase_requests WHERE id = ? LIMIT 1`,
+    [prId]
+  );
+  const pr = prRows[0];
+  if (!pr) return false;
+  // Functional Create PO: PR requester may always save/edit draft on their PR
+  return Number(pr.requester_id) === Number(user.id);
+}
+
 /** Save or update a draft PO / WO (PR-linked or manual). */
 export async function savePurchaseOrderDraft(user, body = {}) {
-  if (!['SCM Buyer', 'SCM Manager', 'Super Admin'].includes(user.role)) {
-    throw new Error('Only SCM Buyer or SCM Manager can save PO drafts');
+  if (!['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'].includes(user.role)) {
+    throw new Error('Only SCM Buyer, SCM Manager, or Requester can save PO drafts');
   }
 
   const poId = Number(body.poId || body.id || 0) || null;
@@ -2683,12 +2694,28 @@ export async function savePurchaseOrderDraft(user, body = {}) {
     existing = rows[0] || null;
     if (!existing) throw new Error('PO not found');
     if (existing.status !== 'draft') throw new Error('Only draft POs can be saved with Save Draft');
-    if (user.role === 'SCM Buyer' && existing.created_by !== user.id && !canEditAnyScmPurchaseOrder(user)) {
-      throw new Error('You can only edit your own draft POs');
+    // SCM Buyer/Manager/Super Admin may save any draft (send-back / team revise).
+    // Requester may save only their own functional Create PO draft.
+    if (user.role === 'Requester') {
+      const owns = await requesterOwnsDraftPo(user, existing, prId);
+      if (!owns) throw new Error('You can only edit your own draft POs');
     }
   } else if (prId) {
-    // RMC: allow multiple POs per PR (split vendors / partial lines). Reuse own draft if present.
-    if (canEditAnyScmPurchaseOrder(user)) {
+    // RMC: allow multiple POs per PR (split vendors / partial lines). Reuse draft if present.
+    if (user.role === 'Requester') {
+      const ownsPr = await requesterOwnsDraftPo(user, null, prId);
+      if (!ownsPr) throw new Error('You can only edit your own draft POs');
+      const [draftRows] = await pool.query(
+        `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
+        [prId]
+      );
+      existing = draftRows[0] || null;
+      if (existing) {
+        const ownsDraft = await requesterOwnsDraftPo(user, existing, prId);
+        if (!ownsDraft) existing = null;
+      }
+    } else if (canEditAnyScmPurchaseOrder(user) || user.role === 'SCM Buyer') {
+      // Any SCM Buyer can continue a draft after manager send-back (created_by may differ)
       const [draftRows] = await pool.query(
         `SELECT * FROM purchase_orders WHERE pr_id = ? AND status = 'draft' ORDER BY id DESC LIMIT 1`,
         [prId]
@@ -4742,11 +4769,29 @@ export async function updatePurchaseOrder(user, poId, body) {
     wantsManagerResubmit &&
     existing.status === 'draft' &&
     ['SCM Buyer', 'Super Admin', 'SCM Manager'].includes(user.role);
+  const canRequesterRevise =
+    wantsManagerResubmit &&
+    existing.status === 'draft' &&
+    user.role === 'Requester' &&
+    (await requesterOwnsDraftPo(user, existing));
+  // Requester Save Draft on their functional Create PO (keep status draft)
+  const canRequesterSaveDraft =
+    existing.status === 'draft' &&
+    Boolean(body?.saveAsDraft) &&
+    user.role === 'Requester' &&
+    (await requesterOwnsDraftPo(user, existing));
   // Track PO / admin correction: edit existing PO without changing workflow status
   const canAdminEdit =
     existing.status !== 'cancelled' &&
     (user.role === 'Super Admin' || user.role === 'SCM Manager' || user.role === 'SCM Buyer');
-  if (!canManagerEdit && !canBuyerEdit && !canBuyerRevise && !canAdminEdit) {
+  if (
+    !canManagerEdit &&
+    !canBuyerEdit &&
+    !canBuyerRevise &&
+    !canRequesterRevise &&
+    !canRequesterSaveDraft &&
+    !canAdminEdit
+  ) {
     throw new Error('You are not allowed to edit this purchase order');
   }
   const forceAdminContentEdit =
@@ -4754,7 +4799,12 @@ export async function updatePurchaseOrder(user, poId, body) {
   // Prefer workflow-aware paths when they apply; otherwise treat as admin content edit
   const isAdminContentEdit =
     forceAdminContentEdit ||
-    (canAdminEdit && !canManagerEdit && !canBuyerEdit && !canBuyerRevise);
+    (canAdminEdit &&
+      !canManagerEdit &&
+      !canBuyerEdit &&
+      !canBuyerRevise &&
+      !canRequesterRevise &&
+      !canRequesterSaveDraft);
 
   const draft = existing.pr_id
     ? await resolvePoDraftContent(existing.pr_id, {
@@ -4815,11 +4865,13 @@ export async function updatePurchaseOrder(user, poId, body) {
     body.changeSummary?.trim() ||
     (isAdminContentEdit
       ? `PO updated by ${user.role || 'admin'} from Track PO`
-      : canBuyerRevise
-        ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
-        : canBuyerEdit
-          ? 'PO updated by SCM Buyer during final verify'
-          : 'PO updated by SCM Manager before approval');
+      : canRequesterRevise
+        ? 'PO revised by Requester — resubmitted for sign'
+        : canBuyerRevise
+          ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
+          : canBuyerEdit
+            ? 'PO updated by SCM Buyer during final verify'
+            : 'PO updated by SCM Manager before approval');
 
   const conn = await pool.getConnection();
   try {
@@ -4834,9 +4886,9 @@ export async function updatePurchaseOrder(user, poId, body) {
     const purchaseTypeForNumber = normalizePurchaseType(body.purchaseType || existing.purchase_type);
     const docLabelForNumber = purchaseTypeLabel(purchaseTypeForNumber);
 
-    // When buyer sends draft → SCM Manager, assign official PO/WO number (draft placeholders only)
+    // When buyer/requester sends draft → SCM Manager, assign official PO/WO number (draft placeholders only)
     let nextPoNumber;
-    if (canBuyerRevise) {
+    if (canBuyerRevise || canRequesterRevise) {
       const formOfficial = normalizeRequestedPoNumber(body.poNumber || body.existingPoNumber);
       const preferFormOfficial =
         formOfficial && !isDraftPlaceholderPoNumber(formOfficial) ? formOfficial : null;
@@ -4972,12 +5024,12 @@ export async function updatePurchaseOrder(user, poId, body) {
       }
     }
 
-    if (canBuyerRevise) {
+    if (canBuyerRevise || canRequesterRevise) {
       if (existing.pr_id) {
         await assertPrLineQtyNotExceeded(existing.pr_id, lineItems, poId);
         await conn.query(
           `UPDATE workflow_tasks SET status = 'completed', completed_at = NOW()
-           WHERE pr_id = ? AND task_type IN ('PO_REVISION', 'PO_APPROVAL', 'PO_VALUE_APPROVAL')
+           WHERE pr_id = ? AND task_type IN ('PO_REVISION', 'PO_APPROVAL', 'PO_VALUE_APPROVAL', 'RFQ_POST_APPROVAL')
              AND status = 'pending'
              AND (po_id IS NULL OR po_id = 0 OR po_id = ?)`,
           [existing.pr_id, poId]
@@ -5078,7 +5130,7 @@ export async function updatePurchaseOrder(user, poId, body) {
     updatedPo.pdfPath = fileName;
   }
 
-  if (canBuyerRevise) {
+  if (canBuyerRevise || canRequesterRevise) {
     const signer = await resolvePoSignRecipient(updatedPo);
     const approverEmails = signer.emails;
     const approverName = signer.name;
@@ -5094,7 +5146,7 @@ export async function updatePurchaseOrder(user, poId, body) {
         remarks:
           body?.resubmitForApproval || body?.changeSummary
             ? `Revised after send-back — sent to ${approverName} for PO sign`
-            : `PO submitted by ${user.name || 'SCM'} to ${approverName} for sign`,
+            : `PO submitted by ${user.name || user.role || 'user'} to ${approverName} for sign`,
         portalUrl: poPortalUrl(`/scm/po-approval?poId=${poId}`),
         ctaLabel: 'Open PO Approval',
         attachments,

@@ -3061,6 +3061,7 @@ export default function CreatePOPage() {
       const existingDraftId = Number(editPoId || createdPoId || createdPoIdRef.current || 0) || null;
       if (existingDraftId) payload.poId = existingDraftId;
       else if (numericPrId) payload.prId = numericPrId;
+      payload.saveAsDraft = true;
 
       const res = await poApi.saveDraft(payload);
       const data = (res.data || {}) as {
