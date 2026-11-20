@@ -347,6 +347,15 @@ export default function CreatePRPage() {
     ) => Promise<void>
   >(async () => undefined);
 
+  /** New Joiners: Company on rows is optional — soft-pick Entity Master for PR numbering. */
+  const resolveNjlEntityId = (): number | '' => {
+    if (entityId) return entityId;
+    const first = entities[0]?.id;
+    if (!first) return '';
+    setEntityId(first);
+    return first;
+  };
+
   const showToast = (text: string, type: 'error' | 'success' = 'error') => {
     const msg = String(text || '').trim();
     if (!msg) return;
@@ -2093,38 +2102,30 @@ export default function CreatePRPage() {
     const newErrors: Record<string, string> = {};
     if (isNewJoinersLaptop) {
       if (!prTitle.trim()) setPrTitle('New Joiners Laptop Purchase');
-      if (!entityId) newErrors.entityId = 'Select Company (Entity Master) on the joiner row';
       if (!department.trim()) {
         setDepartment(String(user?.departmentName || '').trim() || 'HR & Admin');
       }
-      const validJoiners = joinerDetails.filter((j) => j.firstName.trim() && j.joiningDate);
-      if (!validJoiners.length) {
-        newErrors.joinerDetails = 'Add at least one joiner with First Name and Joining Date';
-      } else {
-        joinerDetails.forEach((j, i) => {
-          if (!j.firstName.trim() && !j.lastName.trim() && !j.mobileNumber.trim()) return;
-          if (!j.firstName.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: First Name is required`;
-          if (!j.joiningDate) newErrors.joinerDetails = `Joiner #${i + 1}: Joining Date is required`;
-          if (!j.department.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Department is required`;
-          if (!j.company.trim()) newErrors.joinerDetails = `Joiner #${i + 1}: Company is required`;
-          if (!j.reportingHead?.trim() && !j.reportingHeadEmail?.trim()) {
-            newErrors.joinerDetails = `Joiner #${i + 1}: Reporting Head is required`;
-          }
-          const devices =
-            Array.isArray(j.deviceTypes) && j.deviceTypes.length
-              ? j.deviceTypes
-              : j.deviceType?.trim()
-                ? [j.deviceType]
-                : [];
-          if (!devices.length)
-            newErrors.joinerDetails = `Joiner #${i + 1}: Select at least one device (Laptop / Desktop / Smartphone/Tab)`;
-        });
+      // No per-field mandatory checks (Company / Reporting Head / Device / dates optional).
+      const resolvedEntity = resolveNjlEntityId();
+      if (!resolvedEntity) {
+        newErrors.entityId = 'Add at least one entity in Entity Master';
+      }
+      const hasAnyJoiner = joinerDetails.some(
+        (j) =>
+          j.firstName.trim() ||
+          j.lastName.trim() ||
+          j.mobileNumber.trim() ||
+          j.joiningDate ||
+          j.department.trim()
+      );
+      if (!hasAnyJoiner) {
+        newErrors.joinerDetails = 'Add at least one joiner row';
       }
       setErrors(newErrors);
       const okJoiners = Object.keys(newErrors).length === 0;
       if (!okJoiners) {
         const firstMsg =
-          Object.values(newErrors).find(Boolean) || 'Please fill the required joiner fields';
+          Object.values(newErrors).find(Boolean) || 'Please add at least one joiner';
         showToast(firstMsg, 'error');
         scrollToFirstError(newErrors, setActiveTab);
       }
@@ -2254,8 +2255,12 @@ export default function CreatePRPage() {
 
   const validateDraftBasics = () => {
     const newErrors: Record<string, string> = {};
-    // Draft: only Entity is required (PR number needs entity). Department + line items are enforced on Submit.
-    if (!entityId) newErrors.entityId = 'Entity is required';
+    // Draft: PR number needs an entity. For New Joiners, soft-pick first Entity Master (Company optional on rows).
+    if (isNewJoinersLaptop) {
+      if (!resolveNjlEntityId()) newErrors.entityId = 'Add at least one entity in Entity Master';
+    } else if (!entityId) {
+      newErrors.entityId = 'Entity is required';
+    }
     setErrors(newErrors);
     const ok = Object.keys(newErrors).length === 0;
     if (!ok) {
@@ -2396,7 +2401,10 @@ export default function CreatePRPage() {
     projectDetail: isNewJoinersLaptop ? undefined : projectDetail.trim() || undefined,
     specialNotes: isNewJoinersLaptop ? undefined : specialNotes.trim() || undefined,
     department,
-    entityId: entityId ? Number(entityId) : undefined,
+    entityId: (() => {
+      const id = entityId || (isNewJoinersLaptop ? resolveNjlEntityId() : '');
+      return id ? Number(id) : undefined;
+    })(),
     priority,
     currency,
     prFlow:

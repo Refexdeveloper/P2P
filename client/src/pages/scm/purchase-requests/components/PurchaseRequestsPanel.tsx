@@ -759,6 +759,16 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                                   <i className="ri-edit-line mr-1.5" aria-hidden />
                                   Edit
                                 </button>
+                              ) : pr.status === 'PO Rejected' && pr.poId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openAdminEditPo(pr.poId!)}
+                                  className="po-act solid"
+                                  title="Edit rejected PO and resend for SCM Manager approval"
+                                >
+                                  <i className="ri-send-plane-line mr-1.5" aria-hidden />
+                                  Edit & Resend
+                                </button>
                               ) : pr.status === 'Cancelled' && pr.poId ? (
                                 <button
                                   type="button"
@@ -793,10 +803,15 @@ const PurchaseRequestsPanel = forwardRef<PurchaseRequestsPanelHandle>(function P
                               {(() => {
                                 const items: { label: string; icon: string; danger?: boolean; disabled?: boolean; run: () => void }[] = [];
                                 // When the primary button is Create PO / Edit / Retrieve, "View details" moves into the menu.
-                                if (pr.status === 'Ready for PO' || (pr.status === 'Draft' && pr.poId) || (pr.status === 'Cancelled' && pr.poId)) {
+                                if (
+                                  pr.status === 'Ready for PO' ||
+                                  (pr.status === 'Draft' && pr.poId) ||
+                                  (pr.status === 'PO Rejected' && pr.poId) ||
+                                  (pr.status === 'Cancelled' && pr.poId)
+                                ) {
                                   items.push({ label: isExpanded ? 'Hide details' : 'View details', icon: 'ri-eye-line', run: () => toggleExpand(pr.key) });
                                 }
-                                if (isSuperAdmin && pr.poId && pr.status !== 'Draft' && pr.status !== 'Cancelled') {
+                                if (isSuperAdmin && pr.poId && pr.status !== 'Draft' && pr.status !== 'Cancelled' && pr.status !== 'PO Rejected') {
                                   items.push({ label: 'Edit PO / WO', icon: 'ri-edit-line', run: () => openAdminEditPo(pr.poId!) });
                                 }
                                 if (pr.status !== 'Ready for PO' && !pr.poId && pr.prId > 0) {

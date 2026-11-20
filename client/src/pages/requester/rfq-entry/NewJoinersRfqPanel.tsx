@@ -246,9 +246,9 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
                   '—'
                 )}
               </MetaRow>
-              <MetaRow label="Company">{row.company || ''}</MetaRow>
               {approvalView ? (
                 <>
+                  <MetaRow label="Company">{row.company || ''}</MetaRow>
                   <MetaRow label="Email">{row.emailRequired || '—'}</MetaRow>
                   <MetaRow label="Employment">{row.onRollsOrContract || ''}</MetaRow>
                   <MetaRow label="Reporting head">
@@ -264,6 +264,52 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
                 </>
               ) : (
                 <>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Company
+                    </p>
+                    <input
+                      disabled={readOnly}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm"
+                      value={row.company || ''}
+                      placeholder="Company / entity"
+                      onChange={(e) => updateRow(index, { company: e.target.value })}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Reporting head name
+                    </p>
+                    <input
+                      disabled={readOnly}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm"
+                      value={row.reportingHeadName || ''}
+                      placeholder="Name"
+                      onChange={(e) =>
+                        updateRow(index, {
+                          reportingHeadName: e.target.value,
+                          reportingHead: e.target.value || row.reportingHeadEmail || '',
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="min-w-0 sm:col-span-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Reporting head email
+                    </p>
+                    <input
+                      disabled={readOnly}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-2.5 py-2 text-sm"
+                      value={row.reportingHeadEmail || row.reportingHead || ''}
+                      placeholder="email@company.com"
+                      onChange={(e) =>
+                        updateRow(index, {
+                          reportingHeadEmail: e.target.value,
+                          reportingHead: e.target.value || row.reportingHeadName || '',
+                        })
+                      }
+                    />
+                  </div>
                   <div className="min-w-0 sm:col-span-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       Link requester
@@ -344,6 +390,8 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
               </>
             ) : (
               <>
+                <th className="px-3 py-2 font-semibold">Company</th>
+                <th className="px-3 py-2 font-semibold">Reporting head</th>
                 <th className="px-3 py-2 font-semibold">Link requester</th>
                 <th className="px-3 py-2 font-semibold">Inventory / New</th>
                 <th className="px-3 py-2 font-semibold">Remarks</th>
@@ -370,7 +418,9 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
                 <td className="px-3 py-2">
                   <div>{row.department || '—'}</div>
                   <div className="text-slate-500">{row.location || ''}</div>
-                  <div className="text-slate-400">{row.company || ''}</div>
+                  {approvalView ? (
+                    <div className="text-slate-400">{row.company || ''}</div>
+                  ) : null}
                 </td>
                 <td className="max-w-[14rem] px-3 py-2 whitespace-pre-wrap text-slate-700">
                   {row.address || '—'}
@@ -398,6 +448,53 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
                   </>
                 ) : (
                   <>
+                    <td className="px-3 py-2 min-w-[9rem]">
+                      {readOnly ? (
+                        <span>{row.company || '—'}</span>
+                      ) : (
+                        <input
+                          className="w-full rounded-md border border-slate-200 px-1.5 py-1"
+                          value={row.company || ''}
+                          placeholder="Company"
+                          onChange={(e) => updateRow(index, { company: e.target.value })}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2 min-w-[12rem]">
+                      {readOnly ? (
+                        <div>
+                          <div>{reporting}</div>
+                          {row.reportingHeadEmail && row.reportingHeadName ? (
+                            <div className="break-all text-slate-400">{row.reportingHeadEmail}</div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <input
+                            className="w-full rounded-md border border-slate-200 px-1.5 py-1"
+                            value={row.reportingHeadName || ''}
+                            placeholder="Name"
+                            onChange={(e) =>
+                              updateRow(index, {
+                                reportingHeadName: e.target.value,
+                                reportingHead: e.target.value || row.reportingHeadEmail || '',
+                              })
+                            }
+                          />
+                          <input
+                            className="w-full rounded-md border border-slate-200 px-1.5 py-1"
+                            value={row.reportingHeadEmail || row.reportingHead || ''}
+                            placeholder="Email"
+                            onChange={(e) =>
+                              updateRow(index, {
+                                reportingHeadEmail: e.target.value,
+                                reportingHead: e.target.value || row.reportingHeadName || '',
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 min-w-[10rem]">
                       {readOnly ? (
                         <span>{linkedRequesterName(row.linkedRequesterId)}</span>
@@ -470,8 +567,9 @@ export default function NewJoinersRfqPanel({ prId, joiners, onSaved, readOnly, a
             'Full roster for this New Joiners Laptop purchase. Review names, joining dates, and inventory vs new purchase before approving the recommended vendor.'
           ) : (
             <>
-              Mark inventory vs new purchase. RFQ Entry stays with <strong>Reginold</strong> only —
-              linked requester is optional tagging. Same device type → one line (qty = new purchases).
+              Edit Company and Reporting Head if needed, then mark inventory vs new purchase. RFQ Entry
+              stays with <strong>Reginold</strong> only — linked requester is optional tagging. Same
+              device type → one line (qty = new purchases).
             </>
           )}
         </p>

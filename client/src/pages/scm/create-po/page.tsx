@@ -3972,11 +3972,13 @@ export default function CreatePOPage() {
     return true;
   };
 
-  /** Create / draft Save that goes to SCM Manager for approval */
+  const isRejectedResubmit = String(poEditStatus || '').toLowerCase() === 'rejected';
+
+  /** Create / draft / rejected Save that goes to SCM Manager for approval */
   const needsScmManagerConfirm =
     !skipApproval &&
     !isBuyerVerifyEdit &&
-    (!isEditMode || poEditStatus === 'draft');
+    (!isEditMode || poEditStatus === 'draft' || isRejectedResubmit);
 
   const confirmVendorName = (
     isManualPoFlow
@@ -4155,9 +4157,12 @@ export default function CreatePOPage() {
 
       if (isEditMode && editPoId) {
         const isSuperAdminUser = Boolean(user?.isSuperAdmin || user?.role === 'Super Admin');
+        const statusLower = String(poEditStatus || '').toLowerCase();
+        const isRejectedEdit = statusLower === 'rejected';
         const allowAdminDocEdit =
           poEditStatus &&
           poEditStatus !== 'draft' &&
+          !isRejectedEdit &&
           (fromParam === 'track-po' ||
             fromParam === 'create-po' ||
             fromParam === 'purchase-requests' ||
@@ -4169,14 +4174,19 @@ export default function CreatePOPage() {
             payload.changeSummary ||
             `PO updated by ${user?.role || 'admin'} from ${fromParam || 'create-po'}`;
         }
-        // Send Back → Edit Draft → Send for Approval → SCM Manager (Rajeev)
-        if (poEditStatus === 'draft' || !poEditStatus) {
+        // Send Back draft OR rejected → Resend for Approval → SCM Manager (Rajeev)
+        if (poEditStatus === 'draft' || !poEditStatus || isRejectedEdit) {
           payload.resubmitForApproval = true;
           payload.saveAsDraft = false;
           delete payload.adminEdit;
+          if (isRejectedEdit) {
+            payload.changeSummary =
+              String(payload.changeSummary || changeSummary || '').trim() ||
+              'Rejected PO edited and resent for SCM Manager approval';
+          }
         }
         const updateRes = await poApi.update(editPoId, payload);
-        if (poEditStatus === 'draft' || !poEditStatus) {
+        if (poEditStatus === 'draft' || !poEditStatus || isRejectedEdit) {
           const saved = updateRes.data as { poNumber?: string } | undefined;
           if (saved?.poNumber) setPoNumber(String(saved.poNumber));
           const mgr = scmManager?.name || 'Rajeev V';
@@ -4184,7 +4194,7 @@ export default function CreatePOPage() {
             updateRes.message ||
               (user?.role === 'Requester'
                 ? `${saved?.poNumber || poNumber || docLabel} sent to Mugesh for sign and upload`
-                : `${saved?.poNumber || poNumber || docLabel} sent to SCM Manager (${mgr}) for sign / approval`)
+                : `${saved?.poNumber || poNumber || docLabel} ${isRejectedEdit ? 'resent' : 'sent'} to SCM Manager (${mgr}) for sign / approval`)
           );
           navigate('/scm/create-po');
           return;
@@ -4516,16 +4526,20 @@ export default function CreatePOPage() {
                 className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${
                   isBuyerVerifyEdit
                     ? 'bg-blue-100 text-blue-800'
-                    : isEditMode && poEditStatus && poEditStatus !== 'draft'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-orange-100 text-orange-700'
+                    : isRejectedResubmit
+                      ? 'bg-rose-100 text-rose-700'
+                      : isEditMode && poEditStatus && poEditStatus !== 'draft'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-orange-100 text-orange-700'
                 }`}
               >
                 {isBuyerVerifyEdit
                   ? 'Approved PO verification'
-                  : isEditMode && poEditStatus && poEditStatus !== 'draft'
-                    ? 'Pending Review'
-                    : 'Draft'}
+                  : isRejectedResubmit
+                    ? 'Rejected — revise & resend'
+                    : isEditMode && poEditStatus && poEditStatus !== 'draft'
+                      ? 'Pending Review'
+                      : 'Draft'}
               </span>
               {draftSaved && (
                 <span className="flex items-center gap-1 text-xs text-emerald-600 font-medium">
@@ -4651,8 +4665,10 @@ export default function CreatePOPage() {
                     ? 'Saving...'
                     : isBuyerAwaitingManager
                       ? 'With SCM Manager'
-                      : isEditMode && poEditStatus === 'draft'
-                        ? 'Send for Approval'
+                      : isEditMode && (poEditStatus === 'draft' || isRejectedResubmit)
+                        ? isRejectedResubmit
+                          ? 'Resend for Approval'
+                          : 'Send for Approval'
                       : isEditMode
                       ? 'Save'
                       : skipApproval
@@ -6217,6 +6233,8 @@ export default function CreatePOPage() {
                       {isEditMode
                         ? isBuyerVerifyEdit
                           ? 'Changes update the signed PO before you verify and send to vendor'
+                          : isRejectedResubmit
+                            ? `Edit the rejected ${docLabel}, then resend to SCM Manager${scmManager?.name ? ` (${scmManager.name})` : ''} for approval`
                           : (fromParam === 'track-po' ||
                                 fromParam === 'create-po' ||
                                 user?.role === 'Super Admin' ||
@@ -6254,13 +6272,21 @@ export default function CreatePOPage() {
                     disabled={submitting || isBuyerAwaitingManager}
                     className="px-6 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] transition-colors cursor-pointer text-sm font-bold whitespace-nowrap shadow-sm flex items-center gap-2 disabled:opacity-50"
                   >
-                    <i className={isEditMode ? 'ri-save-3-line' : 'ri-send-plane-fill'}></i>
+                    <i
+                      className={
+                        isEditMode && !isRejectedResubmit && poEditStatus !== 'draft'
+                          ? 'ri-save-3-line'
+                          : 'ri-send-plane-fill'
+                      }
+                    ></i>
                     {submitting
                       ? isEditMode ? 'Saving...' : 'Creating PO...'
                       : isBuyerAwaitingManager
                         ? 'With SCM Manager'
-                      : isEditMode && poEditStatus === 'draft'
-                        ? 'Send for Approval'
+                      : isEditMode && (poEditStatus === 'draft' || isRejectedResubmit)
+                        ? isRejectedResubmit
+                          ? 'Resend for Approval'
+                          : 'Send for Approval'
                       : isEditMode
                         ? 'Save Changes'
                         : skipApproval
@@ -6410,8 +6436,11 @@ export default function CreatePOPage() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
             <div className="bg-gradient-to-br from-[#1E88E5] to-[#1565C0] px-6 py-5">
               <h3 className="text-lg font-bold text-white">
-                {requesterSendsToMugesh || (isEditMode && poEditStatus === 'draft')
-                  ? `Send for sign and upload to ${nextApproverName}?`
+                {requesterSendsToMugesh ||
+                (isEditMode && (poEditStatus === 'draft' || isRejectedResubmit))
+                  ? isRejectedResubmit
+                    ? `Resend for approval to ${nextApproverName}?`
+                    : `Send for sign and upload to ${nextApproverName}?`
                   : 'Send for SCM Manager approval?'}
               </h3>
               <p className="text-sky-100 text-sm mt-1">
@@ -6529,7 +6558,11 @@ export default function CreatePOPage() {
                   disabled={submitting}
                   className="flex-1 py-2.5 bg-[#1E88E5] text-white rounded-lg hover:bg-[#1565C0] text-sm font-bold disabled:opacity-50"
                 >
-                  {submitting ? 'Sending…' : `Yes, send to ${nextApproverRole}`}
+                  {submitting
+                    ? 'Sending…'
+                    : isRejectedResubmit
+                      ? `Yes, resend to ${nextApproverRole}`
+                      : `Yes, send to ${nextApproverRole}`}
                 </button>
               </div>
             </div>

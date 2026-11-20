@@ -1085,6 +1085,21 @@ export default function TrackPoPage() {
                                       Edit Draft
                                     </button>
                                   )}
+                                  {row.status === 'rejected' &&
+                                    row.poId &&
+                                    (user?.role === 'SCM Buyer' ||
+                                      user?.role === 'SCM Manager' ||
+                                      user?.role === 'Super Admin' ||
+                                      user?.isSuperAdmin) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openAdminEditPo(row.poId!)}
+                                        className="cursor-pointer whitespace-nowrap rounded-xl bg-[#0f6b7a] px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0b5361]"
+                                        title="Edit rejected PO and resend for SCM Manager approval"
+                                      >
+                                        Edit & Resend
+                                      </button>
+                                    )}
                                   {canSendBackPending && row.poId && row.status === 'pending' && (
                                     <button
                                       type="button"
@@ -1111,6 +1126,7 @@ export default function TrackPoPage() {
                                     row.poId &&
                                     row.status !== 'draft' &&
                                     row.status !== 'cancelled' &&
+                                    row.status !== 'rejected' &&
                                     !(user?.role === 'SCM Buyer' && row.status === 'pending') && (
                                       <button
                                         type="button"

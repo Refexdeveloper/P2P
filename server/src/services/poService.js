@@ -5840,19 +5840,20 @@ export async function updatePurchaseOrder(user, poId, body) {
 
   const canManagerEdit = user.role === 'SCM Manager' && existing.status === 'pending_approval';
   const canBuyerEdit = user.role === 'SCM Buyer' && existing.status === 'pending_buyer_verify';
-  // Draft after admin/manager send-back (or first create): Save → SCM Manager Rajeev for sign
+  // Draft after send-back, or rejected after manager/buyer reject: Save → SCM Manager for sign
+  const isRejectedPo = String(existing.status || '').toLowerCase() === 'rejected';
   const wantsManagerResubmit =
     Boolean(body?.resubmitForApproval) ||
     (existing.status === 'draft' && !Boolean(body?.adminEdit) && !Boolean(body?.saveAsDraft));
   const canBuyerRevise =
     wantsManagerResubmit &&
-    existing.status === 'draft' &&
+    (existing.status === 'draft' || isRejectedPo) &&
     ['SCM Buyer', 'Super Admin', 'SCM Manager'].includes(user.role);
   const requesterPr = existing.pr_id ? await loadPrPoCreation(existing.pr_id) : null;
   const requesterOwns = await requesterOwnsPoWork(user, requesterPr, existing);
   const canRequesterRevise =
     wantsManagerResubmit &&
-    existing.status === 'draft' &&
+    (existing.status === 'draft' || isRejectedPo) &&
     (requesterOwns ||
       (user.role === 'Super Admin' && prIsRequesterPo(requesterPr)));
   // Track PO / admin correction: edit existing PO without changing workflow status
@@ -5863,7 +5864,11 @@ export async function updatePurchaseOrder(user, poId, body) {
     throw new Error('You are not allowed to edit this purchase order');
   }
   const forceAdminContentEdit =
-    Boolean(body?.adminEdit) && existing.status !== 'draft' && existing.status !== 'cancelled';
+    Boolean(body?.adminEdit) &&
+    existing.status !== 'draft' &&
+    existing.status !== 'cancelled' &&
+    // Explicit resubmit from rejected must take workflow path, not silent admin save
+    !(isRejectedPo && Boolean(body?.resubmitForApproval));
   // Prefer workflow-aware paths when they apply; otherwise treat as admin content edit
   const isAdminContentEdit =
     forceAdminContentEdit ||
@@ -5928,7 +5933,9 @@ export async function updatePurchaseOrder(user, poId, body) {
     (isAdminContentEdit
       ? `PO updated by ${user.role || 'admin'} from Track PO`
       : canBuyerRevise
-      ? 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
+      ? isRejectedPo
+        ? 'PO revised by SCM Buyer after rejection — resubmitted for sign'
+        : 'PO revised by SCM Buyer after manager send-back — resubmitted for sign'
       : canBuyerEdit
         ? 'PO updated by SCM Buyer during final verify'
         : 'PO updated by SCM Manager before approval');
@@ -6086,8 +6093,18 @@ export async function updatePurchaseOrder(user, poId, body) {
     if (canRequesterRevise) {
       requesterL1Assigned = await assignRequesterPoMugesh(conn, existing, user);
     } else if (canBuyerRevise) {
+      // Clear prior reject/sign state when reopening rejected or send-back draft
       await conn.query(
-        `UPDATE purchase_orders SET status = 'pending_approval', updated_at = NOW() WHERE id = ?`,
+        `UPDATE purchase_orders SET
+           status = 'pending_approval',
+           signed_pdf_path = NULL,
+           signer_id = NULL,
+           signature_name = NULL,
+           signature_image_path = NULL,
+           signer_comments = NULL,
+           signed_at = NULL,
+           updated_at = NOW()
+         WHERE id = ?`,
         [poId]
       );
       if (existing.pr_id) {
@@ -6102,6 +6119,17 @@ export async function updatePurchaseOrder(user, poId, body) {
            WHERE pr_id = ? AND task_type = 'PO_APPROVAL' AND assigned_role = 'SCM Manager' AND status = 'pending'`,
           [existing.pr_id]
         );
+        if (isRejectedPo) {
+          await conn.query(
+            `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
+             VALUES (?, 'PO_RESUBMITTED', ?, 'resubmitted', ?)`,
+            [
+              existing.pr_id,
+              user.id,
+              changeSummary || 'Rejected PO edited and resent for SCM Manager approval',
+            ]
+          );
+        }
         const dueDate = new Date();
         dueDate.setDate(dueDate.getDate() + 2);
         resubmitManager = await assignPoApprovalManager(conn, {
@@ -6204,9 +6232,11 @@ export async function updatePurchaseOrder(user, poId, body) {
         actorRole: user.role,
       manager: resubmitManager,
       remarks:
-        body?.resubmitForApproval || body?.changeSummary
-          ? `Revised after send-back — sent to SCM Manager for sign`
-          : `PO submitted to SCM Manager for sign`,
+        isRejectedPo
+          ? `Revised after rejection — resent to SCM Manager for sign`
+          : body?.resubmitForApproval || body?.changeSummary
+            ? `Revised after send-back — sent to SCM Manager for sign`
+            : `PO submitted to SCM Manager for sign`,
     });
   }
 

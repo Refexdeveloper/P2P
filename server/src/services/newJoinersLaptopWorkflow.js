@@ -148,23 +148,11 @@ export function stampJoinerCreator(joiners, user) {
 }
 
 export function assertJoinerDetailsForSubmit(joiners, creator = null) {
+  // HR New Joiners: no per-field mandatory checks (Company / Reporting Head / etc. optional).
+  // Only require at least one roster row so line items can be derived.
   const list = parseJoinerDetails(joiners, creator);
   if (!list.length) {
     throw new Error('Add at least one new joiner for New Joiners Laptop Purchase');
-  }
-  for (let i = 0; i < list.length; i += 1) {
-    const row = list[i];
-    if (!row.firstName) throw new Error(`Joiner #${i + 1}: First Name is required`);
-    if (!row.joiningDate) throw new Error(`Joiner #${i + 1}: Joining Date is required`);
-    if (!row.department) throw new Error(`Joiner #${i + 1}: Department is required`);
-    if (!row.company) throw new Error(`Joiner #${i + 1}: Company is required`);
-    if (!row.reportingHead && !row.reportingHeadEmail && !row.reportingHeadUserId) {
-      throw new Error(`Joiner #${i + 1}: Reporting Head is required`);
-    }
-    const devices = parseJoinerDeviceTypes(row);
-    if (!devices.length) {
-      throw new Error(`Joiner #${i + 1}: Select at least one device (Laptop / Desktop / Smartphone/Tab)`);
-    }
   }
   return list;
 }

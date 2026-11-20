@@ -274,7 +274,7 @@ export default function NewJoinersLaptopSection({
             <p className="text-xs text-sky-800/90">
               Uses RIL New Joinee columns: HR Updated Date, Joining Date, First/Last Name, Mobile,
               Designation, Department, Location, HR Name, On Rolls / Contract, Email ID, Laptop /
-              Desktop. Company and Reporting Head are not taken from Excel — select them in the table.
+              Desktop. Company and Reporting Head are optional (not taken from Excel).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -409,7 +409,7 @@ export default function NewJoinersLaptopSection({
                 Department
               </th>
               <th className="whitespace-nowrap px-3 py-3 font-semibold" style={{ minWidth: '12rem' }}>
-                Company <span className="text-red-500">*</span>
+                Company
               </th>
               <th className="whitespace-nowrap px-3 py-3 font-semibold" style={{ minWidth: '9rem' }}>
                 Location
@@ -427,7 +427,7 @@ export default function NewJoinersLaptopSection({
                 Email ID
               </th>
               <th className="whitespace-nowrap px-3 py-3 font-semibold" style={{ minWidth: '12rem' }}>
-                Device (multi) <span className="text-red-500">*</span>
+                Device (multi)
               </th>
               <th className="whitespace-nowrap px-3 py-3 font-semibold" style={{ minWidth: '12rem' }}>
                 RFQ Requester
