@@ -110,8 +110,33 @@ function sanitizeStyleAttr(style: string) {
     if (key === 'text-align' && /^(left|right|center|justify)$/i.test(val)) {
       keep.push(`text-align:${val.toLowerCase()}`);
     }
+    // Keep column/cell widths so Annexure / Schedule A design matches PDF
+    if ((key === 'width' || key === 'min-width' || key === 'max-width') && /^[\d.]+(%|px|em|rem)?$/i.test(val)) {
+      keep.push(`${key}:${val}`);
+    }
   }
   return keep.join(';');
+}
+
+/** 3-col layout from header labels — do not force Annexure-I 8/22/70 on Schedule A. */
+function threeColGroupHtml(headerCells: string[] = []) {
+  const h = headerCells.join(' ').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (
+    /\bitem\b/.test(h) ||
+    /\btarget\b/.test(h) ||
+    /\bliquidat/.test(h) ||
+    /\bschedule\b/.test(h) ||
+    /\bservice\s+credit/.test(h)
+  ) {
+    return `<colgroup><col style="width:22%" /><col style="width:39%" /><col style="width:39%" /></colgroup>`;
+  }
+  if (
+    (/s\.?\s*no|serial|sl\.?\s*no/.test(h) && /\b(header|description|particular)/.test(h)) ||
+    (/\bheader\b/.test(h) && /\bdescription\b/.test(h))
+  ) {
+    return `<colgroup><col style="width:8%" /><col style="width:22%" /><col style="width:70%" /></colgroup>`;
+  }
+  return `<colgroup><col style="width:33.33%" /><col style="width:33.33%" /><col style="width:33.34%" /></colgroup>`;
 }
 
 function wrapWithTag(el: HTMLElement, tagName: string) {
@@ -170,13 +195,10 @@ function excelPlainToTableHtml(plain: string) {
     })
     .join('');
 
+  const headerCells = rows[0] || [];
   return (
     `<table class="annexure-pasted-table" style="width:100%;max-width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;box-sizing:border-box;">` +
-    `${
-      maxCols === 3
-        ? `<colgroup><col style="width:8%" /><col style="width:22%" /><col style="width:70%" /></colgroup>`
-        : ''
-    }` +
+    `${maxCols === 3 ? threeColGroupHtml(headerCells) : ''}` +
     `<tbody>${body}</tbody></table><p><br></p>`
   );
 }
@@ -197,9 +219,16 @@ function buildInsertTableHtml(rows: number, cols: number) {
   const c = Math.max(1, Math.min(12, Math.floor(cols) || 3));
   const cellStyle =
     'border:1px solid #000;padding:6px 8px;vertical-align:top;box-sizing:border-box;';
+  // Equal columns by default — user/editor design; PDF keeps these widths
   const colgroup =
-    c === 3
-      ? `<colgroup><col style="width:8%" /><col style="width:22%" /><col style="width:70%" /></colgroup>`
+    c >= 2
+      ? `<colgroup>${Array.from({ length: c }, (_, i) => {
+          const pct =
+            i === c - 1
+              ? Math.round((100 - (100 / c) * (c - 1)) * 100) / 100
+              : Math.round((100 / c) * 100) / 100;
+          return `<col style="width:${pct}%" />`;
+        }).join('')}</colgroup>`
       : '';
   const head = `<tr>${Array.from({ length: c }, () => `<th style="${cellStyle}">&nbsp;</th>`).join('')}</tr>`;
   const body = Array.from({ length: Math.max(0, r - 1) }, () =>
@@ -276,22 +305,33 @@ function sanitizePastedHtml(raw: string, allowImages = false) {
     [...el.attributes].forEach((attr) => {
       const name = attr.name.toLowerCase();
       const keepAttr =
-        ((tag === 'TD' || tag === 'TH') && (name === 'colspan' || name === 'rowspan')) ||
-        (tag === 'TABLE' && name === 'class');
+        ((tag === 'TD' || tag === 'TH' || tag === 'COL') &&
+          (name === 'colspan' || name === 'rowspan' || name === 'width' || name === 'span')) ||
+        (tag === 'TABLE' && (name === 'class' || name === 'width'));
       if (!keepAttr) el.removeAttribute(attr.name);
     });
     if (tag === 'TABLE') {
       el.classList.add('annexure-pasted-table');
       el.setAttribute(
         'style',
-        'width:100%;border-collapse:collapse;border:1px solid #000;'
+        'width:100%;border-collapse:collapse;border:1px solid #000;table-layout:fixed;'
       );
     }
+    if (tag === 'COL') {
+      const widthAttr = el.getAttribute('width');
+      const widthFromStyle = (style.match(/width\s*:\s*([^;]+)/i) || [])[1]?.trim();
+      const width = widthFromStyle || (widthAttr ? String(widthAttr).trim() : '');
+      if (width) el.setAttribute('style', `width:${width}`);
+    }
     if (tag === 'TD' || tag === 'TH') {
+      const widthAttr = el.getAttribute('width');
+      const widthFromStyle = (style.match(/width\s*:\s*([^;]+)/i) || [])[1]?.trim();
+      const width = widthFromStyle || (widthAttr ? String(widthAttr).trim() : '');
       const cellStyle = [
         'border:1px solid #000',
         'padding:4px 6px',
         'vertical-align:top',
+        width ? `width:${width}` : '',
         style,
       ]
         .filter(Boolean)
