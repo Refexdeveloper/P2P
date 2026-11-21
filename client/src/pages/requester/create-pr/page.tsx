@@ -239,7 +239,7 @@ export default function CreatePRPage() {
     'purchase_order' | 'work_order' | 'sass' | 'online_purchase' | 'new_joiners_laptop'
   >('purchase_order');
   const [joinerDetails, setJoinerDetails] = useState<JoinerRow[]>([EMPTY_JOINER_ROW()]);
-  const [vendorSelection, setVendorSelection] = useState<'own' | 'scm'>(isHrLogin ? 'own' : 'scm');
+  const [vendorSelection, setVendorSelection] = useState<'own' | 'scm' | 'it'>(isHrLogin ? 'own' : 'scm');
   const [prFlow, setPrFlow] = useState<'standard' | 'functional'>('standard');
   const isNewJoinersLaptop = isHrLogin || purchaseType === 'new_joiners_laptop';
   const [poCreationBy, setPoCreationBy] = useState<'scm' | 'requester'>('scm');
@@ -633,8 +633,12 @@ export default function CreatePRPage() {
         : null
     );
     setSassSubscriptionStartDate(draft.sassSubscriptionStartDate || '');
-    setVendorSelection(draft.vendorSelection === 'own' ? 'own' : 'scm');
-    setPrFlow(draft.prFlow === 'functional' ? 'functional' : 'standard');
+    setVendorSelection(
+      draft.vendorSelection === 'own' ? 'own' : draft.vendorSelection === 'it' ? 'it' : 'scm'
+    );
+    setPrFlow(
+      draft.vendorSelection === 'it' || draft.prFlow === 'functional' ? 'functional' : 'standard'
+    );
     setPoCreationBy(draft.poCreationBy === 'requester' ? 'requester' : 'scm');
     setApprovalUserIds(Array.isArray(draft.approvalUserIds) ? draft.approvalUserIds : []);
     const draftRoundCeiling = Math.max(
@@ -847,7 +851,7 @@ export default function CreatePRPage() {
           projectDetail?: string;
           specialNotes?: string;
           purchaseType?: 'purchase_order' | 'work_order' | string;
-          vendorSelection?: 'own' | 'scm';
+          vendorSelection?: 'own' | 'scm' | 'it';
           prFlow?: 'standard' | 'functional';
           approvalUserId?: number | null;
           approvalUserIds?: number[];
@@ -936,12 +940,14 @@ export default function CreatePRPage() {
             loadedPurchaseType === 'new_joiners_laptop' ||
             pr.vendorSelection === 'own'
             ? 'own'
-            : 'scm'
+            : pr.vendorSelection === 'it'
+              ? 'it'
+              : 'scm'
         );
         setPrFlow(
           loadedPurchaseType === 'new_joiners_laptop'
             ? 'standard'
-            : pr.prFlow === 'functional'
+            : pr.vendorSelection === 'it' || pr.prFlow === 'functional'
               ? 'functional'
               : 'standard'
         );
@@ -2152,11 +2158,13 @@ export default function CreatePRPage() {
       }
       if (!billingAddress.trim()) newErrors.billingAddress = 'Billing address is required';
     }
-    if (prFlow === 'functional' && approvalUserIds.length === 0) {
+    if (vendorSelection === 'it' && approvalUserIds.length === 0) {
+      newErrors.approvalUserId = 'Select the users who should approve this PR';
+    } else if (prFlow === 'functional' && approvalUserIds.length === 0) {
       newErrors.approvalUserId = 'Select at least one user for Functional Flow approval';
     }
-    if (prFlow === 'functional' && approvalUserIds.length > 5) {
-      newErrors.approvalUserId = 'Select up to 5 users for Functional Flow approval';
+    if ((vendorSelection === 'it' || prFlow === 'functional') && approvalUserIds.length > 5) {
+      newErrors.approvalUserId = 'Select up to 5 users for approval';
     }
     if (purchaseType === 'sass' && approvalUserIds.length === 0) {
       newErrors.approvalUserId = 'Select L1 Manager / User Approver for Cloud Subscription';
@@ -2412,14 +2420,22 @@ export default function CreatePRPage() {
       purchaseType === 'online_purchase' ||
       purchaseType === 'new_joiners_laptop'
         ? 'standard'
-        : prFlow,
+        : vendorSelection === 'it' || prFlow === 'functional'
+          ? 'functional'
+          : 'standard',
     approvalUserId:
-      (prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase') &&
+      (vendorSelection === 'it' ||
+        prFlow === 'functional' ||
+        purchaseType === 'sass' ||
+        purchaseType === 'online_purchase') &&
       approvalUserIds[0]
         ? Number(approvalUserIds[0])
         : undefined,
     approvalUserIds:
-      prFlow === 'functional' || purchaseType === 'sass' || purchaseType === 'online_purchase'
+      vendorSelection === 'it' ||
+      prFlow === 'functional' ||
+      purchaseType === 'sass' ||
+      purchaseType === 'online_purchase'
         ? purchaseType === 'sass' || purchaseType === 'online_purchase'
           ? approvalUserIds.slice(0, 1)
           : approvalUserIds
@@ -2653,15 +2669,19 @@ export default function CreatePRPage() {
       const payload: Record<string, unknown> = {
         ...buildPayload(itemsForSave),
         vendorSelection:
-          purchaseType === 'sass' || purchaseType === 'online_purchase'
+          purchaseType === 'sass' ||
+          purchaseType === 'online_purchase' ||
+          purchaseType === 'new_joiners_laptop'
             ? 'own'
             : vendorSelection === 'own'
               ? 'own'
-              : 'scm',
+              : vendorSelection === 'it'
+                ? 'it'
+                : 'scm',
         prFlow:
           purchaseType === 'sass' || purchaseType === 'online_purchase'
             ? 'standard'
-            : prFlow === 'functional'
+            : vendorSelection === 'it' || prFlow === 'functional'
               ? 'functional'
               : 'standard',
       };
@@ -3956,6 +3976,7 @@ export default function CreatePRPage() {
               <>
             <div className="grid grid-cols-1 items-start gap-4 sm:col-span-2 sm:grid-cols-2">
             {/* Request Flow */}
+            {vendorSelection !== 'it' && (
             <div className="min-w-0">
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
                 Flow <span className="text-red-500">*</span>
@@ -3980,24 +4001,35 @@ export default function CreatePRPage() {
                   : 'Functional: shortened path — quotes on Create PR for Own vendor, selected user approval, then SCM RFQ / Final RFQ.'}
               </p>
             </div>
+            )}
 
-            <div className="min-w-0">
+            <div className={vendorSelection === 'it' ? 'min-w-0 sm:col-span-2' : 'min-w-0'}>
               <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
                 Vendor Selection <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <select
                   value={vendorSelection}
-                  onChange={(e) => setVendorSelection(e.target.value === 'own' ? 'own' : 'scm')}
+                  onChange={(e) => {
+                    const next = e.target.value === 'own' ? 'own' : e.target.value === 'it' ? 'it' : 'scm';
+                    setVendorSelection(next);
+                    if (next === 'it') {
+                      setPrFlow('functional');
+                      setPoCreationBy('scm');
+                    }
+                  }}
                   className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-gray-200 bg-white pl-4 pr-10 text-sm text-[#2C3E50] focus:border-[#1E88E5] focus:outline-none focus:ring-2 focus:ring-[#1E88E5]/30"
                 >
                   <option value="scm">SCM vendor Selection</option>
                   <option value="own">Own vendor</option>
+                  <option value="it">IT Vendor Selection</option>
                 </select>
                 <i className="ri-arrow-down-s-line pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-base text-slate-400" />
               </div>
               <p className="mt-2 text-xs leading-5 text-gray-500">
-                {prFlow === 'standard'
+                {vendorSelection === 'it'
+                  ? 'Select the user approvers below. After they approve, RFQ Entry goes to Reginold → Reginold’s L1 manager → L2 → SCM RFQ Entry → Create PO → SCM Manager approval.'
+                  : prFlow === 'standard'
                   ? vendorSelection === 'own'
                     ? poCreationBy === 'requester'
                       ? 'L1 → your RFQ entry (billing and delivery are asked there) → L1 vendor final → L2 → (optional Mugesh) → SCM Final RFQ → you create the PO → L1 Manager approval → Mugesh Sign & Upload.'
@@ -4012,7 +4044,7 @@ export default function CreatePRPage() {
             </div>
             </div>
 
-            {prFlow === 'standard' && (
+            {prFlow === 'standard' && vendorSelection !== 'it' && (
               <div className="min-w-0 sm:col-span-2 sm:max-w-[calc(50%-0.5rem)]">
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
                   PO Creation By <span className="text-red-500">*</span>
@@ -4036,7 +4068,7 @@ export default function CreatePRPage() {
               </div>
             )}
 
-            {prFlow === 'functional' && (
+            {(prFlow === 'functional' || vendorSelection === 'it') && (
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-[#7F8C8D] uppercase tracking-wider mb-2">
                   Select User Approval <span className="text-red-500">*</span>
@@ -4054,7 +4086,11 @@ export default function CreatePRPage() {
                 <p className="text-xs text-gray-500 mt-1.5">
                   Select 1–5 people in approval order. Person 1 approves first, then person 2, then the rest in that order.
                   After all selected users approve:{' '}
-                  {vendorSelection === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry'} → Buyer Final Verify → Create PO → SCM Manager approval.
+                  {vendorSelection === 'it'
+                    ? 'RFQ Entry assigned to Reginold → Reginold’s L1 manager → L2 → SCM RFQ Entry → Create PO → SCM Manager approval.'
+                    : vendorSelection === 'own'
+                      ? 'SCM Final RFQ → Buyer Final Verify → Create PO → SCM Manager approval.'
+                      : 'SCM RFQ Entry → Buyer Final Verify → Create PO → SCM Manager approval.'}
                 </p>
               </div>
             )}

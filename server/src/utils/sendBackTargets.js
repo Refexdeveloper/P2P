@@ -313,7 +313,7 @@ export function immediatePreviousSendBackKey(status, vendorSelection = 'scm', pr
 }
 
 export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 'standard') {
-  if (prFlow === 'functional') {
+  if (prFlow === 'functional' && vendorSelection !== 'it') {
     const keys = FUNCTIONAL_PREVIOUS_BY_STATUS[status] || ['REQUESTER'];
     return keys
       .map((key) => withFunctionalLabels(SEND_BACK_TARGET_DEFS[key]))
@@ -321,18 +321,22 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
       .map((def) => ({ key: def.key, label: def.label }));
   }
 
-  const isOwn = vendorSelection === 'own';
+  const isIt = vendorSelection === 'it';
+  const isOwn = vendorSelection === 'own' || isIt;
   const keys = PREVIOUS_BY_STATUS[status] || ['REQUESTER'];
 
   return keys
     .filter((key) => {
-      if (isOwn && SCM_ONLY_KEYS.has(key)) return false;
+      if (isOwn && !isIt && SCM_ONLY_KEYS.has(key)) return false;
       if (!isOwn && OWN_ONLY_KEYS.has(key)) return false;
       return true;
     })
     .map((key) => {
       const def = SEND_BACK_TARGET_DEFS[key];
-      return { key: def.key, label: def.label };
+      let label = def.label;
+      if (isIt && key === 'HOD_PRE') label = 'User Approval';
+      if (isIt && key === 'REQUESTER_RFQ') label = 'Reginold RFQ Entry';
+      return { key: def.key, label };
     });
 }
 

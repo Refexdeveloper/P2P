@@ -582,6 +582,7 @@ const MIGRATIONS = [
     INDEX idx_po_documents_po (po_id),
     FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
   )`,
+  `ALTER TABLE purchase_requests MODIFY COLUMN vendor_selection ENUM('own', 'scm', 'it') NOT NULL DEFAULT 'scm'`,
 ];
 
 /** Idempotent index creation for PR/PO list & track performance */

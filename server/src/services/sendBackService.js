@@ -20,6 +20,11 @@ import {
   ensureApproverUser,
 } from './refexOneService.js';
 import { queuePrApprovalPendingNotification, queuePostRfqActionNotification } from './emailService.js';
+import { isItVendorSelection } from '../utils/constants.js';
+import {
+  NEW_JOINERS_RFQ_EMAIL,
+  resolveNewJoinersRfqAssignee,
+} from './newJoinersLaptopWorkflow.js';
 
 async function resolveHodUser(requesterEmail, departmentId) {
   let l1 = null;
@@ -187,11 +192,20 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
     const dueStr = due.toISOString().split('T')[0];
 
     if (target.assignedRole === 'Requester') {
-      assignee = {
-        userId: pr.requester_id,
-        email: requester?.email || null,
-        name: requester?.name || null,
-      };
+      if (isItVendorSelection(pr.vendor_selection) && target.key === 'REQUESTER_RFQ') {
+        const reginold = await resolveNewJoinersRfqAssignee(pr.department_id);
+        assignee = {
+          userId: reginold?.userId || null,
+          email: reginold?.email || NEW_JOINERS_RFQ_EMAIL,
+          name: reginold?.name || 'Reginold J',
+        };
+      } else {
+        assignee = {
+          userId: pr.requester_id,
+          email: requester?.email || null,
+          name: requester?.name || null,
+        };
+      }
     } else if (target.key === 'SASS_MUGESH' || target.key === 'SASS_SRIVATHS') {
       const mugesh = await resolveSassMugeshAssignment(pr.department_id);
       const l2 = await resolveSassL2Assignment(pr.department_id);
@@ -238,11 +252,17 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
             pr.id,
           ]);
         }
+      } else if (isItVendorSelection(pr.vendor_selection) && target.key === 'HOD_VENDOR') {
+        assignee = await resolveHodUser(NEW_JOINERS_RFQ_EMAIL, pr.department_id);
       } else {
         assignee = await resolveHodUser(requester?.email || '', pr.department_id);
       }
     } else if (target.assignedRole === 'PR Manager') {
-      assignee = await resolveL2User(requester?.email || '', pr.department_id);
+      const l2Email =
+        isItVendorSelection(pr.vendor_selection) && target.key === 'L2_VENDOR'
+          ? NEW_JOINERS_RFQ_EMAIL
+          : requester?.email || '';
+      assignee = await resolveL2User(l2Email, pr.department_id);
     } else if (target.key === 'PO_MUGESH_SIGN') {
       const [mugeshRows] = await db.query(
         `SELECT id, email, name FROM users WHERE LOWER(email) = LOWER(?) AND is_active = 1 LIMIT 1`,

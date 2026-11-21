@@ -832,7 +832,7 @@ export interface ScmRfqEntryItem {
   /** When PR entered SCM RFQ Entry / SCM Verify queue */
   prDate?: string;
   scmRfqEntryDate?: string;
-  vendorSelection?: 'own' | 'scm';
+  vendorSelection?: 'own' | 'scm' | 'it';
   vendorCount: number;
   status: string;
   recommendedInvitationId?: number | null;
@@ -855,7 +855,7 @@ export interface VendorComparisonData {
     estimatedBudget: number;
     status: string;
     statusUI: string;
-    vendorSelection?: 'own' | 'scm';
+    vendorSelection?: 'own' | 'scm' | 'it';
     prFlow?: 'standard' | 'functional';
     justification: string;
     approvalHistory: Array<{ stage: string; user: string; role: string; date: string; status: string; remarks: string }>;

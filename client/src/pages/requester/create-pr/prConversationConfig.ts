@@ -55,7 +55,7 @@ export interface PrConversationAnswers {
   priority?: string;
   currency?: CurrencyCode;
   requiredDate?: string;
-  vendorSelection?: 'own' | 'scm';
+  vendorSelection?: 'own' | 'scm' | 'it';
   businessJustification?: string;
 }
 
@@ -151,6 +151,7 @@ export const PR_HEADER_QUESTIONS: PrQuestionConfig[] = [
     options: [
       { value: 'scm', label: 'SCM vendor Selection' },
       { value: 'own', label: 'Own vendor' },
+      { value: 'it', label: 'IT Vendor Selection' },
     ],
   },
   {
@@ -255,7 +256,13 @@ export function formatHeaderAnswer(
     case 'entityId':
       return entityLabel || (answers.entityId ? String(answers.entityId) : '');
     case 'vendorSelection':
-      return answers.vendorSelection === 'own' ? 'Own vendor' : answers.vendorSelection === 'scm' ? 'SCM vendor Selection' : '';
+      return answers.vendorSelection === 'own'
+        ? 'Own vendor'
+        : answers.vendorSelection === 'it'
+          ? 'IT Vendor Selection'
+          : answers.vendorSelection === 'scm'
+            ? 'SCM vendor Selection'
+            : '';
     default: {
       const value = answers[field];
       return value == null || value === '' ? '' : String(value);

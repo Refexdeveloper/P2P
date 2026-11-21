@@ -477,7 +477,11 @@ export default function PRDetailDrawer({
                       {pr.prFlow === 'functional' ? 'Functional' : 'Standard'}
                     </Field>
                     <Field label="Vendor Path" icon="ri-store-2-line" index={7}>
-                      {pr.vendorSelection === 'own' ? 'Own Vendor' : 'SCM Sourcing'}
+                      {pr.vendorSelection === 'own'
+                        ? 'Own Vendor'
+                        : pr.vendorSelection === 'it'
+                          ? 'IT Vendor Selection'
+                          : 'SCM Sourcing'}
                     </Field>
                     <Field label="PO Creation By" icon="ri-file-paper-2-line" index={8}>
                       {pr.poCreationBy === 'requester' ? 'Requester' : 'SCM'}

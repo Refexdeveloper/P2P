@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
   currency VARCHAR(3) NOT NULL DEFAULT 'INR',
   total_amount DECIMAL(15, 2) DEFAULT 0,
   status VARCHAR(50) NOT NULL DEFAULT 'DRAFT',
-  vendor_selection ENUM('own', 'scm') NOT NULL DEFAULT 'scm',
+  vendor_selection ENUM('own', 'scm', 'it') NOT NULL DEFAULT 'scm',
   vendor_id INT NULL,
   vendor_name VARCHAR(150) NULL,
   vendor_email VARCHAR(150) NULL,

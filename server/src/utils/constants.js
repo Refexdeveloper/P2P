@@ -1,3 +1,19 @@
+/** Vendor path stored on purchase_requests.vendor_selection. */
+export function isItVendorSelection(value) {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return raw === 'it' || raw === 'it_vendor' || raw === 'it_vendor_selection';
+}
+
+export function normalizeVendorSelection(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'own') return 'own';
+  if (isItVendorSelection(raw)) return 'it';
+  return 'scm';
+}
+
 export const PR_STATUS = {
   DRAFT: 'DRAFT',
   PENDING_HOD_APPROVAL: 'PENDING_HOD_APPROVAL',
@@ -139,7 +155,8 @@ export function resolveRequesterPrDisplay(
   prFlow = 'standard',
   vendorSelection = 'scm',
   poMeta = null,
-  purchaseType = 'purchase_order'
+  purchaseType = 'purchase_order',
+  currentStage = null
 ) {
   const po = poMeta && typeof poMeta === 'object' ? poMeta : {};
   const poId = po.id ? Number(po.id) : null;
@@ -153,7 +170,14 @@ export function resolveRequesterPrDisplay(
   const docLong = isWo ? 'Work Order' : 'Purchase Order';
 
   let statusFrontend = mapStatusToFrontend(prStatus);
-  let statusUI = mapStatusToManagerUI(prStatus, prFlow, vendorSelection, purchaseType);
+  let statusUI = mapStatusToManagerUI(
+    prStatus,
+    prFlow,
+    vendorSelection,
+    purchaseType,
+    'scm',
+    currentStage
+  );
   let poDocumentAvailable = false;
 
   if (prStatus === PR_STATUS.RETURNED) {
@@ -272,8 +296,15 @@ export function resolveRequesterPrDisplay(
       String(purchaseType || '')
         .toLowerCase()
         .replace(/[\s-]+/g, '_') === 'cloud_subscription';
-    statusUI = isSass
-      ? mapStatusToManagerUI(prStatus, prFlow, vendorSelection, purchaseType)
+    statusUI = isSass || isItVendorSelection(vendorSelection)
+      ? mapStatusToManagerUI(
+          prStatus,
+          prFlow,
+          vendorSelection,
+          purchaseType,
+          'scm',
+          currentStage
+        )
       : 'Approved — Awaiting PO';
   }
 
@@ -288,7 +319,7 @@ export function resolveRequesterPrDisplay(
   };
 }
 
-export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order', poCreationBy = 'scm') {
+export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelection = 'scm', purchaseType = 'purchase_order', poCreationBy = 'scm', currentStage = null) {
   const rawType = String(purchaseType || '')
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
@@ -313,6 +344,25 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
       [PR_STATUS.DRAFT]: 'Draft',
     };
     if (njlMap[status]) return njlMap[status];
+  }
+
+  if (isItVendorSelection(vendorSelection)) {
+    if (status === PR_STATUS.APPROVED) {
+      if (currentStage === STAGE.RFQ_SCM_BUYER_SELECTION) return 'SCM RFQ Entry';
+      if (currentStage === STAGE.SCM_PO_CREATE) return 'Pending SCM Buyer Create PO';
+      return 'RFQ Entry (Reginold)';
+    }
+    const itMap = {
+      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending User Approval',
+      [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: "Pending Reginold's L1 Approval",
+      [PR_STATUS.PENDING_RFQ_L2_APPROVAL]: 'Pending L2 Approval',
+      [PR_STATUS.PENDING_SCM_PO]: 'Pending SCM Buyer Create PO',
+      [PR_STATUS.PENDING_BUSINESS_APPROVAL]: 'Pending SCM Manager Approval',
+      [PR_STATUS.REJECTED]: 'Rejected',
+      [PR_STATUS.RETURNED]: 'Returned for Rework',
+      [PR_STATUS.DRAFT]: 'Draft',
+    };
+    if (itMap[status]) return itMap[status];
   }
 
   if (isOnline) {

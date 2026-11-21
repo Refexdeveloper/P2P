@@ -31,6 +31,8 @@ import {
   resolveRequesterPrDisplay,
   formatDate,
   formatDateTime,
+  isItVendorSelection,
+  normalizeVendorSelection,
 } from '../utils/constants.js';
 import {
   nextDocumentNumber,
@@ -123,15 +125,16 @@ function applyRequesterDisplay(pr, poMeta = null) {
   const display = resolveRequesterPrDisplay(
     pr.status,
     pr.prFlow === 'functional' ? 'functional' : 'standard',
-    pr.vendorSelection === 'own' ? 'own' : 'scm',
+    normalizeVendorSelection(pr.vendorSelection || pr.vendor_selection),
     isInvoiceFlow ? null : poMeta,
-    purchaseType
+    purchaseType,
+    pr.currentStage || pr.current_stage || null
   );
   if (isInvoiceFlow) {
     let statusUI = mapStatusToManagerUI(
       pr.status,
       pr.prFlow === 'functional' ? 'functional' : 'standard',
-      pr.vendorSelection === 'own' ? 'own' : 'scm',
+      normalizeVendorSelection(pr.vendorSelection),
       purchaseType
     );
     if (isSassPurchaseType(purchaseType) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
@@ -917,8 +920,8 @@ async function enrichPR(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
-    vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by, row.current_stage),
+    vendorSelection: normalizeVendorSelection(row.vendor_selection),
     prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
     poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
     approvalUserId: row.approval_user_id || null,
@@ -1142,16 +1145,18 @@ function resolveFlowAndVendor(body, pr = {}) {
     body.purchaseType ?? body.purchase_type ?? pr.purchase_type
   );
   const isSass = purchaseType === 'sass';
+  const incomingVendor = body.vendorSelection ?? body.vendor_selection;
   const vendorMode = isSass
     ? 'own'
-    : body.vendorSelection === 'own' || body.vendorSelection === 'scm'
-      ? body.vendorSelection
-      : pr.vendor_selection === 'own'
-        ? 'own'
-        : 'scm';
-  const needsSelectedApprover = prFlow === 'functional' || isSass;
+    : isItVendorSelection(incomingVendor)
+      ? 'it'
+      : incomingVendor === 'own' || incomingVendor === 'scm'
+        ? incomingVendor
+        : normalizeVendorSelection(pr.vendor_selection);
+  const effectiveFlow = vendorMode === 'it' ? 'functional' : prFlow;
+  const needsSelectedApprover = effectiveFlow === 'functional' || isSass;
   if (!needsSelectedApprover) {
-    return { prFlow, vendorMode, approvalUserId: null, approvalUserIds: [] };
+    return { prFlow: effectiveFlow, vendorMode, approvalUserId: null, approvalUserIds: [] };
   }
 
   const bodyHasChain = body.approvalUserIds !== undefined || body.approval_user_ids !== undefined;
@@ -1169,7 +1174,7 @@ function resolveFlowAndVendor(body, pr = {}) {
     approvalUserIds = approvalUserIds.slice(0, MAX_FUNCTIONAL_APPROVERS);
   }
   return {
-    prFlow,
+    prFlow: effectiveFlow,
     vendorMode,
     approvalUserId: approvalUserIds[0] || null,
     approvalUserIds,
@@ -1493,6 +1498,7 @@ async function createL2ApprovalTask(conn, prId, requesterEmail, departmentId) {
 }
 
 function resolvePoCreationBy(body, { prFlow, purchaseType, existing } = {}) {
+  if (isItVendorSelection(body?.vendorSelection ?? body?.vendor_selection)) return 'scm';
   const flow = prFlow === 'functional' ? 'functional' : 'standard';
   const type = String(purchaseType || '')
     .trim()
@@ -1544,7 +1550,7 @@ export async function createPurchaseRequest(user, body) {
   const requestCategory = normalizeRequestCategory(body.requestCategory ?? body.request_category);
   const billing = await resolvePrBilling(entityId ? Number(entityId) : null, body);
 
-  const prFlow = parsePrFlow(prFlowRaw, 'standard');
+  let prFlow = parsePrFlow(prFlowRaw, 'standard');
   const joinerDetailsInput = body.joinerDetails || body.joiner_details || body.joiners || [];
   const parsedJoinersPreview = parseJoinerDetails(joinerDetailsInput);
   const forceNewJoiners =
@@ -1561,9 +1567,12 @@ export async function createPurchaseRequest(user, body) {
   // New Joiners: own-vendor after Mugesh so Reginold RFQ → Mugesh L1 → Srivaths L2 → SCM Final RFQ
   const vendorMode = isInvoiceFlow || isNewJoiners
     ? 'own'
-    : vendorSelection === 'own'
-      ? 'own'
-      : 'scm';
+    : isItVendorSelection(vendorSelection)
+      ? 'it'
+      : vendorSelection === 'own'
+        ? 'own'
+        : 'scm';
+  if (vendorMode === 'it') prFlow = 'functional';
   const normalizedCurrency = normalizeCurrency(currency);
   let joinerDetails = isNewJoiners
     ? stampJoinerCreator(joinerDetailsInput, user)
@@ -1629,6 +1638,9 @@ export async function createPurchaseRequest(user, body) {
   }
   if (isOnline && submit && !selectedApprovers.length) {
     throw new Error('Select L1 Manager / User Approver for Online Purchase');
+  }
+  if (vendorMode === 'it' && submit && !selectedApprovers.length) {
+    throw new Error('Select at least one user approver for IT Vendor Selection');
   }
   if ((isSass || isOnline) && selectedApprovers.length > 1) {
     selectedApprovers = [selectedApprovers[0]];
@@ -1898,7 +1910,9 @@ export async function createPurchaseRequest(user, body) {
           : `Cloud Subscription — user approvals: ${selectedApprovers.map((u) => u.name || u.email).join(' → ')} → Mugesh Invoice Upload → Accounts (no CFO approval)`
         : prFlow === 'functional'
           ? `Functional Flow � User Approval (${selectedApprovers.length}): ${selectedApprovers.map((u) => u.name || u.email).join(' ? ')} � then SCM Final RFQ / RFQ Entry ? Buyer Final Verify ? Create PO ? SCM Manager approval � Vendor path: ${vendorMode === 'own' ? 'Own Vendor (quotes on Create PR)' : 'SCM Vendor Selection'}`
-          : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
+          : vendorMode === 'it'
+            ? `IT Vendor Selection — Functional user approval (${selectedApprovers.map((u) => u.name || u.email).join(' → ')}) → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → Reginold L1 → L2 → SCM RFQ Entry → Create PO → SCM Manager approval`
+            : `Vendor path: ${vendorMode === 'own' ? 'Own Vendor' : 'SCM Vendor Selection'}`;
       await conn.query(
         `INSERT INTO pr_approvals (pr_id, stage, approver_id, action, remarks)
          VALUES (?, ?, ?, ?, ?)`,
@@ -2503,7 +2517,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       totalAmount: Number(row.total_amount || 0),
       status: row.status,
       statusFrontend: mapStatusToFrontend(row.status),
-        statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
+        statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by, row.current_stage),
       priorityLower: mapPriorityToFrontend(row.priority),
       submittedDate: formatDate(row.submitted_at || row.created_at),
       createdAt: formatDate(row.created_at),
@@ -2516,7 +2530,7 @@ export async function listRequesterPurchaseRequests(user, filters = {}) {
       purchaseType: row.purchase_type || 'purchase_order',
       approvalUserEmail: row.approval_user_email || '',
       approvalUserName: row.approval_user_name || '',
-      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      vendorSelection: normalizeVendorSelection(row.vendor_selection),
       prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
       poCreationBy: row.po_creation_by === 'requester' ? 'requester' : 'scm',
       currentStage: row.current_stage,
@@ -2740,8 +2754,8 @@ function mapScmBucketSummary(row) {
     totalAmount: Number(row.total_amount),
     status: row.status,
     statusFrontend: mapStatusToFrontend(row.status),
-    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by),
-    vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+    statusUI: mapStatusToManagerUI(row.status, row.pr_flow, row.vendor_selection, row.purchase_type, row.po_creation_by, row.current_stage),
+    vendorSelection: normalizeVendorSelection(row.vendor_selection),
     prFlow: row.pr_flow === 'functional' ? 'functional' : 'standard',
     recommendedVendor: row.recommended_vendor_name || '',
     currentStage: row.current_stage,
@@ -3429,6 +3443,13 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
             skipToScmRfq = false;
             const { step, total } = approvalStepIndex(pr, user.id);
             remarks = `${remarks.trim()} [User Approval ${step} of ${total} � next: ${nextFunctionalApprover.name || nextFunctionalApprover.email}]`;
+          } else if (isItVendorSelection(pr.vendor_selection)) {
+            newStatus = PR_STATUS.APPROVED;
+            newStage = null;
+            nextRole = null;
+            skipToScmRfq = false;
+            const { step, total } = approvalStepIndex(pr, user.id);
+            remarks = `${remarks.trim()} [User Approval ${step} of ${total} complete → RFQ Entry ${NEW_JOINERS_RFQ_EMAIL}]`;
           } else {
             newStatus = PR_STATUS.APPROVED;
             newStage = null;
@@ -3439,6 +3460,12 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
               remarks = `${remarks.trim()} [User Approval ${step} of ${total} � chain complete]`;
             }
           }
+        } else if (isItVendorSelection(pr.vendor_selection)) {
+          // IT: user (L1) approval → Reginold RFQ Entry. L1/L2 happen after RFQ.
+          newStatus = PR_STATUS.APPROVED;
+          newStage = null;
+          nextRole = null;
+          remarks = `${remarks.trim()} [IT Vendor Selection — User Approval complete → RFQ Entry ${NEW_JOINERS_RFQ_EMAIL}]`;
         } else if (pr.vendor_selection === 'own') {
           // Own: HOD ? Requester RFQ Entry
           newStatus = PR_STATUS.APPROVED;
@@ -3689,6 +3716,21 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
         email: newJoinersRfqAssignee.email,
         name: newJoinersRfqAssignee.name,
         assignees: newJoinersRfqAssignee.assignees || [newJoinersRfqAssignee],
+      };
+    } else if (
+      !isInvoiceFlow &&
+      !isNewJoiners &&
+      actingAsHod &&
+      action === 'approve' &&
+      !nextFunctionalApprover &&
+      isItVendorSelection(pr.vendor_selection)
+    ) {
+      const itAssignee = await createNewJoinersRfqEntryTask(conn, prId, pr.department_id);
+      rfqEntryRequester = {
+        id: itAssignee.userId,
+        email: itAssignee.email,
+        name: itAssignee.name,
+        assignees: itAssignee.assignees || [itAssignee],
       };
     } else if (
       !isFunctional &&
@@ -3980,7 +4022,10 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
           );
         })().catch((err) => console.error('RFQ Entry mail failed:', err.message));
       });
-      notifyWorkflowStepProgress('RFQ Entry (Own Vendor)', 'L1 Manager Approval');
+      notifyWorkflowStepProgress(
+        isItVendorSelection(pr.vendor_selection) ? 'RFQ Entry (Reginold)' : 'RFQ Entry (Own Vendor)',
+        isItVendorSelection(pr.vendor_selection) ? 'User Approval' : 'L1 Manager Approval'
+      );
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isSass) {
       // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
       // SASS never notifies SCM — Mugesh uploads invoice on the same approval step
@@ -5509,7 +5554,9 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       ? chainLen > 1
         ? `User Approval 1 of ${chainLen}`
         : 'User Approval'
-      : 'L1 Manager Approval';
+      : isItVendorSelection(current.vendor_selection)
+        ? 'User Approval'
+        : 'L1 Manager Approval';
     // Fire-and-forget — do not await SMTP / quotation pack (keeps Resubmit fast)
     void queuePrSubmitNotifications({
       pr: updatedPr,
@@ -5894,7 +5941,7 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
     justification: pr.justification,
     isPostRfq,
     actionPath: isPostRfq ? `/rfq-approval/${pr.id}` : undefined,
-    vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+    vendorSelection: normalizeVendorSelection(pr.vendorSelection),
     prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
     currency: pr.currency || 'INR',
     purchaseType: pr.purchaseType || 'purchase_order',
@@ -5904,7 +5951,7 @@ function buildTaskRow(pr, { status, isPostRfq = false, decidedAt = null, display
       pending &&
         !isPostRfq &&
         pr.prFlow !== 'functional' &&
-        pr.vendorSelection !== 'own' &&
+        normalizeVendorSelection(pr.vendorSelection) === 'scm' &&
         !isInvoiceFlowPurchaseType(pr.purchaseType) &&
         pr.status === PR_STATUS.PENDING_HOD_APPROVAL
     ),
@@ -6812,7 +6859,7 @@ export function toCfoDashboardFormat(pr) {
     justification: pr.justification,
     isHighValue: Number(pr.totalAmount) >= CFO_HIGH_VALUE_THRESHOLD,
     isOverdue: daysWaiting > 5,
-    vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+    vendorSelection: normalizeVendorSelection(pr.vendorSelection),
     purchaseType: pr.purchaseType || 'purchase_order',
     isSass: isSassPurchaseType(pr.purchaseType),
     requireInvoiceUpload: false,

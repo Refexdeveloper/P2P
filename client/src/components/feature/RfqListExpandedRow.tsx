@@ -382,9 +382,11 @@ export default function RfqListExpandedRow({
                       'Vendor Path',
                       pr.vendorSelection === 'own'
                         ? 'Own Vendor'
-                        : pr.vendorSelection === 'scm'
-                          ? 'SCM Vendor Selection'
-                          : '—',
+                        : pr.vendorSelection === 'it'
+                          ? 'IT Vendor Selection'
+                          : pr.vendorSelection === 'scm'
+                            ? 'SCM Vendor Selection'
+                            : '—',
                     ],
                     ['Status', pr.statusUI || '—'],
                   ].map(([label, value]) => (

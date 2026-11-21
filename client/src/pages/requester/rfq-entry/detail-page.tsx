@@ -2008,7 +2008,8 @@ export default function RfqEntryDetailPage() {
       );
       clearRfqEntryDraft(user?.id, Number(prId));
       if (isScm) {
-        const isOwn = String(pr?.vendorSelection || '').toLowerCase() === 'own';
+        const vendorPath = String(pr?.vendorSelection || '').toLowerCase();
+        const isOwn = vendorPath === 'own' || vendorPath === 'it';
         showToast(
           res.message ||
             (isOwn ? 'RFQ finalized. Continue to Create PO.' : 'RFQ finalized. Task is now in RFQ Approval.')

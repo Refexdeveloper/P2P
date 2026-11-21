@@ -341,7 +341,8 @@ function currentStageLabel(
 ): string | null {
   const functional = isFunctionalFlow(pr);
   const vendor = asText(pr.vendorSelection || pr.vendor_selection, 'scm').toLowerCase();
-  if (rawStatus === 'PENDING_HOD_APPROVAL') {
+    if (rawStatus === 'PENDING_HOD_APPROVAL') {
+    if (vendor === 'it') return 'User Approval';
     const purchaseType = asText(pr.purchaseType || pr.purchase_type).toLowerCase().replace(/[\s-]+/g, '_');
     if (purchaseType === 'sass' || purchaseType === 'saas' || purchaseType === 'cloud_subscription') {
       const ui = asText(statusUI).replace(/^Pending\s+/i, '').trim();
@@ -351,7 +352,9 @@ function currentStageLabel(
   }
   if (rawStatus === 'PENDING_PR_MANAGER_APPROVAL') return 'L2 Manager Approval';
   if (rawStatus === 'PENDING_CFO_APPROVAL') return 'Mugesh Approval';
-  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') return 'L1 Vendor Final';
+  if (rawStatus === 'PENDING_RFQ_MANAGER_APPROVAL') {
+    return vendor === 'it' ? "Reginold's L1 Approval" : 'L1 Vendor Final';
+  }
   if (rawStatus === 'PENDING_RFQ_L2_APPROVAL') return 'L2 Manager Approval';
   if (rawStatus === 'PENDING_RFQ_CFO_APPROVAL') return 'Mugesh Approval';
   if (rawStatus === 'AWAITING_INVOICE') return 'Mugesh Invoice Upload';
@@ -360,6 +363,9 @@ function currentStageLabel(
   if (rawStatus === 'RETURNED') return 'Returned for Rework';
   if (rawStatus === 'REJECTED') return 'Rejected';
   if (rawStatus === 'APPROVED') {
+    if (vendor === 'it' && !prHasPurchaseOrder(pr)) {
+      return /scm rfq/i.test(asText(statusUI)) ? 'SCM RFQ Entry' : 'RFQ Entry (Reginold)';
+    }
     if (functional && !prHasPurchaseOrder(pr)) {
       return vendor === 'own' ? 'SCM Final RFQ' : 'SCM RFQ Entry';
     }
@@ -740,7 +746,12 @@ function mapApiPr(pr: Record<string, unknown>): TrackPR {
     justification: asText(pr.justification, 'No justification provided.'),
     purchaseType: asText(pr.purchaseType || pr.purchase_type),
     purchaseTypeLabel: asText(pr.purchaseTypeLabel),
-    vendorSelection: asText(pr.vendorSelection) === 'own' ? 'own' : 'scm',
+    vendorSelection:
+      asText(pr.vendorSelection) === 'own'
+        ? 'own'
+        : asText(pr.vendorSelection) === 'it'
+          ? 'it'
+          : 'scm',
     prFlow: asText(pr.prFlow) === 'functional' ? 'functional' : 'standard',
     poCreationBy: asText(pr.poCreationBy) === 'requester' ? 'requester' : 'scm',
     billingLocation: asText(pr.billingLocation),
@@ -1663,7 +1674,7 @@ export default function TrackPRPage() {
                                           ['Purchase Type', pr.purchaseTypeLabel || pr.purchaseType || '—', 'ri-shopping-bag-3-line'],
                                           ['Currency', pr.currency || 'INR', 'ri-money-dollar-circle-line'],
                                           ['PR Flow', pr.prFlow === 'functional' ? 'Functional' : 'Standard', 'ri-flow-chart'],
-                                          ['Vendor Path', pr.vendorSelection === 'own' ? 'Own Vendor' : 'SCM Sourcing', 'ri-store-2-line'],
+                                          ['Vendor Path', pr.vendorSelection === 'own' ? 'Own Vendor' : pr.vendorSelection === 'it' ? 'IT Vendor Selection' : 'SCM Sourcing', 'ri-store-2-line'],
                                           ['PO Creation By', pr.poCreationBy === 'requester' ? 'Requester' : 'SCM', 'ri-file-paper-2-line'],
                                           ['Vendor', pr.vendorName || '—', 'ri-store-3-line'],
                                           ['Required Date', pr.requiredDate || '—', 'ri-calendar-event-line'],

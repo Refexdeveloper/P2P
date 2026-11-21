@@ -18,6 +18,8 @@ import {
   getPostRfqRoleConfig,
   POST_RFQ_ROLE_MAP,
   mapStatusToManagerUI,
+  isItVendorSelection,
+  normalizeVendorSelection,
 } from '../utils/constants.js';
 import {
   getL1ManagerForEmail,
@@ -37,6 +39,7 @@ import {
 } from './sassWorkflow.js';
 import {
   isNewJoinersLaptopPr,
+  NEW_JOINERS_RFQ_EMAIL,
 } from './newJoinersLaptopWorkflow.js';
 
 function currencySymbolForCode(currency) {
@@ -2147,7 +2150,8 @@ export async function finalizeRfq(user, prId, { recommendedInvitationId, taskId,
   const canActRequesterRfq = await userCanActOnRequesterRfq(user, pr);
   if (user.role === 'Requester' && !canActRequesterRfq) throw new Error('Unauthorized');
 
-  const isOwnVendor = pr.vendorSelection === 'own';
+  const isItVendor = isItVendorSelection(pr.vendorSelection || pr.vendor_selection);
+  const isOwnVendor = pr.vendorSelection === 'own' || isItVendor;
   // Keep original Create PO roles: SCM Buyer finalizes; Requester (or assigned RFQ agent) submits own-vendor.
   const isRequester = user.role === 'Requester' || canActRequesterRfq;
   const isScmBuyer = user.role === 'SCM Buyer';
@@ -2460,7 +2464,18 @@ async function createPostRfqApprovalTask(conn, prId, level) {
   }
 
   if (!assignee) {
-    assignee = await resolvePostRfqManager(requester.email, requester.departmentId, level);
+    let managerEmail = requester.email;
+    if (level === 'hod' || level === 'l2') {
+      try {
+        const pendingPr = await getPurchaseRequestById(prId);
+        if (isItVendorSelection(pendingPr?.vendorSelection || pendingPr?.vendor_selection)) {
+          managerEmail = NEW_JOINERS_RFQ_EMAIL;
+        }
+      } catch (err) {
+        console.warn('IT vendor L1/L2 lookup skipped:', err.message);
+      }
+    }
+    assignee = await resolvePostRfqManager(managerEmail, requester.departmentId, level);
   }
 
   const dueDate = new Date();
@@ -2826,10 +2841,13 @@ async function startOwnVendorPostRfqWorkflow(prId) {
   const pr = await getPurchaseRequestById(prId);
 
   const isNjl = isNewJoinersLaptopPr(pr);
-  // New Joiners: L1 = Mugesh, L2 = Srivaths
+  const isIt = isItVendorSelection(pr?.vendorSelection || pr?.vendor_selection);
+  // New Joiners: L1 = Mugesh, L2 = Srivaths. IT Vendor: L1/L2 are Reginold's managers.
   const l1StageLabel = isNjl
     ? 'Mugesh (L1) Vendor Final Approval'
-    : 'L1 Manager Vendor Final Approval';
+    : isIt
+      ? "Reginold's L1 Manager Approval"
+      : 'L1 Manager Vendor Final Approval';
   await queuePostQuotationApprovalMail(pr, 'HOD Approver', {
     postRfq: true,
     stageLabel: l1StageLabel,
@@ -2840,7 +2858,9 @@ async function startOwnVendorPostRfqWorkflow(prId) {
     action: 'submitted',
     actorRole: 'Requester',
     actorName: pr.requester,
-    completedStepLabel: isNjl ? 'RFQ Entry (Reginold) submitted' : 'RFQ Entry (Own Vendor) submitted',
+    completedStepLabel: isNjl || isIt
+      ? 'RFQ Entry (Reginold) submitted'
+      : 'RFQ Entry (Own Vendor) submitted',
     nextStepLabel: l1StageLabel,
     requesterName: pr.requester,
   });
@@ -2885,6 +2905,13 @@ async function notifyScmBuyerForFinalRfq(prId) {
     return;
   }
   const pr = await getPurchaseRequestById(prId);
+  const itVendor = isItVendorSelection(pr?.vendorSelection || pr?.vendor_selection);
+  if (itVendor) {
+    await pool.query(
+      `UPDATE purchase_requests SET current_stage = ?, updated_at = NOW() WHERE id = ?`,
+      [STAGE.RFQ_SCM_BUYER_SELECTION, prId]
+    );
+  }
 
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 5);
@@ -2896,14 +2923,14 @@ async function notifyScmBuyerForFinalRfq(prId) {
 
   await queuePostQuotationApprovalMail(pr, 'SCM Buyer', {
     rfqEntry: true,
-    stageLabel: 'SCM Final RFQ',
+    stageLabel: itVendor ? 'SCM RFQ Entry' : 'SCM Final RFQ',
     approverName: 'SCM Buyer',
   });
   queueRequesterStepProgressNotification(pr, {
     action: 'approve',
-    actorRole: 'CFO',
-    completedStepLabel: 'Mugesh Vendor Final Approval',
-    nextStepLabel: 'SCM Final RFQ',
+    actorRole: itVendor ? 'L2 Manager' : 'CFO',
+    completedStepLabel: itVendor ? 'L2 Manager Approval' : 'Mugesh Vendor Final Approval',
+    nextStepLabel: itVendor ? 'SCM RFQ Entry' : 'SCM Final RFQ',
     requesterName: pr.requester,
   });
 }
@@ -3268,7 +3295,7 @@ export async function getVendorComparisonMatrix(user, prId) {
       estimatedBudget: pr.totalAmount,
       status: pr.status,
       statusUI: pr.statusUI,
-      vendorSelection: pr.vendorSelection === 'own' ? 'own' : 'scm',
+      vendorSelection: normalizeVendorSelection(pr.vendorSelection),
       prFlow: pr.prFlow === 'functional' ? 'functional' : 'standard',
       justification: pr.justification,
       approvalHistory: pr.approvalHistory,
@@ -3413,6 +3440,7 @@ export async function listScmRfqEntryPrs(user) {
        AND (
          LOWER(TRIM(COALESCE(pr.vendor_selection, 'scm'))) = 'scm'
          OR (LOWER(TRIM(pr.vendor_selection)) = 'own' AND rc.requester_submitted_at IS NOT NULL)
+         OR (LOWER(TRIM(pr.vendor_selection)) = 'it' AND rc.requester_submitted_at IS NOT NULL)
          OR COALESCE(pr.pr_flow, 'standard') = 'functional'
          OR EXISTS (
            SELECT 1 FROM workflow_tasks scm_wt
@@ -3445,9 +3473,14 @@ export async function listScmRfqEntryPrs(user) {
       requestType: row.request_type,
       priority: row.priority,
       requiredDate: formatDate(row.required_date),
-      vendorSelection: row.vendor_selection === 'own' ? 'own' : 'scm',
+      vendorSelection: normalizeVendorSelection(row.vendor_selection),
       vendorCount: Number(row.vendor_count),
-      status: row.vendor_selection === 'own' ? 'Ready for SCM Final RFQ' : 'RFQ Entry',
+      status:
+        row.vendor_selection === 'own'
+          ? 'Ready for SCM Final RFQ'
+          : row.vendor_selection === 'it'
+            ? 'SCM RFQ Entry'
+            : 'RFQ Entry',
       /** Date PR entered SCM RFQ Entry / SCM Verify queue */
       prDate: formatDate(row.scm_rfq_entry_at) || '',
       scmRfqEntryDate: formatDate(row.scm_rfq_entry_at) || '',
@@ -3745,6 +3778,17 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       // Own L2 approve: honor HOD choice (CFO vs SCM Final)
       if (
         workflowRole === 'PR Manager' &&
+        isItVendorSelection(pr.vendor_selection) &&
+        pr.status === PR_STATUS.PENDING_RFQ_L2_APPROVAL
+      ) {
+        // IT Vendor: L2 → SCM RFQ Entry (skip Mugesh / CFO), then existing Create PO.
+        newStatus = PR_STATUS.APPROVED;
+        newStage = null;
+        nextRole = null;
+      }
+
+      if (
+        workflowRole === 'PR Manager' &&
         pr.vendor_selection === 'own' &&
         pr.status === PR_STATUS.PENDING_RFQ_L2_APPROVAL
       ) {
@@ -3950,7 +3994,7 @@ export async function processPostRfqApproval(user, prId, action, remarks, option
       action === 'approve' &&
       !nextRole &&
       newStatus === PR_STATUS.APPROVED &&
-      pr.vendor_selection === 'own'
+      (pr.vendor_selection === 'own' || isItVendorSelection(pr.vendor_selection))
     ) {
       if (String(pr.po_creation_by || 'scm') === 'requester') {
         // Requester creates the PO. Do not park this on SCM Final RFQ.

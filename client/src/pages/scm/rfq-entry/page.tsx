@@ -139,7 +139,8 @@ export default function ScmRfqEntryListPage() {
               <div className="relative z-[1] space-y-3 p-3 sm:space-y-4 sm:p-4 md:hidden">
                 {entryList.map((item) => {
                   const open = expandedPrId === item.prId;
-                  const isOwn = item.vendorSelection === 'own';
+                  const isIt = item.vendorSelection === 'it';
+                  const isOwn = item.vendorSelection === 'own' || isIt;
                   const prDate = item.prDate || item.scmRfqEntryDate || '—';
                   return (
                     <div key={item.prId} className="space-y-2">
@@ -177,7 +178,7 @@ export default function ScmRfqEntryListPage() {
                                 isOwn ? 'bg-amber-50 text-amber-700' : 'bg-[#E3F2FD] text-[#1E88E5]'
                               }`}
                             >
-                              {isOwn ? 'Own vendor' : 'SCM vendor'}
+                              {isIt ? 'IT vendor' : isOwn ? 'Own vendor' : 'SCM vendor'}
                             </span>
                             <span className="text-xs text-slate-500">{item.vendorCount} vendors</span>
                             <span className="text-sm font-bold tabular-nums text-[#2C3E50]">
@@ -269,7 +270,8 @@ export default function ScmRfqEntryListPage() {
                   <tbody>
                     {entryList.map((item) => {
                       const open = expandedPrId === item.prId;
-                      const isOwn = item.vendorSelection === 'own';
+                      const isIt = item.vendorSelection === 'it';
+                  const isOwn = item.vendorSelection === 'own' || isIt;
                       const prDate = item.prDate || item.scmRfqEntryDate || '—';
                       const rowBorder = open
                         ? 'border-[#90CAF9]'
@@ -334,7 +336,7 @@ export default function ScmRfqEntryListPage() {
                                   isOwn ? 'bg-amber-50 text-amber-700' : 'bg-[#E3F2FD] text-[#1E88E5]'
                                 }`}
                               >
-                                {isOwn ? 'Own vendor' : 'SCM vendor'}
+                                {isIt ? 'IT vendor' : isOwn ? 'Own vendor' : 'SCM vendor'}
                               </span>
                               {item.status && isOwn && (
                                 <p className="mt-0.5 text-[10px] leading-tight text-slate-500">

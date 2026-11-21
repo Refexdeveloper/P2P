@@ -19,7 +19,7 @@ export type CreatePrDraftSnapshot = {
   joinerDetails?: Array<Record<string, unknown>>;
   sassBillingFrequency?: 'monthly' | 'quarterly' | 'yearly' | null;
   sassSubscriptionStartDate?: string;
-  vendorSelection: 'own' | 'scm';
+  vendorSelection: 'own' | 'scm' | 'it';
   poCreationBy?: 'scm' | 'requester';
   /** SASS — vendor known on Create PR (no RFQ). */
   sassVendorId?: string | null;

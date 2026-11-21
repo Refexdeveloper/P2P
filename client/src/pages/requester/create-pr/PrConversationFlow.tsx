@@ -163,7 +163,9 @@ export default function PrConversationFlow({
           next.requestType = 'Opex';
         }
       } else if (field === 'requestType') next.requestType = value as 'Capex' | 'Opex' | 'Service';
-      else if (field === 'vendorSelection') next.vendorSelection = value === 'own' ? 'own' : 'scm';
+      else if (field === 'vendorSelection') {
+        next.vendorSelection = value === 'own' ? 'own' : value === 'it' ? 'it' : 'scm';
+      }
       else if (field === 'currency') next.currency = value as CurrencyCode;
       else (next as Record<string, unknown>)[field] = String(value);
       return next;
