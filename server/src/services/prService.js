@@ -3075,8 +3075,7 @@ export async function processApproval(user, prId, action, remarks, options = {})
         updatedPr.departmentId,
         {
           approverEmails: nextAssignee?.hodEmail || nextAssignee?.email
-            ? [nextAssignee.hodEmail || nextAssignee.email]no main work terr only main branch inside make that chnages only 
-            
+            ? [nextAssignee.hodEmail || nextAssignee.email]
             : undefined,
           approverName: nextAssignee?.hodName || nextAssignee?.name || undefined,
           stageLabel: nextLabel,
