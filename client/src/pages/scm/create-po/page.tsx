@@ -32,6 +32,7 @@ import {
   ProjectRecord,
 } from '../../../services/api';
 import ManualPoContextSection, {
+  buildManualQuoteAttachmentFiles,
   emptyComparisonRound,
   findRecommendedManualQuote,
   hydrateComparisonRoundsFromStored,
@@ -3044,14 +3045,7 @@ export default function CreatePOPage() {
                 recommended: row.recommended,
                 round: round.round,
                 sortOrder: idx,
-                files: [
-                  ...(row.storedFiles || []).map((f) => ({
-                    fileName: f.fileName,
-                    mimeType: f.mimeType || null,
-                    storedName: f.storedName,
-                  })),
-                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
-                ],
+                files: await buildManualQuoteAttachmentFiles(row, fileToAttachmentPayload),
               }))
             ),
           }))
@@ -3596,14 +3590,7 @@ export default function CreatePOPage() {
                 recommended: row.recommended,
                 round: round.round,
                 sortOrder: idx,
-                files: [
-                  ...(row.storedFiles || []).map((f) => ({
-                    fileName: f.fileName,
-                    mimeType: f.mimeType || null,
-                    storedName: f.storedName,
-                  })),
-                  ...(await Promise.all(row.files.map((file) => fileToAttachmentPayload(file)))),
-                ],
+                files: await buildManualQuoteAttachmentFiles(row, fileToAttachmentPayload),
               }))
             ),
           }))

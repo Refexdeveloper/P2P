@@ -364,22 +364,28 @@ async function savePoAttachmentAwaited(poId, prefix, fileName, base64Data) {
 async function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
   const storedQuotes = [];
   for (const row of vendorQuotes) {
-    const fileRows = [];
+    // Last entry wins per fileName so re-upload / autosave does not stack duplicates
+    const byFileName = new Map();
     for (const file of row.files || []) {
       if (!file?.fileName) continue;
+      const fileName = String(file.fileName).trim();
+      if (!fileName) continue;
+      const nameKey = fileName.toLowerCase();
       const storedName = String(file.storedName || file.filePath || '').trim();
       if (storedName) {
-        fileRows.push({
-          fileName: file.fileName || path.basename(storedName),
+        byFileName.set(nameKey, {
+          fileName,
           storedName,
           mimeType: file.mimeType || null,
         });
         continue;
       }
       if (!file.data && !file.dataBase64) continue;
-      const saved = await savePoAttachmentAwaited(poId, 'manual-quote', file.fileName, file.data || file.dataBase64);
+      // Skip re-upload when same name already has a stored ref in this batch
+      if (byFileName.has(nameKey) && byFileName.get(nameKey).storedName) continue;
+      const saved = await savePoAttachmentAwaited(poId, 'manual-quote', fileName, file.data || file.dataBase64);
       if (saved.fileName) {
-        fileRows.push({
+        byFileName.set(nameKey, {
           fileName: saved.fileName,
           storedName: saved.filePath,
           mimeType: file.mimeType || null,
@@ -395,7 +401,7 @@ async function persistManualVendorQuoteFiles(poId, vendorQuotes = []) {
       leadTime: row.leadTime || '',
       paymentTerms: row.paymentTerms || '',
       recommended: Boolean(row.recommended),
-      files: fileRows,
+      files: Array.from(byFileName.values()),
       sortOrder: row.sortOrder ?? 0,
     });
   }
