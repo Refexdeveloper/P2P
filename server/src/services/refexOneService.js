@@ -11,6 +11,7 @@ const PLACEHOLDER_PASSWORD = 'refexone-sync-no-login';
 const INSERT_BATCH_SIZE = 100;
 const USERS_CACHE_TTL_MS = 30 * 60 * 1000;
 let usersCache = { fetchedAt: 0, users: [] };
+const PROFILE_FETCH_TIMEOUT_MS = 1200;
 
 function isRefexOneTokenExpiredError(status, text = '') {
   return status === 401 && /token expired/i.test(String(text || ''));
@@ -114,26 +115,80 @@ function decodeJwtPayload(token) {
   }
 }
 
+function profileFromJwtClaims(accessToken) {
+  const payload = decodeJwtPayload(accessToken);
+  if (!payload) return null;
+  const exp = Number(payload.exp || 0);
+  if (exp && exp * 1000 < Date.now()) {
+    throw new Error('RefexOne session expired. Please sign in again at RefexOne.');
+  }
+  const email = (payload.email || '').trim().toLowerCase();
+  if (!email) return null;
+  return {
+    refexoneUserId: payload.user_id || payload.userId || payload.sub || null,
+    email,
+    name: (payload.name || payload.full_name || email.split('@')[0] || 'User').trim(),
+    accessToken,
+  };
+}
+
+async function fetchJsonWithTimeout(url, headers, timeoutMs = PROFILE_FETCH_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', headers, signal: ctrl.signal });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchRefexOneProfileWithToken(accessToken) {
   const baseUrl = getBaseUrl();
   const headers = {
     Authorization: `Bearer ${accessToken}`,
     Accept: 'application/json',
   };
-
-  const paths = ['/auth/me', '/users/me', '/me', '/auth/session', '/auth/profile'];
-  for (const path of paths) {
-    try {
-      const response = await fetch(`${baseUrl}${path}`, { method: 'GET', headers });
-      if (!response.ok) continue;
-      const body = await response.json();
-      return parseRefexOneLoginResponse(body, null);
-    } catch {
-      // try next profile endpoint
+  const paths = ['/auth/me', '/users/me', '/me'];
+  return new Promise((resolve) => {
+    let pending = paths.length;
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      resolve(null);
+    }, PROFILE_FETCH_TIMEOUT_MS);
+    const finish = (profile) => {
+      if (done) return;
+      if (profile?.email) {
+        done = true;
+        clearTimeout(timer);
+        resolve(profile);
+        return;
+      }
+      pending -= 1;
+      if (pending <= 0) {
+        done = true;
+        clearTimeout(timer);
+        resolve(null);
+      }
+    };
+    for (const path of paths) {
+      fetchJsonWithTimeout(`${baseUrl}${path}`, headers)
+        .then((body) => {
+          if (!body) return finish(null);
+          try {
+            finish(parseRefexOneLoginResponse(body, null));
+          } catch {
+            finish(null);
+          }
+        })
+        .catch(() => finish(null));
     }
-  }
-
-  return null;
+  });
 }
 
 async function resolveProfileFromJwtAndDirectory(accessToken) {
@@ -149,8 +204,17 @@ async function resolveProfileFromJwtAndDirectory(accessToken) {
   const refexoneUserId = payload.user_id || payload.userId || payload.sub || null;
   if (!email && !refexoneUserId) return null;
 
+  if (email) {
+    return {
+      refexoneUserId,
+      email,
+      name: (payload.name || payload.full_name || email.split('@')[0] || 'User').trim(),
+      accessToken,
+    };
+  }
+
   try {
-    const users = await fetchRefexOneUsersRaw();
+    const users = await fetchRefexOneUsersRaw(false, { timeoutMs: PROFILE_FETCH_TIMEOUT_MS });
     const match = users.find((u) => {
       const uEmail = (u.email || '').trim().toLowerCase();
       const uId = u.id || u.user_id || u.uuid;
@@ -195,8 +259,16 @@ export async function authenticateWithRefexOneToken(accessToken) {
     throw new Error('RefexOne access token is required');
   }
 
-  let profile = await fetchRefexOneProfileWithToken(token);
-  if (!profile) {
+  let profile = null;
+  try {
+    profile = profileFromJwtClaims(token);
+  } catch (err) {
+    if (/expired/i.test(err.message || '')) throw err;
+  }
+  if (!profile?.email) {
+    profile = await fetchRefexOneProfileWithToken(token);
+  }
+  if (!profile?.email) {
     profile = await resolveProfileFromJwtAndDirectory(token);
   }
 
@@ -302,7 +374,7 @@ function normalizeRefexOneUser(raw) {
   };
 }
 
-async function fetchRefexOneUsersRaw(force = false, { strict = false } = {}) {
+async function fetchRefexOneUsersRaw(force = false, { strict = false, timeoutMs = 8000 } = {}) {
   const now = Date.now();
   if (!force && usersCache.users.length && now - usersCache.fetchedAt < USERS_CACHE_TTL_MS) {
     return usersCache.users;
@@ -323,6 +395,7 @@ async function fetchRefexOneUsersRaw(force = false, { strict = false } = {}) {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {

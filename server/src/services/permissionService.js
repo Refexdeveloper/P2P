@@ -251,23 +251,33 @@ function enforceRoleNavWhitelist(role, codes = []) {
 
 async function persistRoleNavWhitelist(userId, role, codes) {
   const next = enforceRoleNavWhitelist(role, codes);
+  const currentSorted = [...codes].sort().join('|');
+  const nextSorted = [...next].sort().join('|');
+  if (currentSorted === nextSorted) return next;
+
   const current = new Set(codes);
-  for (const code of codes) {
-    if (!next.includes(code)) {
-      await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [
-        userId,
-        code,
-      ]);
-    }
-  }
-  for (const code of next) {
-    if (!current.has(code)) {
-      await pool.query(
-        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-        [userId, code]
-      );
-    }
-  }
+  const toDelete = codes.filter((code) => !next.includes(code));
+  const toInsert = next.filter((code) => !current.has(code));
+  setImmediate(() => {
+    (async () => {
+      if (toDelete.length) {
+        await pool.query(
+          `DELETE FROM user_permissions WHERE user_id = ? AND permission_code IN (${toDelete
+            .map(() => '?')
+            .join(', ')})`,
+          [userId, ...toDelete]
+        );
+      }
+      if (toInsert.length) {
+        const values = toInsert.map(() => '(?, ?)').join(', ');
+        const params = toInsert.flatMap((code) => [userId, code]);
+        await pool.query(
+          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+          params
+        );
+      }
+    })().catch((err) => console.warn('Role nav whitelist persist skipped:', err.message));
+  });
   return next;
 }
 
@@ -414,6 +424,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
           'nav.item_master', 'nav.vendor_master', 'nav.category_master',
           'nav.entity_master', 'nav.department_master',
         ];
+        const removeCodes = [];
         if (role === 'Requester') {
           healCodes.push(
             'nav.requester_dashboard',
@@ -427,14 +438,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.requester_vendor_invoice',
             'nav.letterhead_master'
           );
-          if (stored.includes('nav.tasks')) {
-            const idx = stored.indexOf('nav.tasks');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
-              [userId]
-            );
-          }
+          if (stored.includes('nav.tasks')) removeCodes.push('nav.tasks');
         }
         if (role === 'SCM Buyer' || role === 'SCM Manager') {
           healCodes.push('nav.po_letterhead_master', 'nav.letterhead_master');
@@ -448,30 +452,9 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.track_po',
             'nav.po_excel_import'
           );
-          if (stored.includes('nav.tasks')) {
-            const idx = stored.indexOf('nav.tasks');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
-              [userId]
-            );
-          }
-          if (stored.includes('nav.rfq_approval')) {
-            const idx = stored.indexOf('nav.rfq_approval');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.rfq_approval'`,
-              [userId]
-            );
-          }
-          if (stored.includes('nav.vendor_po_acceptance')) {
-            const idx = stored.indexOf('nav.vendor_po_acceptance');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.vendor_po_acceptance'`,
-              [userId]
-            );
-          }
+          if (stored.includes('nav.tasks')) removeCodes.push('nav.tasks');
+          if (stored.includes('nav.rfq_approval')) removeCodes.push('nav.rfq_approval');
+          if (stored.includes('nav.vendor_po_acceptance')) removeCodes.push('nav.vendor_po_acceptance');
         }
         if (role === 'SCM Manager') {
           healCodes.push(
@@ -481,23 +464,37 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.tasks',
             'nav.track_po'
           );
-          if (stored.includes('nav.scm_rfq_entry')) {
-            const idx = stored.indexOf('nav.scm_rfq_entry');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.scm_rfq_entry'`,
-              [userId]
-            );
-          }
+          if (stored.includes('nav.scm_rfq_entry')) removeCodes.push('nav.scm_rfq_entry');
         }
-        for (const code of healCodes) {
-          if (!stored.includes(code) && validCodes.has(code)) {
-            stored.push(code);
-            await pool.query(
-              `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-              [userId, code]
-            );
-          }
+        for (const code of removeCodes) {
+          const idx = stored.indexOf(code);
+          if (idx >= 0) stored.splice(idx, 1);
+        }
+        const missing = healCodes.filter((code) => !stored.includes(code) && validCodes.has(code));
+        if (missing.length) stored.push(...missing);
+        if (removeCodes.length || missing.length) {
+          const removeForHeal = [...new Set(removeCodes)];
+          const missingForHeal = missing.slice();
+          setImmediate(() => {
+            (async () => {
+              if (removeForHeal.length) {
+                await pool.query(
+                  `DELETE FROM user_permissions WHERE user_id = ? AND permission_code IN (${removeForHeal
+                    .map(() => '?')
+                    .join(', ')})`,
+                  [userId, ...removeForHeal]
+                );
+              }
+              if (missingForHeal.length) {
+                const values = missingForHeal.map(() => '(?, ?)').join(', ');
+                const params = missingForHeal.flatMap((code) => [userId, code]);
+                await pool.query(
+                  `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+                  params
+                );
+              }
+            })().catch((err) => console.warn('Permission heal skipped:', err.message));
+          });
         }
       }
       return stored;
@@ -507,8 +504,8 @@ export async function getUserPermissionCodes(userId, role, email = null) {
   return defaults;
 }
 
-export async function getUserNavigation(userId, role, email = null) {
-  let codes = await getUserPermissionCodes(userId, role, email);
+export async function getUserNavigation(userId, role, email = null, preloadedCodes = null) {
+  let codes = preloadedCodes != null ? preloadedCodes : await getUserPermissionCodes(userId, role, email);
   let codeSet = new Set(codes);
   let nav = NAV_ITEMS.filter((n) => codeSet.has(n.code)).sort((a, b) => a.sort - b.sort);
 
@@ -518,14 +515,18 @@ export async function getUserNavigation(userId, role, email = null) {
     codeSet = new Set(defaults);
     nav = NAV_ITEMS.filter((n) => codeSet.has(n.code)).sort((a, b) => a.sort - b.sort);
 
-    // Heal DB so next login is correct
     if (defaults.length) {
-      for (const code of defaults) {
-        await pool.query(
-          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-          [userId, code]
-        );
-      }
+      const healDefaults = defaults.slice();
+      setImmediate(() => {
+        const values = healDefaults.map(() => '(?, ?)').join(', ');
+        const params = healDefaults.flatMap((code) => [userId, code]);
+        pool
+          .query(
+            `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+            params
+          )
+          .catch((err) => console.warn('Default permission heal skipped:', err.message));
+      });
     }
   }
 
@@ -627,31 +628,10 @@ export async function seedUserPermissionsForRole(userId, role) {
   }
 }
 
-export async function enrichAuthUser(userRow) {
-  const effectiveUser = await applyEmailRoleOverride(userRow);
-  await syncEmailNavPermissions(effectiveUser.id, effectiveUser.email);
-  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role, effectiveUser.email);
-  const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role, effectiveUser.email);
-
-  let entityId = effectiveUser.entity_id ?? effectiveUser.entityId ?? null;
-  let entityName = effectiveUser.entity_name ?? effectiveUser.entityName ?? null;
-  let entityCode = effectiveUser.entity_code ?? effectiveUser.entityCode ?? null;
-  if (!entityId && effectiveUser.id) {
-    const [entityRows] = await pool.query(
-      `SELECT u.entity_id, e.name AS entity_name, e.code AS entity_code
-       FROM users u
-       LEFT JOIN entity_masters e ON e.id = u.entity_id
-       WHERE u.id = ?
-       LIMIT 1`,
-      [effectiveUser.id]
-    );
-    if (entityRows[0]?.entity_id) {
-      entityId = Number(entityRows[0].entity_id);
-      entityName = entityRows[0].entity_name || null;
-      entityCode = entityRows[0].entity_code || null;
-    }
-  }
-
+function authUserFromParts(effectiveUser, permissions, navigation) {
+  const entityId = effectiveUser.entity_id ?? effectiveUser.entityId ?? null;
+  const entityName = effectiveUser.entity_name ?? effectiveUser.entityName ?? null;
+  const entityCode = effectiveUser.entity_code ?? effectiveUser.entityCode ?? null;
   return {
     id: effectiveUser.id,
     email: effectiveUser.email,
@@ -673,4 +653,58 @@ export async function enrichAuthUser(userRow) {
       group: n.group,
     })),
   };
+}
+
+/** Role menus in memory so SAML can redirect before permission queries. */
+export async function buildFastAuthUser(userRow) {
+  const email = String(userRow?.email || '').trim().toLowerCase();
+  const overrideRole = EMAIL_ROLE_OVERRIDES[email];
+  const effectiveUser =
+    overrideRole && userRow.role !== overrideRole ? { ...userRow, role: overrideRole } : userRow;
+  const emailOverride = getEmailNavPermissionOverride(effectiveUser.email);
+  let permissions;
+  if (emailOverride) {
+    permissions = emailOverride.filter((c) => NAV_ITEMS.some((n) => n.code === c));
+  } else if (isSuperAdmin(effectiveUser.role)) {
+    permissions = NAV_ITEMS.map((n) => n.code);
+  } else {
+    permissions = [...(ROLE_DEFAULT_PERMISSIONS[effectiveUser.role] || ['nav.home_dashboard', 'nav.tasks'])];
+  }
+  const navigation = await getUserNavigation(
+    effectiveUser.id,
+    effectiveUser.role,
+    effectiveUser.email,
+    permissions
+  );
+  return authUserFromParts(effectiveUser, permissions, navigation);
+}
+
+export async function enrichAuthUser(userRow) {
+  const effectiveUser = await applyEmailRoleOverride(userRow);
+  await syncEmailNavPermissions(effectiveUser.id, effectiveUser.email);
+  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role, effectiveUser.email);
+  const navigation = await getUserNavigation(
+    effectiveUser.id,
+    effectiveUser.role,
+    effectiveUser.email,
+    permissions
+  );
+
+  if (!(effectiveUser.entity_id ?? effectiveUser.entityId) && effectiveUser.id) {
+    const [entityRows] = await pool.query(
+      `SELECT u.entity_id, e.name AS entity_name, e.code AS entity_code
+       FROM users u
+       LEFT JOIN entity_masters e ON e.id = u.entity_id
+       WHERE u.id = ?
+       LIMIT 1`,
+      [effectiveUser.id]
+    );
+    if (entityRows[0]?.entity_id) {
+      effectiveUser.entity_id = Number(entityRows[0].entity_id);
+      effectiveUser.entity_name = entityRows[0].entity_name || null;
+      effectiveUser.entity_code = entityRows[0].entity_code || null;
+    }
+  }
+
+  return authUserFromParts(effectiveUser, permissions, navigation);
 }

@@ -201,11 +201,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hash.includes('?') ? hash.split('?')[1] : hash.includes('=') ? hash : ''
       );
       let storedSso: string | null = null;
+      let storedSsoUser: string | null = null;
       try {
         storedSso =
           sessionStorage.getItem('p2p_sso_token') || localStorage.getItem('p2p_sso_token');
+        storedSsoUser =
+          sessionStorage.getItem('p2p_sso_user') || localStorage.getItem('p2p_sso_user');
       } catch {
         storedSso = null;
+        storedSsoUser = null;
       }
       const p2pToken =
         params.get('p2p_token') ||
@@ -224,13 +228,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem('p2p_token', p2pToken);
           setToken(p2pToken);
-          const res = await authApi.me();
-          const mapped = mapAuthUser(res.user);
-          persistUser(mapped, p2pToken);
+          let mapped: ReturnType<typeof mapAuthUser> | null = null;
+          if (storedSsoUser) {
+            try {
+              mapped = mapAuthUser(JSON.parse(storedSsoUser) as AuthUser);
+              persistUser(mapped, p2pToken);
+            } catch {
+              mapped = null;
+            }
+          }
+          if (!mapped) {
+            const res = await authApi.me();
+            mapped = mapAuthUser(res.user);
+            persistUser(mapped, p2pToken);
+          }
+          setIsLoading(false);
           clearSsoBounce();
           try {
             sessionStorage.removeItem('p2p_sso_token');
             localStorage.removeItem('p2p_sso_token');
+            sessionStorage.removeItem('p2p_sso_user');
+            localStorage.removeItem('p2p_sso_user');
           } catch {
             // ignore
           }
@@ -240,6 +258,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const clean = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
           window.history.replaceState({}, '', clean);
           redirectByRole(mapped.role, mapped.navigation, clean, mapped.email);
+          if (storedSsoUser) {
+            authApi
+              .me()
+              .then((res) => persistUser(mapAuthUser(res.user), p2pToken))
+              .catch(() => undefined);
+          }
         } catch {
           localStorage.removeItem('p2p_token');
           localStorage.removeItem('p2p_user');
@@ -317,6 +341,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const completeSessionLogin = async (p2pToken: string, redirectPath?: string) => {
+    const cachedRaw = localStorage.getItem('p2p_user');
+    if (cachedRaw && localStorage.getItem('p2p_token') === p2pToken) {
+      try {
+        const cached = mapAuthUser(JSON.parse(cachedRaw) as AuthUser);
+        completeLogin(cached, p2pToken, redirectPath);
+        authApi
+          .me()
+          .then((res) => persistUser(mapAuthUser(res.user), p2pToken))
+          .catch(() => undefined);
+        return;
+      } catch {
+        // cached profile was unreadable
+      }
+    }
     localStorage.setItem('p2p_token', p2pToken);
     setToken(p2pToken);
     const res = await authApi.me();
