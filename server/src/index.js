@@ -222,13 +222,8 @@ if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
 
 
 async function start() {
-  try {
-    await runStartupMigrations();
-    console.log('Database migrations checked.');
-  } catch (err) {
-    console.error('Startup migration failed:', err.message);
-  }
-
+  // Accept SAML sign-in immediately. Startup migrations used to run first and
+  // held the RefexOne "Signing in" page until every ALTER finished.
   app.listen(PORT, () => {
     try {
       testSmtpConnection().catch((err) => {
@@ -254,11 +249,22 @@ async function start() {
       console.error('Cloud subscription scheduler failed to start:', err.message);
     }
 
+    pingDatabase().catch((err) => {
+      console.warn('Database ping failed:', err.message);
+    });
+
     console.log(`P2P API server running on http://localhost:${PORT}`);
     if (fs.existsSync(path.join(CLIENT_OUT, 'index.html'))) {
       console.log(`Open app: http://localhost:${PORT}/`);
     }
   });
+
+  try {
+    await runStartupMigrations();
+    console.log('Database migrations checked.');
+  } catch (err) {
+    console.error('Startup migration failed:', err.message);
+  }
 }
 
 start();

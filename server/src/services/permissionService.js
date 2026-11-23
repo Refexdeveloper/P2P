@@ -620,12 +620,12 @@ export async function seedUserPermissionsForRole(userId, role) {
   const [existing] = await pool.query(`SELECT 1 FROM user_permissions WHERE user_id = ? LIMIT 1`, [userId]);
   if (existing.length) return;
 
-  for (const code of defaults) {
-    await pool.query(
-      `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-      [userId, code]
-    );
-  }
+  const values = defaults.map(() => '(?, ?)').join(', ');
+  const params = defaults.flatMap((code) => [userId, code]);
+  await pool.query(
+    `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+    params
+  );
 }
 
 function authUserFromParts(effectiveUser, permissions, navigation) {

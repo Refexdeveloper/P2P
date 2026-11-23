@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import pool from '../config/db.js';
 import {
   seedUserPermissionsForRole,
@@ -7,7 +6,9 @@ import {
 } from './permissionService.js';
 
 const DEFAULT_ROLE = 'Requester';
-const PLACEHOLDER_PASSWORD = 'refexone-sync-no-login';
+/** bcrypt hash of the non-login placeholder password. Computed once so sign-in does not hash. */
+const PLACEHOLDER_PASSWORD_HASH =
+  '$2a$10$NsVuCZbK/tC9LSYOQrByX.cboT2DqvfywI2JR3hwe3VrHEa3VW5/K';
 const INSERT_BATCH_SIZE = 100;
 const USERS_CACHE_TTL_MS = 30 * 60 * 1000;
 let usersCache = { fetchedAt: 0, users: [] };
@@ -282,50 +283,85 @@ export async function authenticateWithRefexOneToken(accessToken) {
   };
 }
 
-async function loadUserRow(userId) {
-  const [rows] = await pool.query(
-    `SELECT u.*, d.name AS department_name
-     FROM users u
-     LEFT JOIN departments d ON d.id = u.department_id
-     WHERE u.id = ? AND u.is_active = 1`,
-    [userId]
-  );
-  return rows[0] || null;
+function scheduleRefexProfileSync(existing, refexProfile, email) {
+  const refexId = refexProfile.refexoneUserId || null;
+  const name = refexProfile.name || existing.name;
+  const idChanged = Boolean(refexId) && existing.refexone_user_id !== refexId;
+  const nameChanged = Boolean(refexProfile.name) && refexProfile.name !== existing.name;
+  const emailChanged = email !== String(existing.email || '').toLowerCase();
+  if (!idChanged && !nameChanged && !emailChanged) return existing;
+
+  const next = { ...existing, name, email };
+  if (idChanged) next.refexone_user_id = refexId;
+  const userId = existing.id;
+  setImmediate(() => {
+    pool
+      .query(
+        `UPDATE users
+         SET refexone_user_id = COALESCE(?, refexone_user_id), name = ?, email = ?
+         WHERE id = ?`,
+        [idChanged ? refexId : null, name, email, userId]
+      )
+      .catch((err) => console.warn('RefexOne profile sync skipped:', err.message));
+  });
+  return next;
 }
 
 export async function resolveLocalUserFromRefexOne(refexProfile) {
   const email = refexProfile.email.toLowerCase().trim();
-  const [rows] = await pool.query(
+  const refexId = refexProfile.refexoneUserId || null;
+
+  const [byEmail] = await pool.query(
     `SELECT u.*, d.name AS department_name
      FROM users u
      LEFT JOIN departments d ON d.id = u.department_id
-     WHERE u.email = ? OR (u.refexone_user_id IS NOT NULL AND u.refexone_user_id = ?)
+     WHERE u.email = ?
      LIMIT 1`,
-    [email, refexProfile.refexoneUserId || '']
+    [email]
   );
-
-  if (rows.length) {
-    const existing = rows[0];
-    if (refexProfile.refexoneUserId && existing.refexone_user_id !== refexProfile.refexoneUserId) {
-      await pool.query(
-        `UPDATE users SET refexone_user_id = ?, name = ?, email = ? WHERE id = ?`,
-        [refexProfile.refexoneUserId, refexProfile.name, email, existing.id]
-      );
-    } else if (refexProfile.name && refexProfile.name !== existing.name) {
-      await pool.query(`UPDATE users SET name = ? WHERE id = ?`, [refexProfile.name, existing.id]);
-    }
-    return loadUserRow(existing.id);
+  let existing = byEmail[0] || null;
+  if (!existing && refexId) {
+    const [byRefexId] = await pool.query(
+      `SELECT u.*, d.name AS department_name
+       FROM users u
+       LEFT JOIN departments d ON d.id = u.department_id
+       WHERE u.refexone_user_id = ?
+       LIMIT 1`,
+      [refexId]
+    );
+    existing = byRefexId[0] || null;
   }
 
-  const passwordHash = await bcrypt.hash(PLACEHOLDER_PASSWORD, 10);
+  if (existing) {
+    const synced = scheduleRefexProfileSync(existing, refexProfile, email);
+    if (Number(existing.is_active) === 0) return null;
+    return synced;
+  }
+
   const [result] = await pool.query(
     `INSERT INTO users (name, email, password_hash, role, is_active, refexone_user_id)
      VALUES (?, ?, ?, ?, 1, ?)`,
-    [refexProfile.name, email, passwordHash, DEFAULT_ROLE, refexProfile.refexoneUserId]
+    [refexProfile.name, email, PLACEHOLDER_PASSWORD_HASH, DEFAULT_ROLE, refexId]
   );
 
-  await seedUserPermissionsForRole(result.insertId, DEFAULT_ROLE);
-  return loadUserRow(result.insertId);
+  const userId = result.insertId;
+  setImmediate(() => {
+    seedUserPermissionsForRole(userId, DEFAULT_ROLE).catch((err) =>
+      console.warn('SSO permission seed skipped:', err.message)
+    );
+  });
+  return {
+    id: userId,
+    name: refexProfile.name,
+    email,
+    password_hash: PLACEHOLDER_PASSWORD_HASH,
+    role: DEFAULT_ROLE,
+    is_active: 1,
+    refexone_user_id: refexId,
+    department_id: null,
+    department_name: null,
+    entity_id: null,
+  };
 }
 
 export function shouldTryRefexOneLogin(userRow, email) {
@@ -581,11 +617,10 @@ export async function ensureApproverUser({ email, name }, role, departmentId = n
     return existing.id;
   }
 
-  const passwordHash = await bcrypt.hash(PLACEHOLDER_PASSWORD, 10);
   const [result] = await pool.query(
     `INSERT INTO users (name, email, password_hash, role, department_id, is_active)
      VALUES (?, ?, ?, ?, ?, 1)`,
-    [name || normalizedEmail.split('@')[0], normalizedEmail, passwordHash, role, departmentId]
+    [name || normalizedEmail.split('@')[0], normalizedEmail, PLACEHOLDER_PASSWORD_HASH, role, departmentId]
   );
 
   await setUserPermissions(result.insertId, defaultPerms);
@@ -609,7 +644,7 @@ export async function syncRefexOneUsers() {
     return { total: 0, created: 0, updated: 0, syncedAt: new Date().toISOString() };
   }
 
-  const passwordHash = await bcrypt.hash(PLACEHOLDER_PASSWORD, 10);
+  const passwordHash = PLACEHOLDER_PASSWORD_HASH;
 
   const [localRows] = await pool.query(
     `SELECT id, email, refexone_user_id, role FROM users`

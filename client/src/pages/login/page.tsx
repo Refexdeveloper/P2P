@@ -133,10 +133,7 @@ export default function LoginPage() {
     // No session → RefexOne SAML SSO
     if (!ssoUrl) return;
     setStatus('Redirecting to RefexOne…');
-    const t = window.setTimeout(() => {
-      goToRefexOneSamlSso(ssoUrl);
-    }, 400);
-    return () => window.clearTimeout(t);
+    goToRefexOneSamlSso(ssoUrl);
   }, [
     authBootLoading,
     isAuthenticated,

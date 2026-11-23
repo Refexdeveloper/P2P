@@ -29,6 +29,7 @@ spec:
   template:
     metadata:
       annotations:
+        autoscaling.knative.dev/minScale: '1'
         autoscaling.knative.dev/maxScale: '5'
         run.googleapis.com/cloudsql-instances: master-diorama-489103-u2:asia-south1:p2p-mysql
         run.googleapis.com/startup-cpu-boost: 'true'
@@ -109,11 +110,12 @@ spec:
               cpu: '2'
               memory: 2Gi
           startupProbe:
-            timeoutSeconds: 240
-            periodSeconds: 240
-            failureThreshold: 1
-            tcpSocket:
+            httpGet:
+              path: /api/health
               port: 8080
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 30
   traffic:
     - percent: 100
       latestRevision: true
