@@ -58,12 +58,18 @@ async function issueAuthResponse(res, userRow, req, loginMethod = 'password') {
   res.json({ token, user: authUser });
 }
 
-function htmlSsoRedirect(targetUrl, p2pToken) {
+function htmlSsoRedirect(targetUrl, p2pToken, authUser = null) {
   const safeUrl = String(targetUrl).replace(/"/g, '&quot;');
   const safeToken = String(p2pToken)
     .replace(/\\/g, '\\\\')
     .replace(/'/g, "\\'")
     .replace(/</g, '');
+  const safeUserJson = authUser
+    ? JSON.stringify(authUser)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/</g, '\\u003c')
+    : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -77,6 +83,12 @@ function htmlSsoRedirect(targetUrl, p2pToken) {
     try {
       sessionStorage.setItem('p2p_sso_token', '${safeToken}');
       localStorage.setItem('p2p_sso_token', '${safeToken}');
+      ${
+        safeUserJson
+          ? `sessionStorage.setItem('p2p_sso_user', '${safeUserJson}');
+      localStorage.setItem('p2p_sso_user', '${safeUserJson}');`
+          : ''
+      }
     } catch (e) {}
     window.location.replace('${safeUrl}');
   </script>
@@ -118,7 +130,7 @@ async function completeSamlLoginAndRedirect(res, userRow, relayState, req) {
   res
     .status(200)
     .type('html')
-    .send(htmlSsoRedirect(target.toString(), token));
+    .send(htmlSsoRedirect(target.toString(), token, authUser));
 }
 
 async function loginViaRefexOne(email, password) {

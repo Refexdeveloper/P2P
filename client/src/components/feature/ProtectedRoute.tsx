@@ -18,7 +18,14 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }, [isAuthenticated, isLoading, location.pathname, location.search]);
 
   if (isLoading || !isAuthenticated) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <i className="ri-loader-4-line text-3xl text-teal-600 animate-spin" />
+          <p className="text-sm text-slate-600 mt-3">Signing you in…</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

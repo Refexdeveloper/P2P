@@ -190,6 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
           setUser(JSON.parse(storedUser));
         }
+        // Unblock UI immediately; refresh profile in background
+        setIsLoading(false);
         try {
           const res = await authApi.me();
           persistUser(mapAuthUser(res.user));
@@ -199,7 +201,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setToken(null);
           setUser(null);
         }
-        setIsLoading(false);
         return;
       }
 
@@ -210,11 +211,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hash.includes('?') ? hash.split('?')[1] : hash.includes('=') ? hash : ''
       );
       let storedSso: string | null = null;
+      let storedSsoUser: string | null = null;
       try {
         storedSso =
           sessionStorage.getItem('p2p_sso_token') || localStorage.getItem('p2p_sso_token');
+        storedSsoUser =
+          sessionStorage.getItem('p2p_sso_user') || localStorage.getItem('p2p_sso_user');
       } catch {
         storedSso = null;
+        storedSsoUser = null;
       }
       const p2pToken =
         params.get('p2p_token') ||
@@ -233,12 +238,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           localStorage.setItem('p2p_token', p2pToken);
           setToken(p2pToken);
-          const res = await authApi.me();
-          const mapped = mapAuthUser(res.user);
-          persistUser(mapped, p2pToken);
+          let mapped: ReturnType<typeof mapAuthUser> | null = null;
+          // SAML ACS already enriched the user — reuse it and skip a second /me round-trip
+          if (storedSsoUser) {
+            try {
+              mapped = mapAuthUser(JSON.parse(storedSsoUser) as AuthUser);
+              persistUser(mapped, p2pToken);
+            } catch {
+              mapped = null;
+            }
+          }
+          if (!mapped) {
+            const res = await authApi.me();
+            mapped = mapAuthUser(res.user);
+            persistUser(mapped, p2pToken);
+          }
           try {
             sessionStorage.removeItem('p2p_sso_token');
             localStorage.removeItem('p2p_sso_token');
+            sessionStorage.removeItem('p2p_sso_user');
+            localStorage.removeItem('p2p_sso_user');
           } catch {
             // ignore
           }
