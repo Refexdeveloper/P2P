@@ -8,10 +8,6 @@ function App() {
     <I18nextProvider i18n={i18n}>
       <BrowserRouter basename={__BASE_PATH__}>
 
-
-
-
-
       <AppRoutes />
 
 
