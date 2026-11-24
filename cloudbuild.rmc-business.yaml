@@ -1,4 +1,5 @@
 # Auto-deploy trigger: rmc-business-auto-deploy (branch RMC-Bussiness)
+# Push image BEFORE deploy — Cloud Build `images:` only runs after all steps succeed.
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
@@ -8,6 +9,14 @@ steps:
       - '-t'
       - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:latest'
       - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:$COMMIT_SHA'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:latest'
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
       - 'run'
@@ -32,6 +41,5 @@ images:
   - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:$COMMIT_SHA'
   - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:latest'
 options:
-  logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
 timeout: 1800s
