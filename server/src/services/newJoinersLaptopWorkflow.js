@@ -1,6 +1,6 @@
 /**
  * New Joiners Laptop Purchase workflow
- * HR Create PR (joiner roster) → selected approvals (1..n) → Mugesh approval → Reginold RFQ Entry
+ * HR Create PR (joiner roster) → Mugesh approval → Reginold RFQ Entry
  * → vendor rounds → Mugesh L1 → Srivaths L2 → SCM Final RFQ → SCM PO
  */
 import pool from '../config/db.js';
@@ -282,10 +282,6 @@ export async function healMisroutedNewJoinersLaptopPrs() {
          OR u.role = 'HR'
          OR pr.title LIKE 'New Joiners Laptop%'
          OR (pr.joiner_details_json IS NOT NULL AND pr.joiner_details_json <> '' AND pr.joiner_details_json <> '[]')
-       )
-       AND (
-         pr.approval_user_ids IS NULL
-         OR TRIM(pr.approval_user_ids) IN ('', 'null', '[]')
        )`,
     [PR_STATUS.PENDING_HOD_APPROVAL]
   );

@@ -2127,11 +2127,6 @@ export default function CreatePRPage() {
       if (!hasAnyJoiner) {
         newErrors.joinerDetails = 'Add at least one joiner row';
       }
-      if (!approvalUserIds.length) {
-        newErrors.approvalUserId = 'Select at least one approval person';
-      } else if (approvalUserIds.length > 5) {
-        newErrors.approvalUserId = 'Select up to 5 approval people';
-      }
       setErrors(newErrors);
       const okJoiners = Object.keys(newErrors).length === 0;
       if (!okJoiners) {
@@ -2300,20 +2295,6 @@ export default function CreatePRPage() {
     if (!validateForm()) return;
       setSubmitAction('submit');
       setShowConfirmModal(true);
-    if (isNewJoinersLaptop) {
-      setNextStepLabel(
-        selectedApprovalUsers.length > 1
-          ? `Approval 1 of ${selectedApprovalUsers.length}`
-          : 'Approval'
-      );
-      setL1Manager(
-        selectedApprovalUser
-          ? { name: selectedApprovalUser.name, email: selectedApprovalUser.email }
-          : null
-      );
-      setIsLoadingL1(false);
-      return;
-    }
     if (purchaseType === 'sass') {
       setNextStepLabel('L1 Manager Approval');
       setL1Manager(
@@ -2448,17 +2429,15 @@ export default function CreatePRPage() {
       (vendorSelection === 'it' ||
         prFlow === 'functional' ||
         purchaseType === 'sass' ||
-        purchaseType === 'online_purchase' ||
-        isNewJoinersLaptop) &&
+        purchaseType === 'online_purchase') &&
       approvalUserIds[0]
         ? Number(approvalUserIds[0])
         : undefined,
-    approvalUserIds: isNewJoinersLaptop
-      ? approvalUserIds
-      : vendorSelection === 'it' ||
-          prFlow === 'functional' ||
-          purchaseType === 'sass' ||
-          purchaseType === 'online_purchase'
+    approvalUserIds:
+      vendorSelection === 'it' ||
+      prFlow === 'functional' ||
+      purchaseType === 'sass' ||
+      purchaseType === 'online_purchase'
         ? purchaseType === 'sass' || purchaseType === 'online_purchase'
           ? approvalUserIds.slice(0, 1)
           : approvalUserIds
@@ -3078,37 +3057,6 @@ export default function CreatePRPage() {
     Critical: 'bg-red-50 text-[#E53935]',
   };
 
-  const newJoinersApprovals = isNewJoinersLaptop ? (
-    <div className="sm:col-span-2 mt-4" data-field="approvalUserId">
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-[#7F8C8D]">
-        Approvals <span className="text-red-500">*</span>
-      </label>
-      <UserSearchSelect
-        users={approvalUsers}
-        value={approvalUserIds}
-        onChange={setApprovalUserIds}
-        placeholder="Search by name or email"
-        error={Boolean(errors.approvalUserId)}
-        plain
-      />
-      {errors.approvalUserId ? (
-        <p className="mt-1 text-xs text-red-500">{errors.approvalUserId}</p>
-      ) : null}
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {['New', ...selectedApprovalUsers.map((u) => u.name), 'Mugesh', 'RFQ Entry', 'L1', 'L2', 'SCM'].map(
-          (step, index) => (
-            <span key={`${step}-${index}`} className="inline-flex items-center gap-1.5">
-              {index > 0 ? <i className="ri-arrow-right-s-line text-sm text-slate-300" aria-hidden /> : null}
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
-                {step}
-              </span>
-            </span>
-          )
-        )}
-      </div>
-    </div>
-  ) : null;
-
   return (
     <DashboardLayout>
       {toast ? (
@@ -3403,7 +3351,6 @@ export default function CreatePRPage() {
                   }}
                   formatEntityLabel={formatEntityLabel}
                 />
-                {newJoinersApprovals}
               </div>
             </div>
           </div>
@@ -3730,7 +3677,6 @@ export default function CreatePRPage() {
             </div>
 
             {!isHrLogin && isNewJoinersLaptop ? (
-              <>
               <NewJoinersLaptopSection
                 rows={joinerDetails}
                 onChange={setJoinerDetails}
@@ -3742,8 +3688,6 @@ export default function CreatePRPage() {
                 onEntityIdChange={(id) => setEntityId(id)}
                 formatEntityLabel={formatEntityLabel}
               />
-              {newJoinersApprovals}
-              </>
             ) : null}
 
             {purchaseType === 'work_order' && (

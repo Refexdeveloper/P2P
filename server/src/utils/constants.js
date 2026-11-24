@@ -333,7 +333,6 @@ export function mapStatusToManagerUI(status, prFlow = 'standard', vendorSelectio
 
   if (isNewJoiners) {
     const njlMap = {
-      [PR_STATUS.PENDING_HOD_APPROVAL]: 'Pending Approval',
       [PR_STATUS.PENDING_CFO_APPROVAL]: 'Pending Mugesh Approval',
       [PR_STATUS.APPROVED]: 'RFQ Entry (Reginold) / Post-RFQ',
       [PR_STATUS.PENDING_RFQ_MANAGER_APPROVAL]: 'Pending L1 Vendor Final',
