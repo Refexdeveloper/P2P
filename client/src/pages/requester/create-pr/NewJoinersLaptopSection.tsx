@@ -314,8 +314,8 @@ export default function NewJoinersLaptopSection({
       ) : null}
 
       <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-3 space-y-2">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <div className="min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
             <p className="text-sm font-semibold text-sky-950">Upload Excel to fill table</p>
             <p className="text-xs text-sky-800/90">
               Uses RIL New Joinee columns: HR Updated Date, Joining Date, First/Last Name, Mobile,
@@ -324,11 +324,11 @@ export default function NewJoinersLaptopSection({
               Company stays optional in the table.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => downloadJoinerExcelTemplate()}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-900 hover:bg-sky-50"
+              className="inline-flex h-10 items-center rounded-lg border border-sky-300 bg-white px-3 text-xs font-semibold text-sky-900 hover:bg-sky-50"
             >
               Download template
             </button>
@@ -336,7 +336,7 @@ export default function NewJoinersLaptopSection({
               type="button"
               disabled={excelParsing}
               onClick={() => excelInputRef.current?.click()}
-              className="inline-flex h-10 items-center justify-center rounded-lg bg-sky-700 px-3 text-xs font-semibold text-white hover:bg-sky-800 disabled:opacity-60"
+              className="inline-flex h-10 items-center rounded-lg bg-sky-700 px-3 text-xs font-semibold text-white hover:bg-sky-800 disabled:opacity-60"
             >
               {excelParsing ? 'Reading…' : 'Upload Excel'}
             </button>
@@ -361,14 +361,14 @@ export default function NewJoinersLaptopSection({
           Optional tag for joiner groups (info only). After Mugesh approve,{' '}
           <strong>RFQ Entry is always assigned to Reginold only</strong> — not HR.
         </p>
-        <div className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
             Rows from
             <input
               type="number"
               min={1}
               max={Math.max(1, rows.length)}
-              className={`${inputClass} mt-1 w-full sm:w-20`}
+              className={`${inputClass} mt-1 w-20`}
               value={bulkFrom}
               onChange={(e) => setBulkFrom(Number(e.target.value) || 1)}
             />
@@ -379,12 +379,12 @@ export default function NewJoinersLaptopSection({
               type="number"
               min={1}
               max={Math.max(1, rows.length)}
-              className={`${inputClass} mt-1 w-full sm:w-20`}
+              className={`${inputClass} mt-1 w-20`}
               value={bulkTo}
               onChange={(e) => setBulkTo(Number(e.target.value) || 1)}
             />
           </label>
-          <label className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 sm:min-w-[12rem] sm:flex-1">
+          <label className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 min-w-[12rem] flex-1">
             Assign RFQ requester
             <select
               className={`${inputClass} mt-1`}
@@ -404,7 +404,7 @@ export default function NewJoinersLaptopSection({
           <button
             type="button"
             onClick={applyBulkRequester}
-            className="col-span-2 inline-flex h-11 w-full items-center justify-center rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800 sm:w-auto"
+            className="inline-flex h-11 items-center rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white hover:bg-emerald-800"
           >
             Apply to rows
           </button>
@@ -432,7 +432,7 @@ export default function NewJoinersLaptopSection({
         ) : null}
       </div>
 
-      <div className="njl-roster overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="bg-emerald-100/90 text-emerald-950">
@@ -491,11 +491,10 @@ export default function NewJoinersLaptopSection({
 
               return (
                 <tr key={index} className="border-t border-slate-100 align-middle">
-                  <td className="njl-num sticky left-0 z-10 bg-white px-3 py-2.5 tabular-nums text-slate-500">
-                    <span className="njl-num-desk">{index + 1}</span>
-                    <span className="njl-num-mob">Joiner {index + 1}</span>
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2.5 tabular-nums text-slate-500">
+                    {index + 1}
                   </td>
-                  <td className="px-2 py-2.5" data-label="Joining date">
+                  <td className="px-2 py-2.5">
                     <input
                       type="date"
                       className={inputClass}
@@ -503,7 +502,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'joiningDate', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="First name">
+                  <td className="px-2 py-2.5">
                     <input
                       type="text"
                       className={inputClass}
@@ -511,7 +510,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'firstName', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Last name">
+                  <td className="px-2 py-2.5">
                     <input
                       type="text"
                       className={inputClass}
@@ -519,7 +518,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'lastName', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Mobile number">
+                  <td className="px-2 py-2.5">
                     <input
                       type="text"
                       className={inputClass}
@@ -527,7 +526,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'mobileNumber', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Designation">
+                  <td className="px-2 py-2.5">
                     <input
                       type="text"
                       className={inputClass}
@@ -535,7 +534,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'designation', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Department">
+                  <td className="px-2 py-2.5">
                     <select
                       className={inputClass}
                       value={row.department}
@@ -553,7 +552,7 @@ export default function NewJoinersLaptopSection({
                       ) : null}
                     </select>
                   </td>
-                  <td className="px-2 py-2.5" data-label="Company" data-field={index === 0 ? 'entityId' : undefined}>
+                  <td className="px-2 py-2.5" data-field={index === 0 ? 'entityId' : undefined}>
                     <select
                       className={`${inputClass} ${
                         errors.entityId && index === 0 && !matchedEntity
@@ -572,7 +571,7 @@ export default function NewJoinersLaptopSection({
                       ))}
                     </select>
                   </td>
-                  <td className="px-2 py-2.5" data-label="Location">
+                  <td className="px-2 py-2.5">
                     <input
                       type="text"
                       className={inputClass}
@@ -580,7 +579,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'location', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Address" style={{ minWidth: '14rem' }}>
+                  <td className="px-2 py-2.5" style={{ minWidth: '14rem' }}>
                     <textarea
                       rows={2}
                       className="box-border min-h-[2.75rem] w-full min-w-[12rem] resize-y rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25"
@@ -589,7 +588,7 @@ export default function NewJoinersLaptopSection({
                       onChange={(e) => updateCell(index, 'address', e.target.value)}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Reporting head email" style={{ minWidth: '16rem' }}>
+                  <td className="px-2 py-2.5" style={{ minWidth: '16rem' }}>
                     <SearchCreateField
                       compact
                       options={reportingUsers.map((u) => ({
@@ -641,7 +640,7 @@ export default function NewJoinersLaptopSection({
                       }}
                     />
                   </td>
-                  <td className="px-2 py-2.5" data-label="Rolls / contractor">
+                  <td className="px-2 py-2.5">
                     <select
                       className={inputClass}
                       value={row.onRollsOrContract}
@@ -651,7 +650,7 @@ export default function NewJoinersLaptopSection({
                       <option value="Contract">Contract</option>
                     </select>
                   </td>
-                  <td className="px-2 py-2.5" data-label="Email ID">
+                  <td className="px-2 py-2.5">
                     <select
                       className={inputClass}
                       value={row.emailRequired}
@@ -661,7 +660,7 @@ export default function NewJoinersLaptopSection({
                       <option value="No">No</option>
                     </select>
                   </td>
-                  <td className="px-2 py-2.5" data-label="Device" style={{ minWidth: '12rem' }}>
+                  <td className="px-2 py-2.5" style={{ minWidth: '12rem' }}>
                     <div
                       className="flex flex-col gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5"
                       title="Select one or more — each device adds a line item qty in RFQ Entry"
@@ -687,7 +686,7 @@ export default function NewJoinersLaptopSection({
                       })}
                     </div>
                   </td>
-                  <td className="px-2 py-2.5" data-label="RFQ requester">
+                  <td className="px-2 py-2.5">
                     <select
                       className={inputClass}
                       value={row.linkedRequesterId || ''}
@@ -708,7 +707,7 @@ export default function NewJoinersLaptopSection({
                       ))}
                     </select>
                   </td>
-                  <td className="njl-actions px-3 py-2.5">
+                  <td className="px-3 py-2.5">
                     <button
                       type="button"
                       className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
@@ -729,7 +728,7 @@ export default function NewJoinersLaptopSection({
         <button
           type="button"
           onClick={addRow}
-          className="inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 sm:w-auto"
+          className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
         >
           <i className="ri-add-line" />
           Add joiner

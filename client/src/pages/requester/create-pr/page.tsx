@@ -3094,12 +3094,12 @@ export default function CreatePRPage() {
       {errors.approvalUserId ? (
         <p className="mt-1 text-xs text-red-500">{errors.approvalUserId}</p>
       ) : null}
-      <div className="mt-3 -mx-1 flex min-w-0 max-w-full gap-1.5 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {['New', ...selectedApprovalUsers.map((u) => u.name), 'Mugesh', 'RFQ Entry', 'L1', 'L2', 'SCM'].map(
           (step, index) => (
             <span key={`${step}-${index}`} className="inline-flex items-center gap-1.5">
               {index > 0 ? <i className="ri-arrow-right-s-line text-sm text-slate-300" aria-hidden /> : null}
-              <span className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700">
                 {step}
               </span>
             </span>
@@ -3113,7 +3113,7 @@ export default function CreatePRPage() {
     <DashboardLayout>
       {toast ? (
         <div
-          className={`fixed top-3 left-3 right-3 z-[80] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-start gap-2 sm:left-auto sm:right-4 sm:max-w-sm ${
+          className={`fixed top-4 right-4 z-[80] max-w-sm px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-start gap-2 ${
             toast.type === 'success' ? 'bg-[#43A047] text-white' : 'bg-[#E53935] text-white'
           }`}
           role="alert"
