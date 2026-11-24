@@ -3736,6 +3736,7 @@ export default function CreatePRPage() {
             </div>
 
             {!isHrLogin && isNewJoinersLaptop ? (
+              <>
               <NewJoinersLaptopSection
                 rows={joinerDetails}
                 onChange={setJoinerDetails}
@@ -3748,6 +3749,7 @@ export default function CreatePRPage() {
                 formatEntityLabel={formatEntityLabel}
               />
               {newJoinersApprovalPicker}
+              </>
             ) : null}
 
             {purchaseType === 'work_order' && (
