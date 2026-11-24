@@ -1,7 +1,7 @@
 /**
  * New Joiners Laptop Purchase workflow
- * HR Create PR (joiner roster) → Mugesh approval → Reginold RFQ Entry
- * → vendor rounds → Mugesh L1 → Srivaths L2 → SCM Final RFQ → SCM PO
+ * HR Create PR (joiner roster) → selected user approvals → Mugesh approval
+ * → Reginold RFQ Entry → vendor rounds → L1 → L2 → SCM RFQ → SCM PO
  */
 import pool from '../config/db.js';
 import { ensureApproverUser } from './refexOneService.js';
@@ -267,6 +267,7 @@ export async function createMugeshApprovalTaskForNewJoiners(conn, prId, departme
 
 /**
  * Heal PRs that look like New Joiners Laptop but were routed to L1/HOD by mistake.
+ * PRs that already have selected user approvers stay on that step.
  * Sets purchase_type, title, Mugesh (CFO) task, and PR-NJL number when still on draft-style entity PR#.
  */
 export async function healMisroutedNewJoinersLaptopPrs() {
@@ -277,6 +278,10 @@ export async function healMisroutedNewJoinersLaptopPrs() {
      FROM purchase_requests pr
      JOIN users u ON u.id = pr.requester_id
      WHERE pr.status = ?
+       AND (
+         pr.approval_user_ids IS NULL
+         OR JSON_LENGTH(pr.approval_user_ids) = 0
+       )
        AND (
          pr.purchase_type = 'new_joiners_laptop'
          OR u.role = 'HR'

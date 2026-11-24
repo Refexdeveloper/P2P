@@ -1145,6 +1145,7 @@ function resolveFlowAndVendor(body, pr = {}) {
     body.purchaseType ?? body.purchase_type ?? pr.purchase_type
   );
   const isSass = purchaseType === 'sass';
+  const isNewJoiners = isNewJoinersLaptopType(purchaseType);
   const incomingVendor = body.vendorSelection ?? body.vendor_selection;
   const vendorMode = isSass
     ? 'own'
@@ -1154,7 +1155,7 @@ function resolveFlowAndVendor(body, pr = {}) {
         ? incomingVendor
         : normalizeVendorSelection(pr.vendor_selection);
   const effectiveFlow = vendorMode === 'it' ? 'functional' : prFlow;
-  const needsSelectedApprover = effectiveFlow === 'functional' || isSass;
+  const needsSelectedApprover = effectiveFlow === 'functional' || isSass || isNewJoiners;
   if (!needsSelectedApprover) {
     return { prFlow: effectiveFlow, vendorMode, approvalUserId: null, approvalUserIds: [] };
   }
@@ -1326,12 +1327,15 @@ async function queuePrSubmitNotifications({
   // Submit/resubmit must return immediately — load quote pack + SMTP in background.
   const prId = pr?.id || pr?.prId;
   const isNewJoinersSubmit = isNewJoinersLaptopPr(pr);
-  const firstApproverRole = isNewJoinersSubmit ? 'CFO' : 'HOD Approver';
-  const defaultNextStep = isNewJoinersSubmit
-    ? 'Mugesh Approval'
-    : prFlow === 'functional'
-      ? 'Selected Approver'
-      : 'L1 Manager Approval';
+  const njlUserChain = isNewJoinersSubmit && functionalApprovalChainFromPr(pr).length > 0;
+  const firstApproverRole = isNewJoinersSubmit && !njlUserChain ? 'CFO' : 'HOD Approver';
+  const defaultNextStep = njlUserChain
+    ? 'User Approval'
+    : isNewJoinersSubmit
+      ? 'Mugesh Approval'
+      : prFlow === 'functional'
+        ? 'Selected Approver'
+        : 'L1 Manager Approval';
   const mugeshEmail =
     hodAssignment?.hodEmail || hodAssignment?.email || null;
   const mugeshName =
@@ -1372,11 +1376,13 @@ async function queuePrSubmitNotifications({
           approverEmails: mugeshEmail ? [mugeshEmail] : undefined,
           approverName: mugeshName || undefined,
           stageLabel: nextStep || defaultNextStep,
-          roleDisplayName: isNewJoinersSubmit
-            ? 'Mugesh'
-            : prFlow === 'functional'
-              ? 'Selected Approver'
-              : undefined,
+          roleDisplayName: njlUserChain
+            ? 'Selected Approver'
+            : isNewJoinersSubmit
+              ? 'Mugesh'
+              : prFlow === 'functional'
+                ? 'Selected Approver'
+                : undefined,
           rfqSummary: mailPack.rfqSummary,
           attachments: mailPack.attachments,
         }
@@ -1408,11 +1414,13 @@ async function queuePrSubmitNotifications({
               email: mugeshEmail,
               name:
                 mugeshName ||
-                (isNewJoinersSubmit
-                  ? 'Mugesh'
-                  : prFlow === 'functional'
-                    ? 'Approver'
-                    : 'L1 Manager'),
+                (njlUserChain
+                  ? 'Approver'
+                  : isNewJoinersSubmit
+                    ? 'Mugesh'
+                    : prFlow === 'functional'
+                      ? 'Approver'
+                      : 'L1 Manager'),
               perspective: 'next_approver',
               actionUrl: buildActionUrl(
                 prId,
@@ -1564,7 +1572,7 @@ export async function createPurchaseRequest(user, body) {
   const isNewJoiners = isNewJoinersLaptopType(normalizedPurchaseType);
   const isInvoiceFlow = isSass || isOnline;
   // Invoice-flow types (Cloud / Online): known vendor path, never SCM RFQ
-  // New Joiners: own-vendor after Mugesh so Reginold RFQ → Mugesh L1 → Srivaths L2 → SCM Final RFQ
+  // New Joiners: selected users → Mugesh → Reginold RFQ → L1 → L2 → SCM RFQ / PO
   const vendorMode = isInvoiceFlow || isNewJoiners
     ? 'own'
     : isItVendorSelection(vendorSelection)
@@ -1630,7 +1638,14 @@ export async function createPurchaseRequest(user, body) {
     : approvalUserId
       ? [Number(approvalUserId)]
       : [];
-  if ((prFlow === 'functional' || isSass || isOnline) && (submit || requestedApproverIds.length)) {
+  if (isNewJoiners && (submit || requestedApproverIds.length)) {
+    if (submit && !requestedApproverIds.length) {
+      throw new Error('Select at least one approval person');
+    }
+    if (requestedApproverIds.length) {
+      selectedApprovers = await resolveSelectedApprovalUsers(requestedApproverIds, user.id);
+    }
+  } else if ((prFlow === 'functional' || isSass || isOnline) && (submit || requestedApproverIds.length)) {
     selectedApprovers = await resolveSelectedApprovalUsers(requestedApproverIds, user.id);
   }
   if (isSass && submit && !selectedApprovers.length) {
@@ -1714,12 +1729,21 @@ export async function createPurchaseRequest(user, body) {
   const prTitle = isNewJoiners
     ? `New Joiners Laptop Purchase (${joinerCount || 1})`
     : title || effectiveLineItems[0]?.description || `${requestType} Request`;
+  const njlStartsWithUsers = isNewJoiners && selectedApprovers.length > 0;
   const status = submit
-    ? isNewJoiners
-      ? PR_STATUS.PENDING_CFO_APPROVAL
-      : PR_STATUS.PENDING_HOD_APPROVAL
+    ? njlStartsWithUsers
+      ? PR_STATUS.PENDING_HOD_APPROVAL
+      : isNewJoiners
+        ? PR_STATUS.PENDING_CFO_APPROVAL
+        : PR_STATUS.PENDING_HOD_APPROVAL
     : PR_STATUS.DRAFT;
-  const currentStage = submit ? (isNewJoiners ? STAGE.CFO_REVIEW : STAGE.HOD_REVIEW) : null;
+  const currentStage = submit
+    ? njlStartsWithUsers
+      ? STAGE.HOD_REVIEW
+      : isNewJoiners
+        ? STAGE.CFO_REVIEW
+        : STAGE.HOD_REVIEW
+    : null;
 
   const conn = await pool.getConnection();
   try {
@@ -1901,7 +1925,9 @@ export async function createPurchaseRequest(user, body) {
 
     if (submit) {
       const pathLabel = isNewJoiners
-        ? `New Joiners Laptop Purchase — Mugesh approval → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → vendor rounds → Mugesh L1 → Srivaths L2 → SCM RFQ → SCM PO`
+        ? njlStartsWithUsers
+          ? `New Joiners Laptop Purchase — user approvals (${selectedApprovers.map((u) => u.name || u.email).join(' → ')}) → Mugesh → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → L1 → L2 → SCM RFQ → SCM PO`
+          : `New Joiners Laptop Purchase — Mugesh approval → RFQ Entry (${NEW_JOINERS_RFQ_EMAIL}) → vendor rounds → L1 → L2 → SCM RFQ → SCM PO`
         : isOnline
         ? `Online Purchase � User Approver: ${selectedApprover?.name || selectedApprover?.email || '�'} ? Mugesh L1 ? Srivaths L2 ? Mugesh Invoice Upload ? Completed (SCM skipped)`
         : isSass
@@ -1926,7 +1952,9 @@ export async function createPurchaseRequest(user, body) {
       );
 
       if (isNewJoiners) {
-        hodAssignment = await createMugeshApprovalTaskForNewJoiners(conn, prId, departmentId);
+        hodAssignment = njlStartsWithUsers
+          ? await createSelectedUserApprovalTask(conn, prId, selectedApprover.id)
+          : await createMugeshApprovalTaskForNewJoiners(conn, prId, departmentId);
       } else if (isOnline || isSass || prFlow === 'functional') {
         hodAssignment = await createSelectedUserApprovalTask(conn, prId, selectedApprover.id);
       } else {
@@ -1990,7 +2018,11 @@ export async function createPurchaseRequest(user, body) {
     const pr = await getPurchaseRequestById(prId);
     if (submit) {
       const nextStep = isNewJoiners
-        ? 'Mugesh Approval'
+        ? njlStartsWithUsers
+          ? selectedApprovers.length > 1
+            ? `User Approval 1 of ${selectedApprovers.length}`
+            : 'User Approval'
+          : 'Mugesh Approval'
         : isSass
           ? cloudSubscriptionPendingLabel(selectedApprover?.email, selectedApprover?.name).replace(
               /^Pending /,
@@ -2125,7 +2157,16 @@ async function buildApprovalProgress(row, pr) {
     });
   };
 
-  if (isSass) {
+  const isNewJoiners = isNewJoinersLaptopType(purchaseType);
+  if (isNewJoiners) {
+    addChain('User Approval');
+    add('cfo', 'Mugesh Approval', SASS_MUGESH_NAME);
+    add('rfq_entry', 'RFQ Entry (Reginold)', 'Reginold');
+    add('njl_l1', 'L1 Approval', 'L1');
+    add('njl_l2', 'L2 Approval', 'L2');
+    add('scm_rfq', 'SCM RFQ', scmBuyerName);
+    add('create_po', 'SCM PO Create', scmBuyerName);
+  } else if (isSass) {
     addChain('L1 Manager Approval');
     const chainEmails = [...chainUsers.values()].map((u) => String(u.email || '').toLowerCase());
     if (!isSassMugeshRequester({ requester_name: requesterName })) {
@@ -2211,7 +2252,11 @@ async function buildApprovalProgress(row, pr) {
     status === 'PENDING_RFQ_L2_APPROVAL' ||
     status === 'PENDING_RFQ_CFO_APPROVAL'
   ) {
-    currentKey = 'vendor_final';
+    currentKey = isNewJoinersLaptopType(purchaseType)
+      ? status === 'PENDING_RFQ_L2_APPROVAL'
+        ? 'njl_l2'
+        : 'njl_l1'
+      : 'vendor_final';
   } else if (status === 'PENDING_BUSINESS_APPROVAL') {
     currentKey = plan.some((p) => p.key === 'scm_manager') ? 'scm_manager' : 'create_po';
   } else if (status === 'PENDING_SCM_PO') {
@@ -3297,7 +3342,8 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
   }
 
   const isFunctionalUserStep =
-    (isFunctional || isSass || isOnline) && pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
+    (isFunctional || isSass || isOnline || (isNewJoiners && functionalApprovalChainFromPr(pr).length > 0)) &&
+    pr.status === PR_STATUS.PENDING_HOD_APPROVAL;
   const pendingTask = await getPendingPrApprovalTask(prId);
   const assignedToMe = userMatchesTaskAssignment(user, pendingTask);
 
@@ -3432,6 +3478,24 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
               skipToScmRfq = false;
               remarks = `${remarks.trim()} [Cloud Subscription user approvals complete → Mugesh Invoice Upload]`;
             }
+          }
+        } else if (isNewJoiners) {
+          const nextApproverId = await nextIdInApprovalChain(pr, user);
+          if (nextApproverId) {
+            nextFunctionalApprover = await resolveSelectedApprovalUser(nextApproverId);
+            newStatus = PR_STATUS.PENDING_HOD_APPROVAL;
+            newStage = STAGE.HOD_REVIEW;
+            nextRole = null;
+            skipToScmRfq = false;
+            const { step, total } = approvalStepIndex(pr, user.id);
+            remarks = `${remarks.trim()} [New Joiners user approval ${step} of ${total} → ${nextFunctionalApprover.name || nextFunctionalApprover.email}]`;
+          } else {
+            newStatus = PR_STATUS.PENDING_CFO_APPROVAL;
+            newStage = STAGE.CFO_REVIEW;
+            nextRole = 'CFO';
+            skipToScmRfq = false;
+            const { step, total } = approvalStepIndex(pr, user.id);
+            remarks = `${remarks.trim()} [New Joiners user approval ${step} of ${total} complete → Mugesh]`;
           }
         } else if (isFunctional) {
           const nextApproverId = await nextIdInApprovalChain(pr, user);
@@ -3641,6 +3705,8 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
         pr.department_id
       );
       }
+    } else if (nextRole === 'CFO' && action === 'approve' && isNewJoiners) {
+      nextAssignee = await createMugeshApprovalTaskForNewJoiners(conn, prId, pr.department_id);
     } else if (nextRole === 'CFO' && action === 'approve' && isInvoiceFlow) {
       nextAssignee = await createSassMugeshApprovalTask(
         conn,
@@ -3940,7 +4006,7 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
       );
     } else if (nextRole && action === 'approve') {
       const nextLabel =
-        isSass && nextRole === 'CFO'
+        (isSass || isNewJoiners) && nextRole === 'CFO'
           ? 'Mugesh Approval'
           : isSass && nextRole === 'PR Manager'
             ? 'L2 Manager Approval'
@@ -3974,7 +4040,7 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
               approverName: nextRoleName,
               stageLabel: nextLabel,
               roleDisplayName:
-                isSass && nextRole === 'CFO'
+                (isSass || isNewJoiners) && nextRole === 'CFO'
                   ? 'Mugesh'
                   : isSass && nextRole === 'PR Manager'
                     ? 'L2 Manager'
@@ -4023,8 +4089,14 @@ async function processApprovalOnce(user, prId, action, remarks, options = {}) {
         })().catch((err) => console.error('RFQ Entry mail failed:', err.message));
       });
       notifyWorkflowStepProgress(
-        isItVendorSelection(pr.vendor_selection) ? 'RFQ Entry (Reginold)' : 'RFQ Entry (Own Vendor)',
-        isItVendorSelection(pr.vendor_selection) ? 'User Approval' : 'L1 Manager Approval'
+        isItVendorSelection(pr.vendor_selection) || isNewJoiners
+          ? 'RFQ Entry (Reginold)'
+          : 'RFQ Entry (Own Vendor)',
+        isNewJoiners
+          ? 'Mugesh Approval'
+          : isItVendorSelection(pr.vendor_selection)
+            ? 'User Approval'
+            : 'L1 Manager Approval'
       );
     } else if ((actingRole === 'CFO' || skipToScmRfq) && action === 'approve' && !isSass) {
       // Functional Own (and any PR that already has quotation rounds) → SCM Buyer with files attached
@@ -4645,7 +4717,9 @@ export async function updatePurchaseRequest(user, prId, body, conn = null, optio
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   const needsSelectedApprover =
     prFlow === 'functional' ||
-    isSassPurchaseType(purchaseType || pr.purchase_type);
+    isSassPurchaseType(purchaseType || pr.purchase_type) ||
+    forceNewJoinersUpdate ||
+    isNewJoinersLaptopType(purchaseType || pr.purchase_type);
   if (needsSelectedApprover && approvalUserIds.length) {
     await resolveSelectedApprovalUsers(approvalUserIds, pr.requester_id);
   }
@@ -4990,7 +5064,9 @@ export async function adminUpdatePurchaseRequest(user, prId, body = {}) {
   const { prFlow, vendorMode, approvalUserId, approvalUserIds } = resolveFlowAndVendor(body, pr);
   const needsSelectedApprover =
     prFlow === 'functional' ||
-    isSassPurchaseType(purchaseType || pr.purchase_type);
+    isSassPurchaseType(purchaseType || pr.purchase_type) ||
+    forceNewJoinersAdmin ||
+    isNewJoinersLaptopType(purchaseType || pr.purchase_type);
   if (needsSelectedApprover && approvalUserIds.length) {
     await resolveSelectedApprovalUsers(approvalUserIds, pr.requester_id);
   }
@@ -5476,7 +5552,7 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
         'resubmitted',
         remarks?.trim() ||
           (isNewJoinersResubmit
-            ? 'New Joiners Laptop PR resubmitted for Mugesh approval'
+            ? 'New Joiners Laptop PR resubmitted for approval'
             : 'PR resubmitted after rework'),
       ]
     );
@@ -5511,7 +5587,15 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
       }
     }
     const firstApproverId = chain[0] || current.approval_user_id;
-    if ((isFunctional || isSass) && firstApproverId && Number(firstApproverId) !== Number(current.approval_user_id)) {
+    const njlChainFirst = isNewJoiners && chain.length ? chain[0] : null;
+    if (njlChainFirst) {
+      await conn.query(
+        `UPDATE purchase_requests
+         SET status = ?, current_stage = ?, approval_user_id = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [PR_STATUS.PENDING_HOD_APPROVAL, STAGE.HOD_REVIEW, njlChainFirst, prId]
+      );
+    } else if ((isFunctional || isSass) && firstApproverId && Number(firstApproverId) !== Number(current.approval_user_id)) {
       await conn.query(`UPDATE purchase_requests SET approval_user_id = ? WHERE id = ?`, [
         firstApproverId,
         prId,
@@ -5520,7 +5604,9 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
 
     let hodAssignment;
     if (isNewJoiners) {
-      hodAssignment = await createMugeshApprovalTaskForNewJoiners(conn, prId, current.department_id);
+      hodAssignment = njlChainFirst
+        ? await createSelectedUserApprovalTask(conn, prId, njlChainFirst)
+        : await createMugeshApprovalTaskForNewJoiners(conn, prId, current.department_id);
     } else if (isSass || isFunctional) {
       if (!firstApproverId) throw new Error('Select L1 Manager / User Approver before resubmitting');
       hodAssignment = await createSelectedUserApprovalTask(conn, prId, firstApproverId);
@@ -5547,7 +5633,11 @@ export async function resubmitPurchaseRequest(user, prId, body = {}) {
     const updatedPr = await getPurchaseRequestById(prId);
     const chainLen = functionalApprovalChainFromPr(current).length;
     const nextStep = isNewJoiners
-      ? 'Mugesh Approval'
+      ? chainLen > 1
+        ? `User Approval 1 of ${chainLen}`
+        : chainLen === 1
+          ? 'User Approval'
+          : 'Mugesh Approval'
       : isSass
       ? 'L1 Manager Approval'
       : isFunctional
