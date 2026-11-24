@@ -1,0 +1,37 @@
+# Auto-deploy trigger: rmc-business-auto-deploy (branch RMC-Bussiness)
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:$COMMIT_SHA'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:latest'
+      - '.'
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'p2p-backend-rmc-business'
+      - '--image=asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:$COMMIT_SHA'
+      - '--region=asia-south1'
+      - '--platform=managed'
+      - '--service-account=p2p-app-sa@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--cpu=2'
+      - '--memory=2Gi'
+      - '--timeout=300'
+      - '--max-instances=5'
+      - '--add-cloudsql-instances=$_INSTANCE_CONNECTION_NAME'
+      - '--set-env-vars=NODE_ENV=production,SERVE_CLIENT=true,DB_NAME=p2p_rmc_business,DB_USER=p2p_rmc_app,INSTANCE_CONNECTION_NAME=$_INSTANCE_CONNECTION_NAME,CORS_ORIGIN=*,APP_URL=https://p2p-backend-rmc-business-645830234926.asia-south1.run.app,API_PUBLIC_URL=https://p2p-backend-rmc-business-645830234926.asia-south1.run.app,REFEXONE_LOGIN_ENABLED=true,REFEXONE_SAML_APP_ID=0f71f9c3-751e-4004-bb9c-a3f6f007c420,REFEXONE_SAML_ACS_URL=https://p2p-backend-rmc-business-645830234926.asia-south1.run.app/api/auth/refexone/saml/acs,REFEXONE_SAML_ENTITY_ID=https://p2p-backend-rmc-business-645830234926.asia-south1.run.app/auth/refexone/saml,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_SECURE=false,GCS_BUCKET_NAME=p2p-app-storage-master-diorama-489103-u2,GOOGLE_CLOUD_PROJECT=master-diorama-489103-u2'
+      - '--set-secrets=DB_PASSWORD=p2p-rmc-db-password:latest,JWT_SECRET=p2p-jwt-secret:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASSWORD=SMTP_PASSWORD:latest'
+      - '--allow-unauthenticated'
+      - '--quiet'
+substitutions:
+  _INSTANCE_CONNECTION_NAME: 'master-diorama-489103-u2:asia-south1:p2p-mysql'
+images:
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:$COMMIT_SHA'
+  - 'asia-south1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/p2p/p2p-backend-rmc-business:latest'
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+timeout: 1800s

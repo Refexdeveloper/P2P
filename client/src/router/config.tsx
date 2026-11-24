@@ -36,6 +36,7 @@ const SCMTechnicalClearancePage = lazy(() => import('../pages/scm/technical-clea
 const SCMPurchaseRequestsPage = lazy(() => import('../pages/scm/purchase-requests/page'));
 const CreatePOPage = lazy(() => import('../pages/scm/create-po/page'));
 const TrackPoPage = lazy(() => import('../pages/scm/track-po/page'));
+const PoReportPage = lazy(() => import('../pages/scm/po-report/page'));
 const PoExcelImportPage = lazy(() => import('../pages/scm/po-excel-import/page'));
 const PoLetterheadMasterPage = lazy(() => import('../pages/scm/po-letterhead-master/page'));
 const LetterheadMasterPage = lazy(() => import('../pages/scm/letterhead-master/page'));
@@ -216,6 +217,10 @@ const routes: RouteObject[] = [
   {
     path: '/scm/track-po',
     element: <ProtectedRoute><TrackPoPage /></ProtectedRoute>
+  },
+  {
+    path: '/scm/po-report',
+    element: <ProtectedRoute><PoReportPage /></ProtectedRoute>
   },
   {
     path: '/scm/po-excel-import',
