@@ -73,7 +73,7 @@
   .cpr-hero-inner { flex-direction: row; align-items: flex-start; justify-content: space-between; }
 }
 .cpr-hero-text > * { animation: cpr-up .6s cubic-bezier(.2,.8,.2,1) both; }
-.cpr-crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); animation-delay: .05s !important; }
+.cpr-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); animation-delay: .05s !important; }
 .cpr-crumbs a { color: var(--ink-2); transition: color .2s; }
 .cpr-crumbs a:hover { color: var(--teal); }
 .cpr-crumbs span { color: var(--ink); font-weight: 500; }
@@ -128,7 +128,10 @@
   .cpr-art { display: none; }
   .cpr-title { font-size: 22px; }
   .cpr-sub { font-size: 13.5px; }
-  .cpr-status { border-radius: 16px; }
+  .cpr-status { border-radius: 16px; align-items: flex-start; }
+  .cpr-status-msg { width: 100%; }
+  .cpr-status-count { width: 100%; padding-left: 0; border-left: 0; }
+  .cpr-status-track { flex-basis: 100%; }
 }
 
 /* ---------------- BODY ---------------- */
@@ -639,3 +642,72 @@ textarea.vr-input { height: auto; }
 .vr-modal section:nth-of-type(3) { animation-delay: .16s; }
 .vr-banner.error { animation: cpx-shake .45s ease, cpr-up .3s ease both; }
 @keyframes cpx-spin { to { transform: rotate(360deg); } }
+
+/* HR Create PR — joiner roster becomes stacked cards on a phone */
+.njl-num-mob { display: none; }
+@media (max-width: 767px) {
+  .njl-roster {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .njl-roster table { min-width: 0; width: 100%; }
+  .njl-roster thead { display: none; }
+  .njl-roster tbody { display: block; }
+  .njl-roster tr {
+    position: relative;
+    display: block;
+    margin-bottom: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.45);
+  }
+  .njl-roster td {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    border-top: 1px solid #f1f5f9;
+    padding: 10px 12px;
+  }
+  .njl-roster td.njl-num {
+    position: static;
+    display: flex;
+    align-items: center;
+    border-top: 0;
+    border-radius: 16px 16px 0 0;
+    background: #ecfdf5;
+    padding: 12px 52px 12px 14px;
+    font-weight: 700;
+    color: #065f46;
+  }
+  .njl-roster .njl-num-desk { display: none; }
+  .njl-roster .njl-num-mob { display: inline; }
+  .njl-roster td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+  .njl-roster td.njl-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: auto;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+  .njl-roster input,
+  .njl-roster select,
+  .njl-roster textarea {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+  }
+}
