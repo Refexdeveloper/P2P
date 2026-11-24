@@ -1307,7 +1307,7 @@ export default function CreatePRPage() {
           leadTime: q.leadTime,
           paymentTerms: q.paymentTerms,
           // Only persist server-confirmed file names — never File.name (lost on refresh).
-          savedFileName: q.savedFileName || undefined,
+          savedFileName: savedQuoteFiles(q).find((f) => f.isPrimary)?.fileName || undefined,
           savedSubmissionId: q.savedSubmissionId || undefined,
           savedFiles: savedQuoteFiles(q),
         })),
@@ -2346,43 +2346,45 @@ export default function CreatePRPage() {
         if (String(quote.quotedPrice ?? '').trim() === '') continue;
         const locals = localQuoteFiles(quote);
         const saved = savedQuoteFiles(quote);
+        const primaryKept = saved.some((f) => f.isPrimary);
+        const keepExtraFileIds = saved
+          .filter((f) => !f.isPrimary && Number(f.id) > 0)
+          .map((f) => Number(f.id));
+        const clearPrimary = Boolean(quote.savedSubmissionId) && !primaryKept;
         const hasNewFile = locals.length > 0;
-        const hasSavedFile = saved.length > 0 || Boolean(quote.savedFileName || quote.savedSubmissionId);
-        if (!hasNewFile && !hasSavedFile) continue;
+        const hasSavedFile =
+          saved.length > 0 || Boolean(quote.savedFileName || quote.savedSubmissionId);
+        if (!hasNewFile && !hasSavedFile && !clearPrimary) continue;
         const entry: Record<string, unknown> = {
           round: quote.round,
           quotedPrice: price,
           leadTime: Number(quote.leadTime) || 0,
           paymentTerms: quote.paymentTerms || undefined,
+          keepExtraFileIds,
+          clearPrimary,
         };
-        const alreadyOnServer = Boolean(quote.savedSubmissionId || (saved.length && !locals.length));
-        if (skipFileData && alreadyOnServer) {
-          entry.quotationFileName = saved[0]?.fileName || quote.savedFileName;
-          entry.keepExtraFileIds = saved.filter((f) => f.id).map((f) => f.id);
-        } else if (locals.length) {
+        if (locals.length && !skipFileData) {
           const uploaded = [];
           for (const file of locals) {
             uploaded.push(await fileToAttachmentPayload(file));
           }
-          if (!saved.some((f) => f.isPrimary) && !quote.savedFileName) {
+          if (!primaryKept) {
             entry.quotationFileName = uploaded[0].fileName;
             entry.quotationFileData = uploaded[0].data;
             if (uploaded.length > 1) {
-              entry.quotationFiles = uploaded.slice(1).map((p) => ({ fileName: p.fileName, fileData: p.data }));
+              entry.quotationFiles = uploaded.slice(1).map((p) => ({
+                fileName: p.fileName,
+                fileData: p.data,
+              }));
             }
           } else {
-            entry.quotationFileName = saved[0]?.fileName || quote.savedFileName;
+            const primaryName = saved.find((f) => f.isPrimary)?.fileName || quote.savedFileName;
+            if (primaryName) entry.quotationFileName = primaryName;
             entry.quotationFiles = uploaded.map((p) => ({ fileName: p.fileName, fileData: p.data }));
           }
-          entry.keepExtraFileIds = saved.filter((f) => !f.isPrimary && f.id).map((f) => f.id);
-          if (!saved.some((f) => f.isPrimary) && quote.savedFileName) {
-            entry.replacePrimary = true;
-          }
-        } else if (quote.savedFileName || quote.savedSubmissionId || saved.length) {
-          // Keep existing round files on edit/send-back save without re-upload
-          entry.quotationFileName =
-            quote.savedFileName || saved[0]?.fileName || 'quotation.pdf';
-          entry.keepExtraFileIds = saved.filter((f) => f.id).map((f) => f.id);
+        } else if (primaryKept) {
+          const primaryName = saved.find((f) => f.isPrimary)?.fileName || quote.savedFileName;
+          if (primaryName) entry.quotationFileName = primaryName;
         }
         quotes.push(entry);
       }

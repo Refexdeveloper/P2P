@@ -500,9 +500,34 @@ async function persistQuoteFileSet({
 
   if (!primaryName) {
     const first = primaryIncoming[0] || extraIncoming[0];
-    if (first) await writePrimary(first);
-    const rest = primaryIncoming.length ? extraIncoming : extraIncoming.slice(1);
-    await insertExtraQuotationFiles(submissionId, invitationId, round, rest);
+    if (first) {
+      await writePrimary(first);
+      const rest = primaryIncoming.length ? extraIncoming : extraIncoming.slice(1);
+      await insertExtraQuotationFiles(submissionId, invitationId, round, rest);
+      await finish();
+      return;
+    }
+    if (keepIds?.length) {
+      const [promoteRows] = await pool.query(
+        `SELECT id, file_name, file_path, file_data
+         FROM vendor_quotation_files
+         WHERE submission_id = ? AND id IN (${keepIds.map(() => '?').join(',')})
+         ORDER BY sort_order ASC, id ASC
+         LIMIT 1`,
+        [submissionId, ...keepIds]
+      );
+      const promoted = promoteRows[0];
+      if (promoted) {
+        await pool.query(
+          `UPDATE vendor_quotation_submissions
+           SET quotation_file_name = ?, quotation_file_path = ?, quotation_file_data = ?
+           WHERE id = ?`,
+          [promoted.file_name, promoted.file_path, promoted.file_data, submissionId]
+        );
+        await pool.query(`DELETE FROM vendor_quotation_files WHERE id = ?`, [promoted.id]);
+        primaryName = promoted.file_name;
+      }
+    }
     await finish();
     return;
   }
@@ -940,6 +965,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
           quotationFiles: q.quotationFiles,
           keepExtraFileIds: q.keepExtraFileIds,
           replacePrimary: q.replacePrimary,
+          clearPrimary: Boolean(q.clearPrimary),
         }))
         .filter((q) => q.round <= maxRounds)
         .sort((a, b) => a.round - b.round);
@@ -1129,10 +1155,11 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
       bufferFromDiskPath(meta.filePath);
     try {
       const [extraRows] = await pool.query(
-        `SELECT file_name, file_path, file_data, sort_order FROM vendor_quotation_files WHERE submission_id = ?`,
+        `SELECT id, file_name, file_path, file_data, sort_order FROM vendor_quotation_files WHERE submission_id = ?`,
         [meta.submissionId]
       );
       meta.extras = extraRows.map((r) => ({
+        id: r.id,
         fileName: r.file_name,
         filePath: r.file_path,
         buffer: r.file_data,
@@ -1183,6 +1210,7 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         quotationFiles: q.quotationFiles,
         keepExtraFileIds: q.keepExtraFileIds,
         replacePrimary: q.replacePrimary,
+        clearPrimary: Boolean(q.clearPrimary),
       }))
       .filter((q) => q.round <= maxRounds)
       .sort((a, b) => a.round - b.round);
@@ -1216,9 +1244,18 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
     for (const quote of quotes) {
       if (!Number.isFinite(quote.quotedPrice) || quote.quotedPrice < 0) continue;
       const prev = quote._reuse || findPrevQuoteFile(email, name, quote.round);
+      const prevExtras = Array.isArray(prev?.extras) ? prev.extras : [];
+      const keptPrevExtras = Array.isArray(quote.keepExtraFileIds)
+        ? prevExtras.filter((extra) =>
+            quote.keepExtraFileIds.map(Number).includes(Number(extra.id))
+          )
+        : quote.clearPrimary
+          ? []
+          : prevExtras;
       let fileName = null;
       let filePath = null;
       let fileBuffer = null;
+      let promotedExtraId = null;
       if (quote.quotationFileName && quote.quotationFileData) {
         const fileInfo = await saveQuotationFile(
           invitationId,
@@ -1232,6 +1269,13 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         fileName = fileInfo.fileName;
         filePath = fileInfo.filePath;
         fileBuffer = quotationBlobForDb(fileInfo.buffer, fileInfo.gcsOk);
+      } else if (quote.clearPrimary) {
+        const promoted = keptPrevExtras[0];
+        if (!promoted) continue;
+        promotedExtraId = promoted.id;
+        fileName = promoted.fileName;
+        filePath = promoted.filePath;
+        fileBuffer = mysqlBlobToBuffer(promoted.buffer) || bufferFromDiskPath(promoted.filePath);
       } else if (prev?.fileName) {
         fileName = prev.fileName;
         filePath = prev.filePath;
@@ -1269,13 +1313,21 @@ export async function seedFunctionalOwnRfq(user, prId, rfqVendors = [], options 
         submissionId: ins.insertId,
         invitationId,
         round: quote.round,
-        quote,
+        quote: {
+          quotationFileName: quote.quotationFileName,
+          quotationFileData: quote.quotationFileData,
+          quotationFiles: quote.quotationFiles,
+          replacePrimary: quote.replacePrimary,
+        },
         existingPrimaryName: fileName,
       });
       if (fileBuffer && !useGcsForNewUploads()) await persistPrimaryQuotationBlob(ins.insertId, fileBuffer);
       const extraIncoming = collectIncomingQuoteFiles({ quotationFiles: quote.quotationFiles });
-      if (prev?.extras?.length && !extraIncoming.length) {
-        const { keep } = dedupeNamedFiles(fileName, prev.extras);
+      const extrasToCopy = keptPrevExtras.filter(
+        (extra) => Number(extra.id) !== Number(promotedExtraId)
+      );
+      if (extrasToCopy.length && !extraIncoming.length) {
+        const { keep } = dedupeNamedFiles(fileName, extrasToCopy);
         for (const extra of keep) {
           await pool.query(
             `INSERT INTO vendor_quotation_files (submission_id, file_name, file_path, file_data, sort_order)

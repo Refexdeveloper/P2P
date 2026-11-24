@@ -38,13 +38,15 @@ export type FunctionalRfqQuote = {
 
 export function localQuoteFiles(q: FunctionalRfqQuote | undefined): File[] {
   if (!q) return [];
-  if (Array.isArray(q.files) && q.files.length) return q.files;
+  // `files` is the list the user is editing. An empty array means they removed every new file.
+  if (Array.isArray(q.files)) return q.files;
   return q.file ? [q.file] : [];
 }
 
 export function savedQuoteFiles(q: FunctionalRfqQuote | undefined): SavedQuotationFile[] {
   if (!q) return [];
-  if (Array.isArray(q.savedFiles) && q.savedFiles.length) return q.savedFiles;
+  // An empty array is an explicit removal. Do not put savedFileName back.
+  if (Array.isArray(q.savedFiles)) return q.savedFiles;
   if (q.savedFileName) return [{ id: null, fileName: q.savedFileName, isPrimary: true }];
   return [];
 }
@@ -936,9 +938,10 @@ export default function FunctionalOwnRfqSection({
                                 type="button"
                                 onClick={() => {
                                   const nextSaved = saved.filter((_, i) => i !== idx);
+                                  const keptPrimary = nextSaved.find((f) => f.isPrimary);
                                   updateQuote(editing.key, quoteRound, {
                                     savedFiles: nextSaved,
-                                    savedFileName: nextSaved[0]?.fileName,
+                                    savedFileName: keptPrimary?.fileName || '',
                                   });
                                 }}
                                 className="vr-icon-btn danger xs"
