@@ -998,8 +998,12 @@ export const poApi = {
           status: string;
           statusLabel: string;
           purchaseType: string;
+          purchaseTypeLabel?: string;
           vendorId: number | null;
           vendorName: string;
+          entityName?: string;
+          plantName?: string;
+          department?: string;
           category: string;
           itemName: string;
           description: string;
@@ -1010,6 +1014,8 @@ export const poApi = {
           taxAmount: number;
           lineExGst: number;
           lineTotal: number;
+          poSubtotal?: number;
+          poTaxAmount?: number;
           poGrandTotal: number;
         }>;
         comparison: Array<{

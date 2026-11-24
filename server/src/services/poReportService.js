@@ -11,6 +11,18 @@ const CATEGORY_EXPR = `COALESCE(
   '—'
 )`;
 
+const PLANT_EXPR = `COALESCE(
+  NULLIF(TRIM(pr.project_detail), ''),
+  NULLIF(TRIM(JSON_UNQUOTE(JSON_EXTRACT(po.manual_context_json, '$.prDetails.plantName'))), ''),
+  ''
+)`;
+
+const ENTITY_EXPR = `COALESCE(
+  NULLIF(TRIM(e.name), ''),
+  NULLIF(TRIM(po.entity), ''),
+  '—'
+)`;
+
 const STATUS_LABELS = {
   draft: 'Draft',
   imported: 'Imported',
@@ -77,6 +89,8 @@ async function buildReportFilter(user, filters = {}) {
   ];
   if (poScope.join) joins.push(poScope.join.trim());
   else joins.push('LEFT JOIN purchase_requests pr ON pr.id = po.pr_id');
+  joins.push('LEFT JOIN entity_masters e ON e.id = COALESCE(po.entity_id, pr.entity_id)');
+  joins.push('LEFT JOIN departments d ON d.id = pr.department_id');
   const joinSql = joins.join('\n');
 
   const where = ['WHERE 1=1', EXCLUDED_DOC_SQL, poScope.where || ''];
@@ -136,16 +150,22 @@ function mapRow(r) {
   const lineExGst = roundMoney(r.line_ex_gst);
   const taxPct = Number(r.tax_percentage) || 0;
   const taxAmount = lineTax(lineExGst, taxPct);
+  const purchaseType = r.purchase_type || 'purchase_order';
+  const isWo = String(purchaseType).toLowerCase() === 'work_order';
   return {
     lineId: Number(r.line_id),
     poId: Number(r.po_id),
     poNumber: r.po_number || '',
     poDate: formatDate(r.po_date),
     status: r.status || '',
-    statusLabel: statusLabel(r.status, r.purchase_type),
-    purchaseType: r.purchase_type || 'purchase_order',
+    statusLabel: statusLabel(r.status, purchaseType),
+    purchaseType,
+    purchaseTypeLabel: isWo ? 'Work Order' : 'Purchase Order',
     vendorId: r.vendor_id != null ? Number(r.vendor_id) : null,
     vendorName: r.vendor_name || '—',
+    entityName: r.entity_name || '—',
+    plantName: r.plant_name || '—',
+    department: r.department_name || '—',
     category: r.category || '—',
     itemName: r.item_name || '—',
     description: r.description || '',
@@ -156,6 +176,8 @@ function mapRow(r) {
     taxAmount,
     lineExGst,
     lineTotal: roundMoney(lineExGst + taxAmount),
+    poSubtotal: roundMoney(r.po_subtotal),
+    poTaxAmount: roundMoney(r.po_tax_amount),
     poGrandTotal: roundMoney(r.po_grand_total),
   };
 }
@@ -211,6 +233,9 @@ export async function getConsolidatedPoReport(user, filters = {}) {
        po.purchase_type,
        po.vendor_id,
        COALESCE(NULLIF(TRIM(v.name), ''), NULLIF(TRIM(po.vendor_name), ''), '—') AS vendor_name,
+       ${ENTITY_EXPR} AS entity_name,
+       ${PLANT_EXPR} AS plant_name,
+       COALESCE(NULLIF(TRIM(d.name), ''), '—') AS department_name,
        ${CATEGORY_EXPR} AS category,
        pli.item_name,
        pli.description,
@@ -219,6 +244,8 @@ export async function getConsolidatedPoReport(user, filters = {}) {
        pli.unit_price,
        pli.tax_percentage,
        pli.total AS line_ex_gst,
+       po.subtotal AS po_subtotal,
+       po.tax_amount AS po_tax_amount,
        po.grand_total AS po_grand_total
      ${joinSql}
      ${whereSql}
