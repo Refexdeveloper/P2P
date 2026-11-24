@@ -17,6 +17,8 @@ interface Props {
   placeholder?: string;
   error?: boolean;
   max?: number;
+  /** Hide step coaching ("Approves first", "Approval order"). */
+  plain?: boolean;
 }
 
 const AVATAR_TONES = [
@@ -69,6 +71,7 @@ export default function UserSearchSelect({
   placeholder = 'Search by name, email, role, or department',
   error,
   max = 5,
+  plain = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -212,7 +215,11 @@ export default function UserSearchSelect({
           >
             <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/90">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                {query.trim() ? `Matches for “${query.trim()}”` : 'Select approvers in order'}
+                {query.trim()
+                  ? `Matches for “${query.trim()}”`
+                  : plain
+                    ? ''
+                    : 'Select approvers in order'}
               </p>
               <span className="text-[11px] font-semibold text-slate-400">
                 {matches.length} of {users.length}
@@ -291,14 +298,15 @@ export default function UserSearchSelect({
         )
       : null;
 
-  return (
-    <div ref={rootRef} className="relative w-full space-y-2">
-      {selected.length > 0 && (
-        <div className="space-y-1.5">
+  const selectedList =
+    selected.length > 0 ? (
+      <div className="space-y-1.5">
+        {plain ? null : (
           <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
             Approval order — {selected.length === 1 ? '1 person' : `${selected.length} people`}
           </p>
-          {selected.map((u, index) => (
+        )}
+        {selected.map((u, index) => (
             <div
               key={u.id}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white"
@@ -319,8 +327,7 @@ export default function UserSearchSelect({
                   ) : null}
                 </div>
                 <p className="text-[11px] text-slate-500 truncate">
-                  {index === 0 ? 'Approves first' : `Then person ${index + 1}`}
-                  {u.email ? ` · ${u.email}` : ''}
+                  {plain ? u.email : `${index === 0 ? 'Approves first' : `Then person ${index + 1}`}${u.email ? ` · ${u.email}` : ''}`}
                 </p>
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
@@ -353,8 +360,12 @@ export default function UserSearchSelect({
               </div>
             </div>
           ))}
-        </div>
-      )}
+      </div>
+    ) : null;
+
+  return (
+    <div ref={rootRef} className="relative w-full space-y-2">
+      {plain ? null : selectedList}
       <div
         className={`flex items-center gap-2 h-12 px-3.5 border rounded-2xl bg-white ${
           open ? 'border-[#1E88E5] ring-2 ring-[#1E88E5]/15' : error ? 'border-red-400' : 'border-slate-200'
@@ -402,6 +413,7 @@ export default function UserSearchSelect({
           <i className={`ri-arrow-down-s-line text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
         )}
       </div>
+      {plain ? selectedList : null}
       {menu}
     </div>
   );

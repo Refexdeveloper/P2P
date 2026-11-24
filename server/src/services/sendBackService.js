@@ -20,11 +20,55 @@ import {
   ensureApproverUser,
 } from './refexOneService.js';
 import { queuePrApprovalPendingNotification, queuePostRfqActionNotification } from './emailService.js';
-import { isItVendorSelection } from '../utils/constants.js';
+import { isItVendorSelection, PR_STATUS, STAGE } from '../utils/constants.js';
 import {
   NEW_JOINERS_RFQ_EMAIL,
+  isNewJoinersLaptopType,
   resolveNewJoinersRfqAssignee,
 } from './newJoinersLaptopWorkflow.js';
+
+function parseApprovalChain(pr = {}) {
+  let raw = pr.approval_user_ids;
+  if (raw == null || raw === '') return [];
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(raw)) raw = raw.toString('utf8');
+  let list = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      list = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      list = [];
+    }
+  }
+  const seen = new Set();
+  const ids = [];
+  for (const item of list) {
+    const id = Number(item);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
+}
+
+function previousNewJoinersApproverId(pr) {
+  const chain = parseApprovalChain(pr);
+  if (!chain.length || !isNewJoinersLaptopType(pr.purchase_type)) return null;
+  if (pr.status === PR_STATUS.PENDING_HOD_APPROVAL) {
+    const idx = chain.indexOf(Number(pr.approval_user_id));
+    return idx > 0 ? chain[idx - 1] : null;
+  }
+  if (pr.status === PR_STATUS.PENDING_CFO_APPROVAL) return chain[chain.length - 1];
+  return null;
+}
+
+function parseNjlUserKey(returnTo) {
+  const match = /^NJL_USER:(\d+)$/.exec(String(returnTo || '').trim());
+  if (!match) return null;
+  const id = Number(match[1]);
+  return id > 0 ? id : null;
+}
 
 async function resolveHodUser(requesterEmail, departmentId) {
   let l1 = null;
@@ -66,13 +110,42 @@ async function resolveRoleUser(role, conn = null) {
   return { userId: rows[0].id, email: rows[0].email, name: rows[0].name };
 }
 
+async function newJoinersChainSendBackTargets(row) {
+  if (!row || !isNewJoinersLaptopType(row.purchase_type)) return null;
+  if (
+    row.status !== PR_STATUS.PENDING_HOD_APPROVAL &&
+    row.status !== PR_STATUS.PENDING_CFO_APPROVAL
+  ) {
+    return null;
+  }
+  const prevId = previousNewJoinersApproverId(row);
+  const targets = [{ key: 'REQUESTER', label: 'Requester (Edit PR)' }];
+  if (prevId) {
+    const [users] = await pool.query(
+      `SELECT id, name, email FROM users WHERE id = ? LIMIT 1`,
+      [prevId]
+    );
+    const person = users[0];
+    const who = person?.name || person?.email || `User ${prevId}`;
+    targets.push({
+      key: `NJL_USER:${prevId}`,
+      label: `Previous approver — ${who}`,
+    });
+  }
+  return targets;
+}
+
 export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
   const [rows] = await pool.query(
-    `SELECT status, vendor_selection, pr_flow, po_creation_by, purchase_type FROM purchase_requests WHERE id = ?`,
+    `SELECT status, vendor_selection, pr_flow, po_creation_by, purchase_type, approval_user_id, approval_user_ids
+     FROM purchase_requests WHERE id = ?`,
     [prId]
   );
   if (!rows[0]) throw new Error('PR not found');
-  const targets = admin
+  const chainTargets = admin ? null : await newJoinersChainSendBackTargets(rows[0]);
+  const targets = chainTargets
+    ? chainTargets
+    : admin
     ? listAdminSendBackTargets(
         rows[0].status,
         rows[0].vendor_selection,
@@ -81,11 +154,13 @@ export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
         rows[0].purchase_type
       )
     : listSendBackTargets(rows[0].status, rows[0].vendor_selection, rows[0].pr_flow);
-  const preferred = immediatePreviousSendBackKey(
-    rows[0].status,
-    rows[0].vendor_selection,
-    rows[0].pr_flow
-  );
+  const preferred = chainTargets
+    ? chainTargets[chainTargets.length - 1]?.key
+    : immediatePreviousSendBackKey(
+        rows[0].status,
+        rows[0].vendor_selection,
+        rows[0].pr_flow
+      );
   const defaultKey = targets.some((t) => t.key === preferred)
     ? preferred
     : targets[targets.length - 1]?.key || null;
@@ -97,7 +172,71 @@ export async function getSendBackTargetsForPr(prId, { admin = false } = {}) {
  * `pr` is raw purchase_requests row.
  * @param {{ admin?: boolean }} options — admin may target any prior stage for the path
  */
+async function applyNewJoinersApproverSendBack(conn, pr, userId, remarks, actor) {
+  const expected = previousNewJoinersApproverId(pr);
+  if (!expected || Number(expected) !== Number(userId)) {
+    throw new Error('Cannot send back to that approver from the current stage');
+  }
+  const db = conn || pool;
+  const [users] = await db.query(
+    `SELECT id, email, name FROM users WHERE id = ? AND is_active = 1 LIMIT 1`,
+    [userId]
+  );
+  if (!users[0]) throw new Error('Previous approver is no longer active');
+  const assignee = { userId: users[0].id, email: users[0].email, name: users[0].name };
+  const [reqRows] = await db.query(`SELECT id, email, name FROM users WHERE id = ?`, [pr.requester_id]);
+  const requester = reqRows[0] || null;
+  const remarksText = String(remarks || '').trim();
+  const label = `Previous approver — ${assignee.name || assignee.email}`;
+
+  await db.query(
+    `UPDATE workflow_tasks
+     SET status = 'completed', completed_at = NOW()
+     WHERE pr_id = ? AND status = 'pending'`,
+    [pr.id]
+  );
+  await db.query(
+    `UPDATE purchase_requests
+     SET status = ?, current_stage = ?, approval_user_id = ?, updated_at = NOW()
+     WHERE id = ?`,
+    [PR_STATUS.PENDING_HOD_APPROVAL, STAGE.HOD_REVIEW, assignee.userId, pr.id]
+  );
+  const due = new Date();
+  due.setDate(due.getDate() + 1);
+  await db.query(
+    `INSERT INTO workflow_tasks (pr_id, task_type, assigned_role, assigned_user_id, status, due_date)
+     VALUES (?, 'PR_APPROVAL', 'HOD Approver', ?, 'pending', ?)`,
+    [pr.id, assignee.userId, due.toISOString().split('T')[0]]
+  );
+
+  return {
+    target: {
+      key: `NJL_USER:${assignee.userId}`,
+      label,
+      status: PR_STATUS.PENDING_HOD_APPROVAL,
+      stage: STAGE.HOD_REVIEW,
+      taskType: 'PR_APPROVAL',
+      assignedRole: 'HOD Approver',
+    },
+    newStatus: PR_STATUS.PENDING_HOD_APPROVAL,
+    newStage: STAGE.HOD_REVIEW,
+    assignee,
+    requester,
+    taskCreated: true,
+    movedTo: { key: `NJL_USER:${assignee.userId}`, label, assignedRole: 'HOD Approver' },
+    remarksLine: `${remarksText}\n[Sent back to: ${label}]`,
+    actorRole: actor?.role || '',
+  };
+}
+
 export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, options = {}) {
+  const chainUserId = parseNjlUserKey(returnTo);
+  if (chainUserId) {
+    if (!isNewJoinersLaptopType(pr.purchase_type)) {
+      throw new Error('Select a previous stage to send back to');
+    }
+    return applyNewJoinersApproverSendBack(conn, pr, chainUserId, remarks, actor);
+  }
   const target = resolveSendBackTarget(returnTo);
   if (!target) {
     throw new Error('Select a previous stage to send back to');
@@ -226,7 +365,11 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
         );
       }
     } else if (target.assignedRole === 'HOD Approver') {
-      if (pr.pr_flow === 'functional' || isSassPurchaseType(pr.purchase_type)) {
+      if (
+        pr.pr_flow === 'functional' ||
+        isSassPurchaseType(pr.purchase_type) ||
+        isNewJoinersLaptopType(pr.purchase_type)
+      ) {
         let chain = [];
         try {
           const raw = pr.approval_user_ids;
