@@ -1199,14 +1199,67 @@ function stripAnnexureTypographyOverrides(html) {
   return out;
 }
 
-/** Normalize pasted Word/Excel tables so PDF columns stay aligned (Annexure I style). */
+/** Keep editor/Word column widths; convert absolute px cols to % so A4 PDF matches design. */
+function preserveTableColumnWidths(innerHtml) {
+  let body = String(innerHtml || '');
+  // width="120" / width='30%' on col/td/th → style width
+  body = body.replace(
+    /<(col|td|th)\b([^>]*)>/gi,
+    (_m, tag, attrs) => {
+      let a = String(attrs || '');
+      const widthAttr = a.match(/\swidth\s*=\s*("|')([^"']*)\1/i) || a.match(/\swidth\s*=\s*([^\s>]+)/i);
+      if (!widthAttr) return `<${tag}${a}>`;
+      const raw = String(widthAttr[2] || widthAttr[1] || '').trim();
+      a = a.replace(/\swidth\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i, '');
+      if (!raw) return `<${tag}${a}>`;
+      if (/style\s*=/i.test(a)) {
+        a = a.replace(/style\s*=\s*("|')([^"']*)\1/i, (_sm, q, style) => {
+          const cleaned = String(style || '')
+            .split(';')
+            .map((p) => p.trim())
+            .filter(Boolean)
+            .filter((p) => !/^width\s*:/i.test(p))
+            .concat([`width:${raw}`])
+            .join(';');
+          return `style=${q}${cleaned}${q}`;
+        });
+      } else {
+        a += ` style="width:${raw}"`;
+      }
+      return `<${tag}${a}>`;
+    }
+  );
+
+  // If cols/cells use px widths, convert to % of their sum so layout matches editor proportions.
+  const pxCols = [...body.matchAll(/<(?:col|td|th)\b[^>]*style\s*=\s*["'][^"']*width\s*:\s*(\d+(?:\.\d+)?)px/gi)];
+  if (pxCols.length >= 2) {
+    // Prefer <col> widths when present
+    const colPx = [...body.matchAll(/<col\b[^>]*style\s*=\s*["'][^"']*width\s*:\s*(\d+(?:\.\d+)?)px/gi)];
+    const values = (colPx.length >= 2 ? colPx : pxCols).map((m) => Number(m[1]) || 0);
+    const sum = values.reduce((a, b) => a + b, 0);
+    if (sum > 0) {
+      let i = 0;
+      const re =
+        colPx.length >= 2
+          ? /(<col\b[^>]*style\s*=\s*["'][^"']*width\s*:\s*)\d+(?:\.\d+)?px/gi
+          : /(<(?:td|th)\b[^>]*style\s*=\s*["'][^"']*width\s*:\s*)\d+(?:\.\d+)?px/gi;
+      body = body.replace(re, (_m, prefix) => {
+        const px = values[i++] || 0;
+        const pct = Math.max(1, Math.round((px / sum) * 1000) / 10);
+        return `${prefix}${pct}%`;
+      });
+    }
+  }
+  return body;
+}
+
+/** Normalize pasted tables: keep user column widths/design; only clean Word junk. */
 function normalizeAnnexureIiBodyHtml(html) {
   let out = stripAnnexureTypographyOverrides(sanitizeAnnexureHtml(html));
   if (!out) return '';
 
-  // Drop fixed Word widths that overflow A4 and break column alignment.
+  // Drop Word positioning junk, but KEEP width so editor table design reaches PDF.
   out = out
-    .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
     .replace(/\snowrap\b/gi, '')
     .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_m, quote, style) => {
       const kept = String(style || '')
@@ -1217,7 +1270,6 @@ function normalizeAnnexureIiBodyHtml(html) {
           const key = p.split(':')[0].trim().toLowerCase();
           if (!key) return false;
           if (/^mso-/i.test(key)) return false;
-          if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
           if (key === 'position' || key === 'left' || key === 'top' || key === 'float') return false;
           if (key === 'white-space') return false; // allow wrapping in PDF cells
           if (
@@ -1228,7 +1280,12 @@ function normalizeAnnexureIiBodyHtml(html) {
           ) {
             return false;
           }
+          // Keep width / min-width so Schedule A column design matches the editor
+          if (key === 'height' || key === 'max-height') return false;
           return [
+            'width',
+            'min-width',
+            'max-width',
             'text-align',
             'font-weight',
             'font-style',
@@ -1254,32 +1311,29 @@ function normalizeAnnexureIiBodyHtml(html) {
     out = stripImagesOutsideTables(out);
   }
 
-  // Remove Word/Excel colgroup pixel widths — we re-apply % columns below.
-  out = out
-    .replace(/<colgroup\b[\s\S]*?<\/colgroup>/gi, '')
-    .replace(/<col\b[^>]*\/?>/gi, '');
-
-  // Mark pasted tables for consistent PDF layout (Annexure I–like borders + columns).
+  // Keep colgroup/col; convert attribute widths → style; px → % for A4.
   out = out.replace(/<table\b([^>]*)>([\s\S]*?)<\/table>/gi, (_m, attrs, inner) => {
     let a = String(attrs || '');
-    const body = String(inner || '');
-    const firstRow = body.match(/<tr\b[^>]*>([\s\S]*?)<\/tr>/i);
-    const cellCount = firstRow
-      ? [...firstRow[1].matchAll(/<(?:td|th)\b/gi)].length
-      : 0;
+    // Drop table-level pixel width that can overflow; keep % if present
+    a = a.replace(/\swidth\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (wm, val) => {
+      const v = String(val || '').replace(/['"]/g, '').trim();
+      if (/%$/.test(v) || v.toLowerCase() === '100%') return ` width="${v}"`;
+      return '';
+    });
 
     if (/class\s*=/i.test(a)) {
       a = a.replace(/class\s*=\s*("|')([^"']*)\1/i, (_cm, q, cls) => {
-        const next = `${cls} annexure-ii-table${cellCount === 3 ? ' annexure-ii-table-3col' : ''}`.replace(/\s+/g, ' ').trim();
+        const next = `${cls} annexure-ii-table annexure-ii-table-preserve`
+          .replace(/\s+/g, ' ')
+          .trim();
         return `class=${q}${next}${q}`;
       });
     } else {
-      a = ` class="annexure-ii-table${cellCount === 3 ? ' annexure-ii-table-3col' : ''}"${a}`;
+      a = ` class="annexure-ii-table annexure-ii-table-preserve"${a}`;
     }
 
-    // Strip leftover inline widths on cells so fixed layout can use % cols.
-    let cleanedInner = body
-      .replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    // Clean font-size from cells but keep widths; convert px cols to %
+    let cleanedInner = preserveTableColumnWidths(inner)
       .replace(/style\s*=\s*(["'])([\s\S]*?)\1/gi, (_sm, quote, style) => {
         const kept = String(style || '')
           .split(';')
@@ -1288,7 +1342,6 @@ function normalizeAnnexureIiBodyHtml(html) {
           .filter((p) => {
             const key = p.split(':')[0].trim().toLowerCase();
             if (!key) return false;
-            if (key === 'width' || key === 'height' || key === 'min-width' || key === 'max-width') return false;
             if (
               key === 'font-size' ||
               key === 'font-family' ||
@@ -1301,16 +1354,6 @@ function normalizeAnnexureIiBodyHtml(html) {
           });
         return kept.length ? `style=${quote}${kept.join(';')}${quote}` : '';
       });
-
-    if (cellCount === 3) {
-      cleanedInner =
-        `<colgroup>` +
-        `<col class="col-sno" style="width:8%" />` +
-        `<col class="col-head" style="width:22%" />` +
-        `<col class="col-desc" style="width:70%" />` +
-        `</colgroup>` +
-        cleanedInner;
-    }
 
     return `<table${a}>${cleanedInner}</table>`;
   });

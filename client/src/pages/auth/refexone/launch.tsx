@@ -107,6 +107,42 @@ export default function RefexOneLaunchPage() {
       return;
     }
 
+    // AuthContext bootstrap already applied this session — avoid a duplicate /me.
+    if (
+      found.kind === 'p2p' &&
+      localStorage.getItem('p2p_token') === found.value &&
+      localStorage.getItem('p2p_user')
+    ) {
+      clearStoredSsoToken();
+      try {
+        sessionStorage.removeItem('p2p_sso_user');
+        localStorage.removeItem('p2p_sso_user');
+      } catch {
+        // ignore
+      }
+      try {
+        const cached = JSON.parse(localStorage.getItem('p2p_user') || '{}') as {
+          role?: string;
+          navigation?: { path: string }[];
+          email?: string;
+        };
+        if (cached?.role) {
+          navigate(
+            resolvePostLoginPath(
+              cached.role as Parameters<typeof resolvePostLoginPath>[0],
+              cached.navigation as Parameters<typeof resolvePostLoginPath>[1],
+              undefined,
+              cached.email
+            ),
+            { replace: true }
+          );
+          return;
+        }
+      } catch {
+        // fall through to completeSessionLogin
+      }
+    }
+
     let cancelled = false;
     (async () => {
       try {

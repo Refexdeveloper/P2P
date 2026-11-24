@@ -201,7 +201,7 @@ export function hydrateComparisonRoundsFromStored(
           paymentTerms: String(q.paymentTerms || 'Net 30 Days'),
           recommended: Boolean(q.recommended),
           files: [],
-          storedFiles: (q.files || []).filter((f) => f?.fileName),
+          storedFiles: dedupeStoredQuoteFiles((q.files || []).filter((f) => f?.fileName)),
         };
       }),
     };
@@ -228,21 +228,75 @@ export function hydrateManualPrDetailsFromStored(
   };
 }
 
-function quoteFilesForDisplay(q: ManualVendorQuoteRow) {
-  const local = q.files.map((f) => ({
-    fileName: f.name,
-    isLocal: true as const,
-    storedName: null as string | null,
-  }));
-  const localNames = new Set(local.map((f) => f.fileName));
-  const stored = (q.storedFiles || [])
-    .filter((f) => f?.fileName && !localNames.has(f.fileName))
-    .map((f) => ({
+function fileNameKey(name: string) {
+  return String(name || '').trim().toLowerCase();
+}
+
+/** One entry per file name (case-insensitive); later wins. */
+function dedupeStoredQuoteFiles<T extends { fileName: string; storedName?: string }>(
+  files: T[] | null | undefined
+): T[] {
+  const byName = new Map<string, T>();
+  for (const f of files || []) {
+    if (!f?.fileName) continue;
+    byName.set(fileNameKey(f.fileName), f);
+  }
+  return Array.from(byName.values());
+}
+
+function mergeLocalQuoteFiles(existing: File[], incoming: File[]): File[] {
+  const byName = new Map<string, File>();
+  for (const f of existing) byName.set(fileNameKey(f.name), f);
+  for (const f of incoming) byName.set(fileNameKey(f.name), f);
+  return Array.from(byName.values());
+}
+
+/** Build save payload files: keep stored refs; only encode locals not already stored by name. */
+export async function buildManualQuoteAttachmentFiles(
+  row: ManualVendorQuoteRow,
+  toPayload: (file: File) => Promise<{
+    fileName: string;
+    mimeType?: string | null;
+    dataBase64?: string;
+    data?: string;
+    storedName?: string;
+  }>
+) {
+  const stored = dedupeStoredQuoteFiles(row.storedFiles || []);
+  const storedNames = new Set(stored.map((f) => fileNameKey(f.fileName)));
+  const localsToUpload = row.files.filter((f) => f?.name && !storedNames.has(fileNameKey(f.name)));
+  const uploaded = await Promise.all(localsToUpload.map((file) => toPayload(file)));
+  return [
+    ...stored.map((f) => ({
       fileName: f.fileName,
-      isLocal: false as const,
+      mimeType: f.mimeType || null,
+      storedName: f.storedName,
+    })),
+    ...uploaded,
+  ];
+}
+
+function quoteFilesForDisplay(q: ManualVendorQuoteRow) {
+  const byName = new Map<
+    string,
+    { fileName: string; isLocal: boolean; storedName: string | null }
+  >();
+  for (const f of q.storedFiles || []) {
+    if (!f?.fileName) continue;
+    byName.set(fileNameKey(f.fileName), {
+      fileName: f.fileName,
+      isLocal: false,
       storedName: f.storedName || null,
-    }));
-  return [...local, ...stored];
+    });
+  }
+  for (const f of q.files) {
+    byName.set(fileNameKey(f.name), {
+      fileName: f.name,
+      isLocal: true,
+      storedName: null,
+    });
+  }
+  return Array.from(byName.values());
 }
 
 /** After Save Draft / autosave: attach GCS storedNames without wiping local File blobs. */
@@ -263,13 +317,13 @@ export function mergeStoredFilesIntoRounds(
       const key = `${round.round}::${vendorStableKey(q)}`;
       const serverStored = serverByVendorRound.get(key);
       if (!serverStored?.length) return q;
-      const byName = new Map(serverStored.map((f) => [f.fileName, f]));
-      const mergedStored = [
+      const byName = new Map(serverStored.map((f) => [fileNameKey(f.fileName), f]));
+      const mergedStored = dedupeStoredQuoteFiles([
         ...serverStored,
-        ...(q.storedFiles || []).filter((f) => f.fileName && !byName.has(f.fileName)),
-      ];
+        ...(q.storedFiles || []).filter((f) => f.fileName && !byName.has(fileNameKey(f.fileName))),
+      ]);
       // Drop local Files that now exist as stored on server (same name)
-      const nextLocal = q.files.filter((f) => !byName.has(f.name));
+      const nextLocal = q.files.filter((f) => !byName.has(fileNameKey(f.name)));
       return { ...q, storedFiles: mergedStored, files: nextLocal };
     }),
   }));
@@ -897,7 +951,13 @@ export default function ManualPoContextSection({
                     onChange={(e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length) {
-                        updateEditingQuote({ files: [...editingQuote.files, ...files] });
+                        const nextLocal = mergeLocalQuoteFiles(editingQuote.files, files);
+                        const incomingNames = new Set(files.map((f) => fileNameKey(f.name)));
+                        // Re-upload same name replaces the saved copy (no duplicate stack)
+                        const nextStored = (editingQuote.storedFiles || []).filter(
+                          (f) => !incomingNames.has(fileNameKey(f.fileName))
+                        );
+                        updateEditingQuote({ files: nextLocal, storedFiles: nextStored });
                       }
                       e.target.value = '';
                     }}

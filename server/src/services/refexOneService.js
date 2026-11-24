@@ -8,8 +8,11 @@ import {
 
 const DEFAULT_ROLE = 'Requester';
 const PLACEHOLDER_PASSWORD = 'refexone-sync-no-login';
+/** Cached once — SSO must not bcrypt-hash on every new-user create path. */
+const PLACEHOLDER_PASSWORD_HASH = bcrypt.hashSync(PLACEHOLDER_PASSWORD, 4);
 const INSERT_BATCH_SIZE = 100;
 const USERS_CACHE_TTL_MS = 30 * 60 * 1000;
+const PROFILE_FETCH_TIMEOUT_MS = 2500;
 let usersCache = { fetchedAt: 0, users: [] };
 
 function isRefexOneTokenExpiredError(status, text = '') {
@@ -114,6 +117,41 @@ function decodeJwtPayload(token) {
   }
 }
 
+function profileFromJwtClaims(accessToken) {
+  const payload = decodeJwtPayload(accessToken);
+  if (!payload) return null;
+
+  const exp = Number(payload.exp || 0);
+  if (exp && exp * 1000 < Date.now()) {
+    throw new Error('RefexOne session expired. Please sign in again at RefexOne.');
+  }
+
+  const email = (payload.email || '').trim().toLowerCase();
+  const refexoneUserId = payload.user_id || payload.userId || payload.sub || null;
+  if (!email) return null;
+
+  return {
+    refexoneUserId,
+    email,
+    name: (payload.name || payload.full_name || email.split('@')[0] || 'User').trim(),
+    accessToken,
+  };
+}
+
+async function fetchJsonWithTimeout(url, headers, timeoutMs = PROFILE_FETCH_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: 'GET', headers, signal: ctrl.signal });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchRefexOneProfileWithToken(accessToken) {
   const baseUrl = getBaseUrl();
   const headers = {
@@ -121,19 +159,20 @@ async function fetchRefexOneProfileWithToken(accessToken) {
     Accept: 'application/json',
   };
 
+  // Race endpoints in parallel with a short timeout — sequential probes made SSO feel stuck.
   const paths = ['/auth/me', '/users/me', '/me', '/auth/session', '/auth/profile'];
-  for (const path of paths) {
-    try {
-      const response = await fetch(`${baseUrl}${path}`, { method: 'GET', headers });
-      if (!response.ok) continue;
-      const body = await response.json();
-      return parseRefexOneLoginResponse(body, null);
-    } catch {
-      // try next profile endpoint
-    }
-  }
-
-  return null;
+  const results = await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const body = await fetchJsonWithTimeout(`${baseUrl}${path}`, headers);
+        if (!body) return null;
+        return parseRefexOneLoginResponse(body, null);
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.find(Boolean) || null;
 }
 
 async function resolveProfileFromJwtAndDirectory(accessToken) {
@@ -149,12 +188,21 @@ async function resolveProfileFromJwtAndDirectory(accessToken) {
   const refexoneUserId = payload.user_id || payload.userId || payload.sub || null;
   if (!email && !refexoneUserId) return null;
 
+  // Fast path: JWT already has email — never pull the full RefexOne directory on login.
+  if (email) {
+    return {
+      refexoneUserId,
+      email,
+      name: (payload.name || payload.full_name || email.split('@')[0] || 'User').trim(),
+      accessToken,
+    };
+  }
+
   try {
     const users = await fetchRefexOneUsersRaw();
     const match = users.find((u) => {
-      const uEmail = (u.email || '').trim().toLowerCase();
       const uId = u.id || u.user_id || u.uuid;
-      return (email && uEmail === email) || (refexoneUserId && uId === refexoneUserId);
+      return refexoneUserId && uId === refexoneUserId;
     });
 
     if (match) {
@@ -169,17 +217,10 @@ async function resolveProfileFromJwtAndDirectory(accessToken) {
       }
     }
   } catch {
-    // directory lookup unavailable — fall back to JWT claims
+    // directory lookup unavailable
   }
 
-  if (!email) return null;
-
-  return {
-    refexoneUserId,
-    email,
-    name: (payload.name || payload.full_name || email.split('@')[0] || 'User').trim(),
-    accessToken,
-  };
+  return null;
 }
 
 /**
@@ -195,8 +236,17 @@ export async function authenticateWithRefexOneToken(accessToken) {
     throw new Error('RefexOne access token is required');
   }
 
-  let profile = await fetchRefexOneProfileWithToken(token);
-  if (!profile) {
+  // Prefer JWT claims first — skips multi-endpoint waterfall + user-directory sync.
+  let profile = null;
+  try {
+    profile = profileFromJwtClaims(token);
+  } catch (err) {
+    if (/expired/i.test(err.message || '')) throw err;
+  }
+  if (!profile?.email) {
+    profile = await fetchRefexOneProfileWithToken(token);
+  }
+  if (!profile?.email) {
     profile = await resolveProfileFromJwtAndDirectory(token);
   }
 
@@ -239,17 +289,20 @@ export async function resolveLocalUserFromRefexOne(refexProfile) {
         `UPDATE users SET refexone_user_id = ?, name = ?, email = ? WHERE id = ?`,
         [refexProfile.refexoneUserId, refexProfile.name, email, existing.id]
       );
-    } else if (refexProfile.name && refexProfile.name !== existing.name) {
-      await pool.query(`UPDATE users SET name = ? WHERE id = ?`, [refexProfile.name, existing.id]);
+      return loadUserRow(existing.id);
     }
-    return loadUserRow(existing.id);
+    if (refexProfile.name && refexProfile.name !== existing.name) {
+      await pool.query(`UPDATE users SET name = ? WHERE id = ?`, [refexProfile.name, existing.id]);
+      return { ...existing, name: refexProfile.name };
+    }
+    // Already mapped — skip extra SELECT on hot SSO path
+    return existing;
   }
 
-  const passwordHash = await bcrypt.hash(PLACEHOLDER_PASSWORD, 10);
   const [result] = await pool.query(
     `INSERT INTO users (name, email, password_hash, role, is_active, refexone_user_id)
      VALUES (?, ?, ?, ?, 1, ?)`,
-    [refexProfile.name, email, passwordHash, DEFAULT_ROLE, refexProfile.refexoneUserId]
+    [refexProfile.name, email, PLACEHOLDER_PASSWORD_HASH, DEFAULT_ROLE, refexProfile.refexoneUserId]
   );
 
   await seedUserPermissionsForRole(result.insertId, DEFAULT_ROLE);

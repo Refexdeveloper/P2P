@@ -881,7 +881,7 @@ export const PO_STYLES = `
     line-height: 1.4;
     color: #111;
     word-wrap: break-word;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     box-sizing: border-box;
     max-width: 100%;
     overflow: visible;
@@ -964,7 +964,7 @@ export const PO_STYLES = `
     color: #333;
     margin-top: 4px;
   }
-  /* Match Annexure I table chrome: full black grid, fixed layout, no overflow clip */
+  /* Match Annexure I table chrome: full black grid. Preserve editor column widths. */
   .annexure-ii-body table,
   .annexure-ii-body table.annexure-ii-table {
     width: 100% !important;
@@ -972,11 +972,15 @@ export const PO_STYLES = `
     box-sizing: border-box !important;
     border-collapse: collapse !important;
     border-spacing: 0 !important;
-    table-layout: fixed !important;
+    table-layout: auto;
     margin: 0 0 8px 0;
     border: 1px solid #000 !important;
     page-break-inside: auto;
     break-inside: auto;
+  }
+  /* When editor/Word supplied col/td widths, honor them with fixed layout */
+  .annexure-ii-body table.annexure-ii-table-preserve {
+    table-layout: fixed !important;
   }
   .annexure-ii-body table td,
   .annexure-ii-body table th,
@@ -990,35 +994,17 @@ export const PO_STYLES = `
     vertical-align: top !important;
     text-align: left;
     word-wrap: break-word;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
     white-space: normal !important;
     overflow: visible !important;
+    hyphens: manual;
   }
   .annexure-ii-body table th,
   .annexure-ii-body table.annexure-ii-table th {
     background: #f2f2f2;
     font-weight: 700;
     text-align: center;
-  }
-  /* 3-column Annexure-I style: S.No | Header | Description */
-  .annexure-ii-body table.annexure-ii-table-3col col.col-sno,
-  .annexure-ii-body table.annexure-ii-table-3col td:first-child,
-  .annexure-ii-body table.annexure-ii-table-3col th:first-child {
-    width: 8% !important;
-    text-align: center;
-    font-weight: 700;
-  }
-  .annexure-ii-body table.annexure-ii-table-3col col.col-head,
-  .annexure-ii-body table.annexure-ii-table-3col td:nth-child(2),
-  .annexure-ii-body table.annexure-ii-table-3col th:nth-child(2) {
-    width: 22% !important;
-    font-weight: 700;
-  }
-  .annexure-ii-body table.annexure-ii-table-3col col.col-desc,
-  .annexure-ii-body table.annexure-ii-table-3col td:nth-child(3),
-  .annexure-ii-body table.annexure-ii-table-3col th:nth-child(3) {
-    width: 70% !important;
   }
   .annexure-ii-body table td p,
   .annexure-ii-body table th p {
@@ -1037,9 +1023,12 @@ export const PO_STYLES = `
   body.po-document-pdf-pages .annexure-ii-body table.annexure-ii-table {
     width: 100% !important;
     max-width: 100% !important;
-    table-layout: fixed !important;
+    table-layout: auto;
     box-sizing: border-box !important;
     border: 1px solid #000 !important;
+  }
+  body.po-document-pdf-pages .annexure-ii-body table.annexure-ii-table-preserve {
+    table-layout: fixed !important;
   }
   body.po-document-pdf-pages .annexure-ii-body table td,
   body.po-document-pdf-pages .annexure-ii-body table th {
@@ -1049,8 +1038,8 @@ export const PO_STYLES = `
     border: 1px solid #000 !important;
     box-sizing: border-box !important;
     white-space: normal !important;
-    word-break: break-word !important;
-    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
     overflow: visible !important;
   }
   body.po-document-pdf-pages .annexure-ii.annexure-ii-cont {

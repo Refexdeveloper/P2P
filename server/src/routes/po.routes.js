@@ -170,7 +170,7 @@ const canPoReport = requireRolesOrPermissions(
   ['nav.po_report', 'nav.track_po', 'nav.cfo_insights']
 );
 const canCreatePo = requireRolesOrPermissions(
-  ['SCM Buyer', 'SCM Manager', 'Super Admin'],
+  ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'],
   ['nav.create_po', 'nav.po_approval']
 );
 

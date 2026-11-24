@@ -34,13 +34,21 @@ export function resolveUserDisplayRole(userRow = {}) {
 export async function syncEmailNavPermissions(userId, email) {
   const override = getEmailNavPermissionOverride(email);
   if (!override) return;
+  const [rows] = await pool.query(
+    `SELECT permission_code FROM user_permissions WHERE user_id = ?`,
+    [userId]
+  );
+  const current = rows.map((r) => r.permission_code).sort().join('|');
+  const next = [...override].sort().join('|');
+  if (current === next) return;
   await pool.query(`DELETE FROM user_permissions WHERE user_id = ?`, [userId]);
-  for (const code of override) {
-    await pool.query(
-      `INSERT INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-      [userId, code]
-    );
-  }
+  if (!override.length) return;
+  const values = override.map(() => '(?, ?)').join(', ');
+  const params = override.flatMap((code) => [userId, code]);
+  await pool.query(
+    `INSERT INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+    params
+  );
 }
 
 export async function applyEmailRoleOverride(userRow) {
@@ -226,24 +234,50 @@ function enforceRoleNavWhitelist(role, codes = []) {
 
 async function persistRoleNavWhitelist(userId, role, codes) {
   const next = enforceRoleNavWhitelist(role, codes);
+  const currentSorted = [...codes].sort().join('|');
+  const nextSorted = [...next].sort().join('|');
+  if (currentSorted === nextSorted) return next;
+
   const current = new Set(codes);
-  for (const code of codes) {
-    if (!next.includes(code)) {
-      await pool.query(`DELETE FROM user_permissions WHERE user_id = ? AND permission_code = ?`, [
-        userId,
-        code,
-      ]);
-    }
+  const toDelete = codes.filter((code) => !next.includes(code));
+  const toInsert = next.filter((code) => !current.has(code));
+  if (toDelete.length) {
+    await pool.query(
+      `DELETE FROM user_permissions WHERE user_id = ? AND permission_code IN (${toDelete
+        .map(() => '?')
+        .join(', ')})`,
+      [userId, ...toDelete]
+    );
   }
-  for (const code of next) {
-    if (!current.has(code)) {
-      await pool.query(
-        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-        [userId, code]
-      );
-    }
+  if (toInsert.length) {
+    const values = toInsert.map(() => '(?, ?)').join(', ');
+    const params = toInsert.flatMap((code) => [userId, code]);
+    await pool.query(
+      `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+      params
+    );
   }
   return next;
+}
+
+async function batchInsertPermissionCodes(userId, codes) {
+  if (!codes.length) return;
+  const values = codes.map(() => '(?, ?)').join(', ');
+  const params = codes.flatMap((code) => [userId, code]);
+  await pool.query(
+    `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES ${values}`,
+    params
+  );
+}
+
+async function batchDeletePermissionCodes(userId, codes) {
+  if (!codes.length) return;
+  await pool.query(
+    `DELETE FROM user_permissions WHERE user_id = ? AND permission_code IN (${codes
+      .map(() => '?')
+      .join(', ')})`,
+    [userId, ...codes]
+  );
 }
 
 export function isSuperAdmin(role) {
@@ -408,6 +442,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
           'nav.item_master', 'nav.vendor_master', 'nav.category_master',
           'nav.entity_master', 'nav.department_master', 'nav.project_master',
         ];
+        const removeCodes = [];
         if (role === 'Requester') {
           healCodes.push(
             'nav.requester_dashboard',
@@ -418,14 +453,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.grn',
             'nav.requester_vendor_invoice'
           );
-          if (stored.includes('nav.tasks')) {
-            const idx = stored.indexOf('nav.tasks');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
-              [userId]
-            );
-          }
+          if (stored.includes('nav.tasks')) removeCodes.push('nav.tasks');
         }
         if (role === 'SCM Buyer' || role === 'SCM Manager') {
           healCodes.push('nav.po_letterhead_master', 'nav.letterhead_master');
@@ -442,30 +470,9 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.po_report',
             'nav.po_excel_import'
           );
-          if (stored.includes('nav.tasks')) {
-            const idx = stored.indexOf('nav.tasks');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.tasks'`,
-              [userId]
-            );
-          }
-          if (stored.includes('nav.rfq_approval')) {
-            const idx = stored.indexOf('nav.rfq_approval');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.rfq_approval'`,
-              [userId]
-            );
-          }
-          if (stored.includes('nav.vendor_po_acceptance')) {
-            const idx = stored.indexOf('nav.vendor_po_acceptance');
-            if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.vendor_po_acceptance'`,
-              [userId]
-            );
-          }
+          if (stored.includes('nav.tasks')) removeCodes.push('nav.tasks');
+          if (stored.includes('nav.rfq_approval')) removeCodes.push('nav.rfq_approval');
+          if (stored.includes('nav.vendor_po_acceptance')) removeCodes.push('nav.vendor_po_acceptance');
         }
         if (role === 'SCM Manager') {
           healCodes.push(
@@ -476,23 +483,19 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.track_po',
             'nav.po_report'
           );
-          if (stored.includes('nav.scm_rfq_entry')) {
-            const idx = stored.indexOf('nav.scm_rfq_entry');
+          if (stored.includes('nav.scm_rfq_entry')) removeCodes.push('nav.scm_rfq_entry');
+        }
+        if (removeCodes.length) {
+          await batchDeletePermissionCodes(userId, removeCodes);
+          for (const code of removeCodes) {
+            const idx = stored.indexOf(code);
             if (idx >= 0) stored.splice(idx, 1);
-            await pool.query(
-              `DELETE FROM user_permissions WHERE user_id = ? AND permission_code = 'nav.scm_rfq_entry'`,
-              [userId]
-            );
           }
         }
-        for (const code of healCodes) {
-          if (!stored.includes(code) && validCodes.has(code)) {
-            stored.push(code);
-            await pool.query(
-              `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-              [userId, code]
-            );
-          }
+        const missing = healCodes.filter((code) => !stored.includes(code) && validCodes.has(code));
+        if (missing.length) {
+          await batchInsertPermissionCodes(userId, missing);
+          stored.push(...missing);
         }
       }
       return stored;
@@ -502,8 +505,11 @@ export async function getUserPermissionCodes(userId, role, email = null) {
   return defaults;
 }
 
-export async function getUserNavigation(userId, role, email = null) {
-  let codes = await getUserPermissionCodes(userId, role, email);
+export async function getUserNavigation(userId, role, email = null, preloadedCodes = null) {
+  let codes =
+    preloadedCodes != null
+      ? preloadedCodes
+      : await getUserPermissionCodes(userId, role, email);
   let codeSet = new Set(codes);
   let nav = NAV_ITEMS.filter((n) => codeSet.has(n.code)).sort((a, b) => a.sort - b.sort);
 
@@ -515,12 +521,7 @@ export async function getUserNavigation(userId, role, email = null) {
 
     // Heal DB so next login is correct
     if (defaults.length) {
-      for (const code of defaults) {
-        await pool.query(
-          `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-          [userId, code]
-        );
-      }
+      await batchInsertPermissionCodes(userId, defaults);
     }
   }
 
@@ -542,10 +543,7 @@ export async function getUserNavigation(userId, role, email = null) {
     if (!nav.some((n) => n.code === 'nav.tasks')) {
       const tasksNav = NAV_ITEMS.find((n) => n.code === 'nav.tasks');
       if (tasksNav) nav = [...nav, tasksNav];
-      await pool.query(
-        `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, 'nav.tasks')`,
-        [userId]
-      );
+      await batchInsertPermissionCodes(userId, ['nav.tasks']);
     }
     const order = ROLE_DEFAULT_PERMISSIONS[role] || [];
     const rank = new Map(order.map((code, i) => [code, i]));
@@ -641,19 +639,24 @@ export async function seedUserPermissionsForRole(userId, role) {
   const [existing] = await pool.query(`SELECT 1 FROM user_permissions WHERE user_id = ? LIMIT 1`, [userId]);
   if (existing.length) return;
 
-  for (const code of defaults) {
-    await pool.query(
-      `INSERT IGNORE INTO user_permissions (user_id, permission_code) VALUES (?, ?)`,
-      [userId, code]
-    );
-  }
+  await batchInsertPermissionCodes(userId, defaults);
 }
 
 export async function enrichAuthUser(userRow) {
   const effectiveUser = await applyEmailRoleOverride(userRow);
   await syncEmailNavPermissions(effectiveUser.id, effectiveUser.email);
-  const permissions = await getUserPermissionCodes(effectiveUser.id, effectiveUser.role, effectiveUser.email);
-  const navigation = await getUserNavigation(effectiveUser.id, effectiveUser.role, effectiveUser.email);
+  const permissions = await getUserPermissionCodes(
+    effectiveUser.id,
+    effectiveUser.role,
+    effectiveUser.email
+  );
+  // Reuse permission codes — avoid a second heal/DB pass during SSO login
+  const navigation = await getUserNavigation(
+    effectiveUser.id,
+    effectiveUser.role,
+    effectiveUser.email,
+    permissions
+  );
 
   let entityId = effectiveUser.entity_id ?? effectiveUser.entityId ?? null;
   let entityName = effectiveUser.entity_name ?? effectiveUser.entityName ?? null;
