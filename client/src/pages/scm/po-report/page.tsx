@@ -81,6 +81,8 @@ type ColumnKey =
   | 'statusLabel'
   | 'compare';
 
+type FunnelKind = 'search' | 'select' | 'dateRange' | 'none';
+
 type ColumnDef = {
   key: ColumnKey;
   label: string;
@@ -88,31 +90,32 @@ type ColumnDef = {
   align?: 'left' | 'right';
   sticky?: boolean;
   minWidth?: string;
+  funnel?: FunnelKind;
 };
 
 const ALL_COLUMNS: ColumnDef[] = [
-  { key: 'poNumber', label: 'PO Number', defaultVisible: true, sticky: true, minWidth: '180px' },
-  { key: 'poDate', label: 'PO Date', defaultVisible: true, minWidth: '110px' },
-  { key: 'vendorName', label: 'Vendor Name', defaultVisible: true, minWidth: '180px' },
-  { key: 'plantName', label: 'Plant', defaultVisible: true, minWidth: '140px' },
-  { key: 'itemName', label: 'Item Name', defaultVisible: true, minWidth: '180px' },
-  { key: 'description', label: 'Description', defaultVisible: false, minWidth: '200px' },
-  { key: 'category', label: 'Category', defaultVisible: true, minWidth: '140px' },
-  { key: 'entityName', label: 'Entity', defaultVisible: false, minWidth: '160px' },
-  { key: 'department', label: 'Department', defaultVisible: false, minWidth: '140px' },
-  { key: 'quantity', label: 'Quantity', defaultVisible: true, align: 'right', minWidth: '100px' },
-  { key: 'uom', label: 'UOM', defaultVisible: true, minWidth: '70px' },
-  { key: 'unitRate', label: 'Unit Rate', defaultVisible: true, align: 'right', minWidth: '110px' },
-  { key: 'taxPercentage', label: 'Tax %', defaultVisible: false, align: 'right', minWidth: '80px' },
-  { key: 'taxAmount', label: 'Tax Amount', defaultVisible: true, align: 'right', minWidth: '110px' },
-  { key: 'lineExGst', label: 'Line Ex-GST', defaultVisible: false, align: 'right', minWidth: '120px' },
-  { key: 'lineTotal', label: 'Line Total', defaultVisible: true, align: 'right', minWidth: '120px' },
-  { key: 'poSubtotal', label: 'PO Subtotal', defaultVisible: false, align: 'right', minWidth: '120px' },
-  { key: 'poTaxAmount', label: 'PO Tax', defaultVisible: false, align: 'right', minWidth: '110px' },
-  { key: 'poGrandTotal', label: 'PO Value', defaultVisible: false, align: 'right', minWidth: '120px' },
-  { key: 'purchaseTypeLabel', label: 'Doc Type', defaultVisible: false, minWidth: '120px' },
-  { key: 'statusLabel', label: 'Status', defaultVisible: true, minWidth: '150px' },
-  { key: 'compare', label: 'Compare', defaultVisible: true, minWidth: '100px' },
+  { key: 'poNumber', label: 'PO Number', defaultVisible: true, sticky: true, minWidth: '180px', funnel: 'search' },
+  { key: 'poDate', label: 'PO Date', defaultVisible: true, minWidth: '110px', funnel: 'dateRange' },
+  { key: 'vendorName', label: 'Vendor Name', defaultVisible: true, minWidth: '180px', funnel: 'select' },
+  { key: 'plantName', label: 'Plant', defaultVisible: true, minWidth: '140px', funnel: 'select' },
+  { key: 'itemName', label: 'Item Name', defaultVisible: true, minWidth: '180px', funnel: 'select' },
+  { key: 'description', label: 'Description', defaultVisible: false, minWidth: '200px', funnel: 'none' },
+  { key: 'category', label: 'Category', defaultVisible: true, minWidth: '140px', funnel: 'select' },
+  { key: 'entityName', label: 'Entity', defaultVisible: false, minWidth: '160px', funnel: 'none' },
+  { key: 'department', label: 'Department', defaultVisible: false, minWidth: '140px', funnel: 'none' },
+  { key: 'quantity', label: 'Quantity', defaultVisible: true, align: 'right', minWidth: '100px', funnel: 'none' },
+  { key: 'uom', label: 'UOM', defaultVisible: true, minWidth: '70px', funnel: 'none' },
+  { key: 'unitRate', label: 'Unit Rate', defaultVisible: true, align: 'right', minWidth: '110px', funnel: 'none' },
+  { key: 'taxPercentage', label: 'Tax %', defaultVisible: false, align: 'right', minWidth: '80px', funnel: 'none' },
+  { key: 'taxAmount', label: 'Tax Amount', defaultVisible: true, align: 'right', minWidth: '110px', funnel: 'none' },
+  { key: 'lineExGst', label: 'Line Ex-GST', defaultVisible: false, align: 'right', minWidth: '120px', funnel: 'none' },
+  { key: 'lineTotal', label: 'Line Total', defaultVisible: true, align: 'right', minWidth: '120px', funnel: 'none' },
+  { key: 'poSubtotal', label: 'PO Subtotal', defaultVisible: false, align: 'right', minWidth: '120px', funnel: 'none' },
+  { key: 'poTaxAmount', label: 'PO Tax', defaultVisible: false, align: 'right', minWidth: '110px', funnel: 'none' },
+  { key: 'poGrandTotal', label: 'PO Value', defaultVisible: false, align: 'right', minWidth: '120px', funnel: 'none' },
+  { key: 'purchaseTypeLabel', label: 'Doc Type', defaultVisible: false, minWidth: '120px', funnel: 'select' },
+  { key: 'statusLabel', label: 'Status', defaultVisible: true, minWidth: '150px', funnel: 'select' },
+  { key: 'compare', label: 'Compare', defaultVisible: true, minWidth: '100px', funnel: 'none' },
 ];
 
 const COLUMN_STORAGE_KEY = 'rmc.poReport.visibleColumns.v2';
@@ -167,16 +170,142 @@ function statusTone(status: string) {
   if (s.includes('reject') || s.includes('cancel')) {
     return { bg: 'bg-red-50', text: 'text-[#E53935]', dot: 'bg-[#E53935]' };
   }
-  if (s.includes('draft')) {
-    return { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' };
-  }
   return { bg: 'bg-amber-50', text: 'text-[#FB8C00]', dot: 'bg-[#FB8C00]' };
+}
+
+type FunnelProps = {
+  col: ColumnDef;
+  open: boolean;
+  onToggle: () => void;
+  active: boolean;
+  draft: string;
+  onDraft: (v: string) => void;
+  draftTo?: string;
+  onDraftTo?: (v: string) => void;
+  options?: Array<{ value: string; label: string }>;
+  onApply: () => void;
+  onClear: () => void;
+};
+
+function ColumnFunnel({
+  col,
+  open,
+  onToggle,
+  active,
+  draft,
+  onDraft,
+  draftTo,
+  onDraftTo,
+  options,
+  onApply,
+  onClear,
+}: FunnelProps) {
+  if (!col.funnel || col.funnel === 'none') {
+    return <span>{col.label}</span>;
+  }
+
+  return (
+    <div className="relative inline-flex items-center gap-1">
+      <span>{col.label}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className={`inline-flex h-5 w-5 items-center justify-center rounded transition-colors ${
+          active
+            ? 'bg-[#E3F2FD] text-[#1E88E5]'
+            : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'
+        }`}
+        aria-label={`Filter ${col.label}`}
+        title={`Filter ${col.label}`}
+      >
+        <i className="ri-filter-3-fill text-[11px]" />
+      </button>
+      {open ? (
+        <div
+          className={`absolute top-full z-50 mt-2 w-56 rounded-xl border border-[#EEF0F5] bg-white p-3 text-left font-normal normal-case tracking-normal shadow-lg ${
+            col.align === 'right' ? 'right-0' : 'left-0'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Filter {col.label}
+          </p>
+          {col.funnel === 'search' ? (
+            <input
+              type="search"
+              value={draft}
+              onChange={(e) => onDraft(e.target.value)}
+              placeholder={`Search ${col.label.toLowerCase()}…`}
+              className={fieldClass}
+              autoFocus
+            />
+          ) : null}
+          {col.funnel === 'select' ? (
+            <select
+              value={draft}
+              onChange={(e) => onDraft(e.target.value)}
+              className={fieldClass}
+              autoFocus
+            >
+              <option value="">All</option>
+              {(options || []).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {col.funnel === 'dateRange' ? (
+            <div className="space-y-2">
+              <div>
+                <label className="mb-1 block text-[11px] text-slate-500">From</label>
+                <input
+                  type="date"
+                  value={draft}
+                  onChange={(e) => onDraft(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-slate-500">To</label>
+                <input
+                  type="date"
+                  value={draftTo || ''}
+                  onChange={(e) => onDraftTo?.(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={onApply}
+              className="inline-flex h-8 items-center rounded-lg bg-[#1E88E5] px-3 text-[12px] font-semibold text-white hover:bg-[#1565C0]"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function PoReportPage() {
   const { user } = useAuth();
   const columnsRef = useRef<HTMLDivElement>(null);
-  const moreRef = useRef<HTMLDivElement>(null);
+  const funnelRef = useRef<HTMLTableSectionElement>(null);
 
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
@@ -204,7 +333,9 @@ export default function PoReportPage() {
   const [compareItem, setCompareItem] = useState<string | null>(null);
   const [visibleCols, setVisibleCols] = useState<Record<ColumnKey, boolean>>(loadVisibleColumns);
   const [columnsOpen, setColumnsOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [funnelOpen, setFunnelOpen] = useState<ColumnKey | null>(null);
+  const [funnelDraft, setFunnelDraft] = useState('');
+  const [funnelDraftTo, setFunnelDraftTo] = useState('');
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearchDebounced(search.trim()), 300);
@@ -219,7 +350,7 @@ export default function PoReportPage() {
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!columnsRef.current?.contains(target)) setColumnsOpen(false);
-      if (!moreRef.current?.contains(target)) setMoreOpen(false);
+      if (!funnelRef.current?.contains(target)) setFunnelOpen(null);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -238,7 +369,7 @@ export default function PoReportPage() {
         category: category || undefined,
         item: item || undefined,
         compareItem: compareItem || item || undefined,
-        status: status === 'all' ? undefined : status,
+        status: status === 'all' || status === 'draft' ? undefined : status,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         purchaseType: purchaseType === 'all' ? undefined : purchaseType,
@@ -251,7 +382,9 @@ export default function PoReportPage() {
       setPlants(data.filterOptions?.plants || []);
       setCategories(data.filterOptions?.categories || []);
       setItems(data.filterOptions?.items || []);
-      setStatuses(data.filterOptions?.statuses || []);
+      setStatuses(
+        (data.filterOptions?.statuses || []).filter((s) => String(s.value).toLowerCase() !== 'draft')
+      );
       setPagination(data.pagination || { page: 1, limit, total: 0, totalPages: 1 });
       if (data.compareItem) setCompareItem(data.compareItem);
     } catch (err) {
@@ -297,17 +430,23 @@ export default function PoReportPage() {
     setDateTo('');
     setPurchaseType('all');
     setCompareItem(null);
+    setFunnelOpen(null);
     setPage(1);
   };
 
-  const moreFilterCount = useMemo(() => {
+  const activeFilterCount = useMemo(() => {
     let n = 0;
+    if (searchDebounced) n += 1;
+    if (vendor) n += 1;
+    if (plant) n += 1;
+    if (category) n += 1;
     if (item) n += 1;
-    if (purchaseType !== 'all') n += 1;
+    if (status !== 'all') n += 1;
     if (dateFrom) n += 1;
     if (dateTo) n += 1;
+    if (purchaseType !== 'all') n += 1;
     return n;
-  }, [item, purchaseType, dateFrom, dateTo]);
+  }, [searchDebounced, vendor, plant, category, item, status, dateFrom, dateTo, purchaseType]);
 
   const activeColumns = useMemo(
     () => ALL_COLUMNS.filter((c) => visibleCols[c.key]),
@@ -331,6 +470,162 @@ export default function PoReportPage() {
         boolean
       >
     );
+  };
+
+  const funnelActive = (key: ColumnKey) => {
+    switch (key) {
+      case 'poNumber':
+        return Boolean(searchDebounced);
+      case 'vendorName':
+        return Boolean(vendor);
+      case 'plantName':
+        return Boolean(plant);
+      case 'itemName':
+        return Boolean(item);
+      case 'category':
+        return Boolean(category);
+      case 'statusLabel':
+        return status !== 'all';
+      case 'purchaseTypeLabel':
+        return purchaseType !== 'all';
+      case 'poDate':
+        return Boolean(dateFrom || dateTo);
+      default:
+        return false;
+    }
+  };
+
+  const openFunnel = (key: ColumnKey) => {
+    setColumnsOpen(false);
+    if (funnelOpen === key) {
+      setFunnelOpen(null);
+      return;
+    }
+    switch (key) {
+      case 'poNumber':
+        setFunnelDraft(search);
+        break;
+      case 'vendorName':
+        setFunnelDraft(vendor);
+        break;
+      case 'plantName':
+        setFunnelDraft(plant);
+        break;
+      case 'itemName':
+        setFunnelDraft(item);
+        break;
+      case 'category':
+        setFunnelDraft(category);
+        break;
+      case 'statusLabel':
+        setFunnelDraft(status === 'all' ? '' : status);
+        break;
+      case 'purchaseTypeLabel':
+        setFunnelDraft(purchaseType === 'all' ? '' : purchaseType);
+        break;
+      case 'poDate':
+        setFunnelDraft(dateFrom);
+        setFunnelDraftTo(dateTo);
+        break;
+      default:
+        setFunnelDraft('');
+    }
+    setFunnelOpen(key);
+  };
+
+  const applyFunnel = (key: ColumnKey) => {
+    switch (key) {
+      case 'poNumber':
+        setSearch(funnelDraft.trim());
+        break;
+      case 'vendorName':
+        setVendor(funnelDraft);
+        break;
+      case 'plantName':
+        setPlant(funnelDraft);
+        break;
+      case 'itemName':
+        setItem(funnelDraft);
+        setCompareItem(funnelDraft || null);
+        break;
+      case 'category':
+        setCategory(funnelDraft);
+        break;
+      case 'statusLabel':
+        setStatus(funnelDraft || 'all');
+        break;
+      case 'purchaseTypeLabel':
+        setPurchaseType(funnelDraft || 'all');
+        break;
+      case 'poDate':
+        setDateFrom(funnelDraft);
+        setDateTo(funnelDraftTo);
+        break;
+      default:
+        break;
+    }
+    setFunnelOpen(null);
+    setPage(1);
+  };
+
+  const clearFunnel = (key: ColumnKey) => {
+    switch (key) {
+      case 'poNumber':
+        setSearch('');
+        setSearchDebounced('');
+        break;
+      case 'vendorName':
+        setVendor('');
+        break;
+      case 'plantName':
+        setPlant('');
+        break;
+      case 'itemName':
+        setItem('');
+        setCompareItem(null);
+        break;
+      case 'category':
+        setCategory('');
+        break;
+      case 'statusLabel':
+        setStatus('all');
+        break;
+      case 'purchaseTypeLabel':
+        setPurchaseType('all');
+        break;
+      case 'poDate':
+        setDateFrom('');
+        setDateTo('');
+        break;
+      default:
+        break;
+    }
+    setFunnelDraft('');
+    setFunnelDraftTo('');
+    setFunnelOpen(null);
+    setPage(1);
+  };
+
+  const funnelOptions = (key: ColumnKey): Array<{ value: string; label: string }> => {
+    switch (key) {
+      case 'vendorName':
+        return vendors.map((v) => ({ value: v, label: v }));
+      case 'plantName':
+        return plants.map((p) => ({ value: p, label: p }));
+      case 'itemName':
+        return items.map((i) => ({ value: i, label: i }));
+      case 'category':
+        return categories.map((c) => ({ value: c, label: c }));
+      case 'statusLabel':
+        return statuses;
+      case 'purchaseTypeLabel':
+        return [
+          { value: 'purchase_order', label: 'Purchase Order' },
+          { value: 'work_order', label: 'Work Order' },
+        ];
+      default:
+        return [];
+    }
   };
 
   const activeCompareItem = compareItem || item || null;
@@ -543,9 +838,16 @@ export default function PoReportPage() {
         </section>
 
         <div className="fi-body space-y-5 px-1 pb-8 sm:px-0">
-          <div className="rounded-2xl border border-white/80 bg-white/95 p-3 shadow-lg shadow-slate-200/40 backdrop-blur-sm sm:p-4">
+          <div className="relative overflow-visible rounded-2xl border border-white/80 bg-white/95 p-3 shadow-lg shadow-slate-200/40 backdrop-blur-sm sm:p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-800">Report filters</h2>
+              <h2 className="text-sm font-semibold text-slate-800">
+                Report filters
+                {activeFilterCount ? (
+                  <span className="ml-2 rounded-full bg-[#E3F2FD] px-2 py-0.5 text-[11px] font-semibold text-[#1E88E5]">
+                    {activeFilterCount} active
+                  </span>
+                ) : null}
+              </h2>
               <div className="flex items-center gap-3">
                 {summary ? (
                   <p className="hidden text-xs text-slate-500 sm:block">
@@ -564,7 +866,7 @@ export default function PoReportPage() {
             </div>
 
             <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-0.5">
-              <div className="relative min-w-[180px] flex-[1.4] shrink-0">
+              <div className="relative min-w-[200px] flex-[1.6] shrink-0">
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   Search
                 </p>
@@ -633,7 +935,7 @@ export default function PoReportPage() {
                   ))}
                 </select>
               </div>
-              <div className="min-w-[130px] flex-1 shrink-0">
+              <div className="min-w-[140px] flex-1 shrink-0">
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   Status
                 </p>
@@ -651,82 +953,29 @@ export default function PoReportPage() {
                   ))}
                 </select>
               </div>
-              <div className="relative shrink-0" ref={moreRef}>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 invisible">
-                  More
+              <div className="min-w-[128px] shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  From
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMoreOpen((v) => !v);
-                    setColumnsOpen(false);
-                  }}
-                  className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#1E88E5] hover:bg-[#E3F2FD]"
-                >
-                  <i className="ri-filter-3-line" />
-                  More{moreFilterCount ? ` (${moreFilterCount})` : ''}
-                </button>
-                {moreOpen ? (
-                  <div className="absolute right-0 top-full z-40 mt-2 w-[300px] space-y-3 rounded-2xl border border-[#EEF0F5] bg-white p-4 shadow-lg">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      More filters
-                    </p>
-                    <div>
-                      <label className="mb-1 block text-[11px] text-slate-500">Item</label>
-                      <select
-                        value={item}
-                        onChange={(e) => {
-                          setItem(e.target.value);
-                          setCompareItem(e.target.value || null);
-                        }}
-                        className={fieldClass}
-                        aria-label="Item"
-                      >
-                        <option value="">All Items</option>
-                        {items.map((i) => (
-                          <option key={i} value={i}>
-                            {i}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[11px] text-slate-500">Doc type</label>
-                      <select
-                        value={purchaseType}
-                        onChange={(e) => setPurchaseType(e.target.value)}
-                        className={fieldClass}
-                        aria-label="Document type"
-                      >
-                        <option value="all">PO + WO</option>
-                        <option value="purchase_order">Purchase Order</option>
-                        <option value="work_order">Work Order</option>
-                      </select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="mb-1 block text-[11px] text-slate-500">From</label>
-                        <input
-                          type="date"
-                          value={dateFrom}
-                          onChange={(e) => setDateFrom(e.target.value)}
-                          className={fieldClass}
-                          aria-label="Date from"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-[11px] text-slate-500">To</label>
-                        <input
-                          type="date"
-                          value={dateTo}
-                          onChange={(e) => setDateTo(e.target.value)}
-                          className={fieldClass}
-                          aria-label="Date to"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Date from"
+                />
+              </div>
+              <div className="min-w-[128px] shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  To
+                </p>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Date to"
+                />
               </div>
             </div>
           </div>
@@ -815,6 +1064,7 @@ export default function PoReportPage() {
                       : pagination.total
                         ? `${pageStart + 1}–${Math.min(pageStart + rows.length, pagination.total)} of ${pagination.total}`
                         : '0 records'}
+                    {' · filters update KPI cards above'}
                   </p>
                 </div>
               </div>
@@ -824,7 +1074,7 @@ export default function PoReportPage() {
                     type="button"
                     onClick={() => {
                       setColumnsOpen((v) => !v);
-                      setMoreOpen(false);
+                      setFunnelOpen(null);
                     }}
                     className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
@@ -891,19 +1141,32 @@ export default function PoReportPage() {
             {error ? (
               <div className="px-5 py-8 text-center text-sm text-rose-600">{error}</div>
             ) : (
-              <div className="overflow-x-auto bg-[#F8FAFC]/70 px-2 pb-3 pt-1 sm:px-3 sm:pb-4">
+              <div className="bg-[#F8FAFC]/70 px-2 pb-3 pt-1 sm:px-3 sm:pb-4">
+                <div className="overflow-x-auto overflow-y-visible">
                 <table className="w-full border-separate border-spacing-x-0 border-spacing-y-3 text-sm">
-                  <thead>
+                  <thead ref={funnelRef} className="relative z-30">
                     <tr>
                       {activeColumns.map((col) => (
                         <th
                           key={col.key}
-                          className={`whitespace-nowrap px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
+                          className={`relative whitespace-nowrap px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 ${
                             col.align === 'right' ? 'text-right' : 'text-left'
                           }`}
                           style={col.minWidth ? { minWidth: col.minWidth } : undefined}
                         >
-                          {col.label}
+                          <ColumnFunnel
+                            col={col}
+                            open={funnelOpen === col.key}
+                            onToggle={() => openFunnel(col.key)}
+                            active={funnelActive(col.key)}
+                            draft={funnelDraft}
+                            onDraft={setFunnelDraft}
+                            draftTo={funnelDraftTo}
+                            onDraftTo={setFunnelDraftTo}
+                            options={funnelOptions(col.key)}
+                            onApply={() => applyFunnel(col.key)}
+                            onClear={() => clearFunnel(col.key)}
+                          />
                         </th>
                       ))}
                     </tr>
@@ -964,6 +1227,7 @@ export default function PoReportPage() {
                     )}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
 

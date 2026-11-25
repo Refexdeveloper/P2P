@@ -94,10 +94,11 @@ async function buildReportFilter(user, filters = {}) {
   joins.push('LEFT JOIN departments d ON d.id = pr.department_id');
   const joinSql = joins.join('\n');
 
-  const where = ['WHERE 1=1', EXCLUDED_DOC_SQL, poScope.where || ''];
+  // RMC report: drafts are never reportable
+  const where = ['WHERE 1=1', EXCLUDED_DOC_SQL, ` AND po.status <> 'draft'`, poScope.where || ''];
   const params = [...(poScope.params || [])];
 
-  if (status && status !== 'all') {
+  if (status && status !== 'all' && status !== 'draft') {
     where.push(' AND po.status = ?');
     params.push(status);
   }
@@ -318,6 +319,7 @@ export async function getConsolidatedPoReport(user, filters = {}) {
      ${base.joinSql}
      ${base.whereSql}
        AND COALESCE(po.status, '') <> ''
+       AND po.status <> 'draft'
      ORDER BY status ASC`,
     base.params
   );
