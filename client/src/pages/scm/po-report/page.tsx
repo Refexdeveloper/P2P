@@ -94,11 +94,11 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'poNumber', label: 'PO Number', defaultVisible: true, sticky: true, minWidth: '180px' },
   { key: 'poDate', label: 'PO Date', defaultVisible: true, minWidth: '110px' },
   { key: 'vendorName', label: 'Vendor Name', defaultVisible: true, minWidth: '180px' },
+  { key: 'plantName', label: 'Plant', defaultVisible: true, minWidth: '140px' },
   { key: 'itemName', label: 'Item Name', defaultVisible: true, minWidth: '180px' },
   { key: 'description', label: 'Description', defaultVisible: false, minWidth: '200px' },
   { key: 'category', label: 'Category', defaultVisible: true, minWidth: '140px' },
   { key: 'entityName', label: 'Entity', defaultVisible: false, minWidth: '160px' },
-  { key: 'plantName', label: 'Plant', defaultVisible: false, minWidth: '140px' },
   { key: 'department', label: 'Department', defaultVisible: false, minWidth: '140px' },
   { key: 'quantity', label: 'Quantity', defaultVisible: true, align: 'right', minWidth: '100px' },
   { key: 'uom', label: 'UOM', defaultVisible: true, minWidth: '70px' },
@@ -115,7 +115,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: 'compare', label: 'Compare', defaultVisible: true, minWidth: '100px' },
 ];
 
-const COLUMN_STORAGE_KEY = 'rmc.poReport.visibleColumns.v1';
+const COLUMN_STORAGE_KEY = 'rmc.poReport.visibleColumns.v2';
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 const formatCurrency = (amount: number) =>
@@ -157,7 +157,7 @@ function loadVisibleColumns(): Record<ColumnKey, boolean> {
 }
 
 const fieldClass =
-  'h-11 w-full min-w-0 rounded-2xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30';
+  'h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2.5 text-[13px] text-slate-700 outline-none focus:border-[#1E88E5] focus:ring-2 focus:ring-[#1E88E5]/30';
 
 function statusTone(status: string) {
   const s = String(status || '').toLowerCase();
@@ -176,10 +176,12 @@ function statusTone(status: string) {
 export default function PoReportPage() {
   const { user } = useAuth();
   const columnsRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
   const [vendor, setVendor] = useState('');
+  const [plant, setPlant] = useState('');
   const [category, setCategory] = useState('');
   const [item, setItem] = useState('');
   const [status, setStatus] = useState('all');
@@ -194,6 +196,7 @@ export default function PoReportPage() {
   const [comparison, setComparison] = useState<ComparisonRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [vendors, setVendors] = useState<string[]>([]);
+  const [plants, setPlants] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [items, setItems] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<Array<{ value: string; label: string }>>([]);
@@ -201,6 +204,7 @@ export default function PoReportPage() {
   const [compareItem, setCompareItem] = useState<string | null>(null);
   const [visibleCols, setVisibleCols] = useState<Record<ColumnKey, boolean>>(loadVisibleColumns);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearchDebounced(search.trim()), 300);
@@ -213,7 +217,9 @@ export default function PoReportPage() {
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!columnsRef.current?.contains(e.target as Node)) setColumnsOpen(false);
+      const target = e.target as Node;
+      if (!columnsRef.current?.contains(target)) setColumnsOpen(false);
+      if (!moreRef.current?.contains(target)) setMoreOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -228,6 +234,7 @@ export default function PoReportPage() {
         limit,
         search: searchDebounced || undefined,
         vendor: vendor || undefined,
+        plant: plant || undefined,
         category: category || undefined,
         item: item || undefined,
         compareItem: compareItem || item || undefined,
@@ -241,6 +248,7 @@ export default function PoReportPage() {
       setComparison(data.comparison || []);
       setSummary(data.summary || null);
       setVendors(data.filterOptions?.vendors || []);
+      setPlants(data.filterOptions?.plants || []);
       setCategories(data.filterOptions?.categories || []);
       setItems(data.filterOptions?.items || []);
       setStatuses(data.filterOptions?.statuses || []);
@@ -259,6 +267,7 @@ export default function PoReportPage() {
     limit,
     searchDebounced,
     vendor,
+    plant,
     category,
     item,
     compareItem,
@@ -274,12 +283,13 @@ export default function PoReportPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchDebounced, vendor, category, item, status, dateFrom, dateTo, purchaseType, limit]);
+  }, [searchDebounced, vendor, plant, category, item, status, dateFrom, dateTo, purchaseType, limit]);
 
   const clearFilters = () => {
     setSearch('');
     setSearchDebounced('');
     setVendor('');
+    setPlant('');
     setCategory('');
     setItem('');
     setStatus('all');
@@ -289,6 +299,15 @@ export default function PoReportPage() {
     setCompareItem(null);
     setPage(1);
   };
+
+  const moreFilterCount = useMemo(() => {
+    let n = 0;
+    if (item) n += 1;
+    if (purchaseType !== 'all') n += 1;
+    if (dateFrom) n += 1;
+    if (dateTo) n += 1;
+    return n;
+  }, [item, purchaseType, dateFrom, dateTo]);
 
   const activeColumns = useMemo(
     () => ALL_COLUMNS.filter((c) => visibleCols[c.key]),
@@ -358,7 +377,11 @@ export default function PoReportPage() {
           </span>
         );
       case 'plantName':
-        return <span className="text-sm text-[#2C3E50]">{row.plantName || '—'}</span>;
+        return (
+          <span className="block max-w-[160px] truncate text-sm text-[#2C3E50]" title={row.plantName || ''}>
+            {row.plantName || '—'}
+          </span>
+        );
       case 'department':
         return <span className="text-sm text-[#2C3E50]">{row.department || '—'}</span>;
       case 'quantity':
@@ -462,60 +485,11 @@ export default function PoReportPage() {
               <span className="tfx-role-inline"> · RMC Procurement</span>
             </p>
           </div>
-          <div className="fi-actions" ref={columnsRef}>
+          <div className="fi-actions">
             <button type="button" onClick={() => void load()} className="tfx-btn secondary">
               <i className="ri-refresh-line" />
               Refresh
             </button>
-            <button
-              type="button"
-              onClick={() => setColumnsOpen((v) => !v)}
-              className="tfx-btn primary"
-            >
-              <i className="ri-layout-column-line" />
-              Columns
-            </button>
-            {columnsOpen ? (
-              <div className="absolute right-0 top-12 z-30 w-72 rounded-xl border border-[#EEF0F5] bg-white p-3 shadow-lg">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Show columns
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={showAllColumns}
-                      className="text-[11px] font-semibold text-[#1E88E5]"
-                    >
-                      All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetColumns}
-                      className="text-[11px] font-semibold text-slate-500"
-                    >
-                      Default
-                    </button>
-                  </div>
-                </div>
-                <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-                  {ALL_COLUMNS.map((col) => (
-                    <label
-                      key={col.key}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={Boolean(visibleCols[col.key])}
-                        onChange={() => toggleColumn(col.key)}
-                        className="rounded border-slate-300 text-[#1E88E5] focus:ring-[#1E88E5]"
-                      />
-                      {col.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         </section>
 
@@ -569,115 +543,192 @@ export default function PoReportPage() {
         </section>
 
         <div className="fi-body space-y-5 px-1 pb-8 sm:px-0">
-          <div className="rounded-2xl border border-white/80 bg-white/95 p-4 shadow-lg shadow-slate-200/40 backdrop-blur-sm sm:p-5">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-800">Filters</h2>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[#1E88E5] hover:underline"
-              >
-                <i className="ri-filter-off-line" />
-                Clear filters
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
-              <div className="relative sm:col-span-2 lg:col-span-2">
-                <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search PO, vendor, item…"
-                  className={`${fieldClass} pl-9`}
-                />
+          <div className="rounded-2xl border border-white/80 bg-white/95 p-3 shadow-lg shadow-slate-200/40 backdrop-blur-sm sm:p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-800">Report filters</h2>
+              <div className="flex items-center gap-3">
+                {summary ? (
+                  <p className="hidden text-xs text-slate-500 sm:block">
+                    {formatCurrency(summary.totalLineValue)} · {summary.lineCount} line(s)
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#1E88E5] hover:underline"
+                >
+                  <i className="ri-filter-off-line" />
+                  Clear
+                </button>
               </div>
-              <select
-                value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
-                className={fieldClass}
-                aria-label="Vendor"
-              >
-                <option value="">All Vendors</option>
-                {vendors.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className={fieldClass}
-                aria-label="Category"
-              >
-                <option value="">All Categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={item}
-                onChange={(e) => {
-                  setItem(e.target.value);
-                  setCompareItem(e.target.value || null);
-                }}
-                className={fieldClass}
-                aria-label="Item"
-              >
-                <option value="">All Items</option>
-                {items.map((i) => (
-                  <option key={i} value={i}>
-                    {i}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className={fieldClass}
-                aria-label="Status"
-              >
-                <option value="all">All Status</option>
-                {statuses.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={purchaseType}
-                onChange={(e) => setPurchaseType(e.target.value)}
-                className={fieldClass}
-                aria-label="Document type"
-              >
-                <option value="all">PO + WO</option>
-                <option value="purchase_order">Purchase Order</option>
-                <option value="work_order">Work Order</option>
-              </select>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className={fieldClass}
-                aria-label="Date from"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className={fieldClass}
-                aria-label="Date to"
-              />
             </div>
-            {summary ? (
-              <p className="mt-3 text-xs text-slate-500">
-                Line value (ex-GST + tax): {formatCurrency(summary.totalLineValue)} ·{' '}
-                {summary.lineCount} line(s)
-              </p>
-            ) : null}
+
+            <div className="flex flex-nowrap items-end gap-2 overflow-x-auto pb-0.5">
+              <div className="relative min-w-[180px] flex-[1.4] shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Search
+                </p>
+                <div className="relative">
+                  <i className="ri-search-line pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="PO, vendor, item, plant…"
+                    className={`${fieldClass} pl-8`}
+                  />
+                </div>
+              </div>
+              <div className="min-w-[140px] flex-1 shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Vendor
+                </p>
+                <select
+                  value={vendor}
+                  onChange={(e) => setVendor(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Vendor"
+                >
+                  <option value="">All Vendors</option>
+                  {vendors.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[140px] flex-1 shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Plant
+                </p>
+                <select
+                  value={plant}
+                  onChange={(e) => setPlant(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Plant"
+                >
+                  <option value="">All Plants</option>
+                  {plants.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[130px] flex-1 shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Category
+                </p>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Category"
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="min-w-[130px] flex-1 shrink-0">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Status
+                </p>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className={fieldClass}
+                  aria-label="Status"
+                >
+                  <option value="all">All Status</option>
+                  {statuses.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="relative shrink-0" ref={moreRef}>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 invisible">
+                  More
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreOpen((v) => !v);
+                    setColumnsOpen(false);
+                  }}
+                  className="inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#1E88E5] hover:bg-[#E3F2FD]"
+                >
+                  <i className="ri-filter-3-line" />
+                  More{moreFilterCount ? ` (${moreFilterCount})` : ''}
+                </button>
+                {moreOpen ? (
+                  <div className="absolute right-0 top-full z-40 mt-2 w-[300px] space-y-3 rounded-2xl border border-[#EEF0F5] bg-white p-4 shadow-lg">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      More filters
+                    </p>
+                    <div>
+                      <label className="mb-1 block text-[11px] text-slate-500">Item</label>
+                      <select
+                        value={item}
+                        onChange={(e) => {
+                          setItem(e.target.value);
+                          setCompareItem(e.target.value || null);
+                        }}
+                        className={fieldClass}
+                        aria-label="Item"
+                      >
+                        <option value="">All Items</option>
+                        {items.map((i) => (
+                          <option key={i} value={i}>
+                            {i}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] text-slate-500">Doc type</label>
+                      <select
+                        value={purchaseType}
+                        onChange={(e) => setPurchaseType(e.target.value)}
+                        className={fieldClass}
+                        aria-label="Document type"
+                      >
+                        <option value="all">PO + WO</option>
+                        <option value="purchase_order">Purchase Order</option>
+                        <option value="work_order">Work Order</option>
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-[11px] text-slate-500">From</label>
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          onChange={(e) => setDateFrom(e.target.value)}
+                          className={fieldClass}
+                          aria-label="Date from"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-[11px] text-slate-500">To</label>
+                        <input
+                          type="date"
+                          value={dateTo}
+                          onChange={(e) => setDateTo(e.target.value)}
+                          className={fieldClass}
+                          aria-label="Date to"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           {activeCompareItem && comparison.length > 0 ? (
@@ -748,8 +799,8 @@ export default function PoReportPage() {
             </div>
           ) : null}
 
-          <div className="overflow-hidden rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
-            <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="rounded-2xl border border-white/80 bg-white/95 shadow-lg shadow-slate-200/40 backdrop-blur-sm lg:rounded-3xl">
+            <div className="relative z-20 flex flex-col gap-3 rounded-t-2xl border-b border-slate-100 bg-gradient-to-r from-white to-indigo-50/40 px-3 py-3 sm:px-5 sm:py-4 lg:flex-row lg:items-center lg:justify-between lg:rounded-t-3xl">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1E88E5]/10 text-[#1E88E5]">
                   <i className="ri-file-list-3-line text-lg" aria-hidden />
@@ -767,8 +818,62 @@ export default function PoReportPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <span className="text-xs font-medium">Rows</span>
+              <div className="flex items-center gap-2">
+                <div className="relative" ref={columnsRef}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setColumnsOpen((v) => !v);
+                      setMoreOpen(false);
+                    }}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <i className="ri-layout-column-line text-[#1E88E5]" />
+                    Columns
+                  </button>
+                  {columnsOpen ? (
+                    <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-[#EEF0F5] bg-white p-3 shadow-lg">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Show columns
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={showAllColumns}
+                            className="text-[11px] font-semibold text-[#1E88E5]"
+                          >
+                            All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetColumns}
+                            className="text-[11px] font-semibold text-slate-500"
+                          >
+                            Default
+                          </button>
+                        </div>
+                      </div>
+                      <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+                        {ALL_COLUMNS.map((col) => (
+                          <label
+                            key={col.key}
+                            className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={Boolean(visibleCols[col.key])}
+                              onChange={() => toggleColumn(col.key)}
+                              className="rounded border-slate-300 text-[#1E88E5] focus:ring-[#1E88E5]"
+                            />
+                            {col.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <span className="text-xs font-medium text-slate-500">Rows</span>
                 <select
                   value={limit}
                   onChange={(e) => setLimit(Number(e.target.value))}

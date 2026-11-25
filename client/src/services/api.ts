@@ -956,6 +956,7 @@ export const poApi = {
     search?: string;
     status?: string;
     vendor?: string;
+    plant?: string;
     category?: string;
     item?: string;
     compareItem?: string;
@@ -969,6 +970,7 @@ export const poApi = {
     if (params?.search) query.set('search', params.search);
     if (params?.status && params.status !== 'all') query.set('status', params.status);
     if (params?.vendor) query.set('vendor', params.vendor);
+    if (params?.plant) query.set('plant', params.plant);
     if (params?.category) query.set('category', params.category);
     if (params?.item) query.set('item', params.item);
     if (params?.compareItem) query.set('compareItem', params.compareItem);
@@ -1032,6 +1034,7 @@ export const poApi = {
         compareItem: string | null;
         filterOptions: {
           vendors: string[];
+          plants: string[];
           categories: string[];
           items: string[];
           statuses: Array<{ value: string; label: string }>;

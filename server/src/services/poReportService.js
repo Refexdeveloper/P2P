@@ -76,6 +76,7 @@ async function buildReportFilter(user, filters = {}) {
   const search = String(filters.search || '').trim();
   const status = String(filters.status || '').trim();
   const vendor = String(filters.vendor || '').trim();
+  const plant = String(filters.plant || '').trim();
   const category = String(filters.category || '').trim();
   const item = String(filters.item || '').trim();
   const dateFrom = String(filters.dateFrom || '').trim();
@@ -103,6 +104,10 @@ async function buildReportFilter(user, filters = {}) {
   if (vendor) {
     where.push(' AND COALESCE(NULLIF(TRIM(v.name), \'\'), NULLIF(TRIM(po.vendor_name), \'\'), \'\') = ?');
     params.push(vendor);
+  }
+  if (plant) {
+    where.push(` AND ${PLANT_EXPR} = ?`);
+    params.push(plant);
   }
   if (category) {
     where.push(` AND ${CATEGORY_EXPR} = ?`);
@@ -133,8 +138,9 @@ async function buildReportFilter(user, filters = {}) {
       OR COALESCE(v.name, '') LIKE ?
       OR COALESCE(pli.item_name, '') LIKE ?
       OR COALESCE(pli.category, '') LIKE ?
+      OR ${PLANT_EXPR} LIKE ?
     )`);
-    params.push(like, like, like, like, like);
+    params.push(like, like, like, like, like, like);
   }
 
   return {
@@ -142,7 +148,7 @@ async function buildReportFilter(user, filters = {}) {
     joinSql,
     whereSql: where.join(''),
     params,
-    filters: { search, status, vendor, category, item, dateFrom, dateTo, purchaseType },
+    filters: { search, status, vendor, plant, category, item, dateFrom, dateTo, purchaseType },
   };
 }
 
@@ -254,10 +260,11 @@ export async function getConsolidatedPoReport(user, filters = {}) {
     [...params, limit, offset]
   );
 
-  // Filter option lists (scoped; not limited by current vendor/category/item so user can switch)
+  // Filter option lists (scoped; not limited by current vendor/plant/category/item so user can switch)
   const baseFilters = {
     ...f,
     vendor: '',
+    plant: '',
     category: '',
     item: '',
     search: '',
@@ -277,6 +284,15 @@ export async function getConsolidatedPoReport(user, filters = {}) {
        AND COALESCE(NULLIF(TRIM(v.name), ''), NULLIF(TRIM(po.vendor_name), ''), '') <> ''
      ORDER BY name ASC
      LIMIT 500`,
+    base.params
+  );
+  const [plantOpts] = await pool.query(
+    `SELECT DISTINCT ${PLANT_EXPR} AS name
+     ${base.joinSql}
+     ${base.whereSql}
+       AND ${PLANT_EXPR} <> ''
+     ORDER BY name ASC
+     LIMIT 300`,
     base.params
   );
   const [categoryOpts] = await pool.query(
@@ -363,6 +379,7 @@ export async function getConsolidatedPoReport(user, filters = {}) {
     compareItem: compareItem || null,
     filterOptions: {
       vendors: vendorOpts.map((r) => r.name).filter(Boolean),
+      plants: plantOpts.map((r) => r.name).filter(Boolean),
       categories: categoryOpts.map((r) => r.name).filter(Boolean),
       items: itemOpts.map((r) => r.name).filter(Boolean),
       statuses: statusOpts.map((r) => ({

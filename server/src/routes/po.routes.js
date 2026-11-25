@@ -609,6 +609,7 @@ router.get('/report/consolidated', canPoReport, async (req, res) => {
       search: q('search'),
       status: q('status') || 'all',
       vendor: q('vendor'),
+      plant: q('plant'),
       category: q('category'),
       item: q('item'),
       compareItem: q('compareItem'),
