@@ -3492,14 +3492,40 @@ export async function listScmRfqEntryPrs(user) {
        AND (
          LOWER(TRIM(COALESCE(pr.vendor_selection, 'scm'))) = 'scm'
          OR (LOWER(TRIM(pr.vendor_selection)) = 'own' AND rc.requester_submitted_at IS NOT NULL)
-         OR (LOWER(TRIM(pr.vendor_selection)) = 'it' AND rc.requester_submitted_at IS NOT NULL)
-         OR COALESCE(pr.pr_flow, 'standard') = 'functional'
+         OR (
+           LOWER(TRIM(pr.vendor_selection)) = 'it'
+           AND rc.requester_submitted_at IS NOT NULL
+           AND (
+             pr.current_stage = 'RFQ_SCM_BUYER_SELECTION'
+             OR EXISTS (
+               SELECT 1 FROM workflow_tasks it_scm
+               WHERE it_scm.pr_id = pr.id
+                 AND it_scm.task_type = 'RFQ_ENTRY'
+                 AND it_scm.assigned_role = 'SCM Buyer'
+                 AND it_scm.status = 'pending'
+             )
+           )
+         )
+         OR (
+           COALESCE(pr.pr_flow, 'standard') = 'functional'
+           AND LOWER(TRIM(COALESCE(pr.vendor_selection, ''))) NOT IN ('it', 'own')
+         )
          OR EXISTS (
            SELECT 1 FROM workflow_tasks scm_wt
            WHERE scm_wt.pr_id = pr.id
              AND scm_wt.task_type = 'RFQ_ENTRY'
              AND scm_wt.assigned_role = 'SCM Buyer'
              AND scm_wt.status = 'pending'
+         )
+       )
+       AND NOT (
+         LOWER(TRIM(pr.vendor_selection)) = 'it'
+         AND EXISTS (
+           SELECT 1 FROM workflow_tasks reg_wt
+           WHERE reg_wt.pr_id = pr.id
+             AND reg_wt.task_type = 'RFQ_ENTRY'
+             AND reg_wt.assigned_role = 'Requester'
+             AND reg_wt.status = 'pending'
          )
        )
      ORDER BY pr.updated_at DESC`,

@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
 } from '../../../../components/feature/ApprovalHistoryPanel';
 import VendorComparisonMatrix from '../../../../components/rfq/VendorComparisonMatrix';
+import ManagerRfqQuoteSummary, {
+  SelectedVendorQuoteLines,
+} from '../../../../components/rfq/ManagerRfqQuoteSummary';
 import {
   accountsApi,
   poApi,
@@ -72,6 +75,7 @@ interface PRDetail {
   totalAmount: number;
   justification: string;
   statusUI: string;
+  prFlow?: 'standard' | 'functional';
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryEntry[];
   attachments?: PrAttachmentRecord[];
@@ -366,6 +370,10 @@ export default function PRBucketExpandedRow({
   const currentPdfUrlRef = useRef<string | null>(null);
   const referencePdfUrlRef = useRef<string | null>(null);
   const isManualDoc = !(prId > 0);
+  const isStandardFlow = useMemo(
+    () => (pr?.prFlow || comparison?.pr?.prFlow || 'standard') !== 'functional',
+    [pr?.prFlow, comparison?.pr?.prFlow]
+  );
 
   /** Keep expand panel pinned to the visible table viewport (no horizontal scroll of details). */
   useEffect(() => {
@@ -604,6 +612,7 @@ export default function PRBucketExpandedRow({
               totalAmount: Number(d.totalAmount || 0),
               justification: String(d.justification || ''),
               statusUI: String(d.statusUI || statusLabel),
+              prFlow: d.prFlow === 'functional' ? 'functional' : 'standard',
               lineItems: items,
               approvalHistory: mapHistory(historyRaw),
               attachments: Array.isArray(d.attachments) ? (d.attachments as PrAttachmentRecord[]) : [],
@@ -1058,7 +1067,7 @@ export default function PRBucketExpandedRow({
               )}
 
               {!loading && !error && pr && tab === 'items' && (
-                <div className="w-full min-w-0">
+                <div className="w-full min-w-0 space-y-3">
                   {pr.lineItems.length === 0 ? (
                     <p className="text-sm text-gray-500 py-6 text-center">No line items found</p>
                   ) : (
@@ -1103,13 +1112,18 @@ export default function PRBucketExpandedRow({
                       </tfoot>
                     </table>
                   )}
+                  {isStandardFlow && comparison ? <SelectedVendorQuoteLines data={comparison} /> : null}
                 </div>
               )}
 
               {!loading && !error && tab === 'vendors' && (
                 comparison ? (
                   <div className="min-w-0 w-full max-w-full">
-                    <VendorComparisonMatrix data={comparison} compact />
+                    {isStandardFlow ? (
+                      <ManagerRfqQuoteSummary data={comparison} />
+                    ) : (
+                      <VendorComparisonMatrix data={comparison} compact />
+                    )}
                   </div>
                 ) : (
                   <div className="py-8 text-center text-sm text-gray-500">

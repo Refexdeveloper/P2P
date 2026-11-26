@@ -7,6 +7,7 @@ import ApprovalHistoryPanel, {
 } from '../../../components/feature/ApprovalHistoryPanel';
 import POApprovalModal from './components/POApprovalModal';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
+import ManagerRfqQuoteSummary from '../../../components/rfq/ManagerRfqQuoteSummary';
 import { poApi, rfqApi, VendorComparisonData } from '../../../services/api';
 import type { POData } from '../../../mocks/po-data';
 import { PM_BTN_PRIMARY, PM_BTN_SECONDARY } from '../../../constants/pmTheme';
@@ -535,11 +536,18 @@ function ExpandedRow({ po, poId, onApprove, onReject, onSendBack, onEdit, onView
                       )}
                     </div>
                     <div className="max-w-full overflow-x-auto">
-                      <VendorComparisonMatrix
-                        data={comparisonData}
-                        poId={poId}
-                        onPreviewFile={handlePreviewFile}
-                      />
+                      {(comparisonData.pr?.prFlow || 'standard') !== 'functional' ? (
+                        <ManagerRfqQuoteSummary
+                          data={comparisonData}
+                          onPreviewFile={handlePreviewFile}
+                        />
+                      ) : (
+                        <VendorComparisonMatrix
+                          data={comparisonData}
+                          poId={poId}
+                          onPreviewFile={handlePreviewFile}
+                        />
+                      )}
                     </div>
                   </div>
                 ) : (

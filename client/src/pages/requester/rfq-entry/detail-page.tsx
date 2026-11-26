@@ -2938,7 +2938,7 @@ export default function RfqEntryDetailPage() {
                   Loading comparison…
                 </div>
               ) : comparisonForView ? (
-                isScm ? (
+                isScm && (comparisonForView.pr?.prFlow || 'standard') !== 'functional' ? (
                   <ManagerRfqQuoteSummary
                     data={comparisonForView}
                     onPreviewFile={(submissionId, _vendorName, fileName) => {

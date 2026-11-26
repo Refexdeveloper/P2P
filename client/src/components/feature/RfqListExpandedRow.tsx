@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import ManagerRfqQuoteSummary from '../rfq/ManagerRfqQuoteSummary';
+import ManagerRfqQuoteSummary, {
+  SelectedVendorQuoteLines,
+} from '../rfq/ManagerRfqQuoteSummary';
+import VendorComparisonMatrix from '../rfq/VendorComparisonMatrix';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
@@ -49,6 +52,7 @@ interface PRDetail {
   specialNotes?: string;
   statusUI: string;
   vendorSelection?: string;
+  prFlow?: 'standard' | 'functional';
   lineItems: LineItem[];
   approvalHistory: ApprovalHistoryEntry[];
   attachments: PrAttachmentRecord[];
@@ -227,6 +231,7 @@ export default function RfqListExpandedRow({
             specialNotes: String(d.specialNotes || ''),
             statusUI: String(d.statusUI || statusLabel || ''),
             vendorSelection: d.vendorSelection ? String(d.vendorSelection) : undefined,
+            prFlow: d.prFlow === 'functional' ? 'functional' : 'standard',
             lineItems: items,
             approvalHistory: normalizeHistory(d.approvalHistory),
             attachments,
@@ -252,28 +257,29 @@ export default function RfqListExpandedRow({
     };
   }, [prId, statusLabel]);
 
+  const isStandardFlow =
+    (pr?.prFlow || comparison?.pr?.prFlow || 'standard') !== 'functional';
+
   const selectedVendor = useMemo(() => {
-    if (!comparison) return null;
+    if (!isStandardFlow || !comparison) return null;
     const vendors = comparison.vendors || [];
     const recommended =
       vendors.find((v) => v.isRecommended) ||
       vendors.find((v) => Number(v.id) === Number(comparison.recommendedVendorId)) ||
       null;
     if (!recommended && !comparison.recommendedVendorName) return null;
+    const rounds = [...(recommended?.rounds || [])].sort((a, b) => a.round - b.round);
+    const lastRound = rounds.length ? rounds[rounds.length - 1] : null;
     const quoted =
       Number(recommended?.latest?.quotedPrice) ||
-      Number(
-        [...(recommended?.rounds || [])]
-          .sort((a, b) => a.round - b.round)
-          .at(-1)?.values?.quotedPrice
-      ) ||
+      Number(lastRound?.values?.quotedPrice) ||
       0;
     return {
       name: comparison.recommendedVendorName || recommended?.name || 'Selected vendor',
-      email: recommended?.email || '',
+      email: String((recommended as { email?: string } | null)?.email || ''),
       quotedPrice: quoted,
     };
-  }, [comparison]);
+  }, [comparison, isStandardFlow]);
 
   const tabs = [
     { key: 'details' as const, label: 'PR Details', icon: 'ri-information-line' },
@@ -478,7 +484,7 @@ export default function RfqListExpandedRow({
 
             {!loading && !error && pr && tab === 'items' && (
               <div className="min-w-0 w-full max-w-full space-y-3">
-                {selectedVendor ? (
+                {isStandardFlow && selectedVendor ? (
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
                       <i className="ri-checkbox-circle-fill text-xs" aria-hidden />
@@ -551,18 +557,30 @@ export default function RfqListExpandedRow({
                   </table>
                 )}
                 </div>
+                {isStandardFlow && comparison ? <SelectedVendorQuoteLines data={comparison} /> : null}
               </div>
             )}
 
             {!loading && !error && pr && tab === 'vendors' && (
               comparison ? (
                 <div className="min-w-0 w-full max-w-full space-y-4 rounded-2xl bg-[#F5F7FA] p-3 sm:rounded-[18px] sm:p-4">
-                  <ManagerRfqQuoteSummary
-                    data={comparison}
-                    onPreviewFile={(submissionId, vendorName, fileName) => {
-                      void handlePreviewFile(submissionId, vendorName, fileName);
-                    }}
-                  />
+                  {isStandardFlow ? (
+                    <ManagerRfqQuoteSummary
+                      data={comparison}
+                      onPreviewFile={(submissionId, vendorName, fileName) => {
+                        void handlePreviewFile(submissionId, vendorName, fileName);
+                      }}
+                    />
+                  ) : (
+                    <VendorComparisonMatrix
+                      data={comparison}
+                      latestOnly
+                      compact
+                      onPreviewFile={(submissionId, vendorName, fileName) => {
+                        void handlePreviewFile(submissionId, vendorName, fileName);
+                      }}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="relative overflow-hidden rounded-2xl border border-transparent bg-white px-4 py-10 text-center shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)] sm:rounded-[18px]">

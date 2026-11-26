@@ -83,23 +83,112 @@ function lineTotal(line: QuoteLine): number {
   return Math.round(qty * unit * (1 + gst / 100) * 100) / 100;
 }
 
-export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
-  const [fileBusy, setFileBusy] = useState<string | null>(null);
-  const [fileError, setFileError] = useState('');
-
+export function resolveSelectedVendorQuote(data: VendorComparisonData) {
   const vendors = data.vendors || [];
-  const recommended = vendors.find((v) => v.isRecommended) || vendors[0] || null;
+  const recommended =
+    vendors.find((v) => v.isRecommended) ||
+    vendors.find((v) => Number(v.id) === Number(data.recommendedVendorId)) ||
+    vendors[0] ||
+    null;
   const fromApi = asQuoteLines(data.recommendedQuoteLineItems);
   const recLines = fromApi.length ? fromApi : recommended ? quoteLinesForVendor(recommended) : [];
-  const recommendedRound =
-    Number(data.recommendedRound) ||
-    Math.max(0, ...(recommended?.rounds || []).map((r) => Number(r.round) || 0)) ||
-    1;
   const recommendedQuotedTotal = recommended
     ? Number(recommended.latest?.quotedPrice) ||
       vendorLatestPrice(recommended) ||
       recLines.reduce((sum, line) => sum + lineTotal(line), 0)
     : recLines.reduce((sum, line) => sum + lineTotal(line), 0);
+  return {
+    vendors,
+    recommended,
+    recLines,
+    recommendedQuotedTotal,
+    vendorName: data.recommendedVendorName || recommended?.name || 'Selected vendor',
+    vendorEmail: String(recommended?.email || ''),
+  };
+}
+
+/** Selected/recommended vendor quotation lines — used under Line Items on Standard flow. */
+export function SelectedVendorQuoteLines({ data }: { data: VendorComparisonData }) {
+  const { recLines, recommendedQuotedTotal, vendorName } = resolveSelectedVendorQuote(data);
+  const prLines = data.pr?.lineItems || [];
+  const lines =
+    recLines.length > 0
+      ? recLines
+      : recommendedQuotedTotal > 0
+        ? [
+            {
+              description:
+                prLines.length === 1
+                  ? String(prLines[0]?.description || 'Quoted amount')
+                  : 'Quoted amount',
+              quantity: 1,
+              quotedUnitPrice: recommendedQuotedTotal,
+              quotedTotal: recommendedQuotedTotal,
+            } as QuoteLine,
+          ]
+        : [];
+  if (!lines.length) return null;
+  const quotedTotal =
+    recommendedQuotedTotal || lines.reduce((sum, line) => sum + lineTotal(line), 0);
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#c5e6eb] bg-white shadow-[0_8px_24px_-12px_rgba(15,23,42,0.12)]">
+      <div className="bg-[#0f6b7a] px-4 py-3 text-white">
+        <p className="text-[11px] font-bold uppercase tracking-wider">Selected vendor — quotation line items</p>
+        <p className="mt-0.5 text-sm font-semibold opacity-95">{vendorName}</p>
+      </div>
+      <div className="overflow-x-auto bg-white">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead>
+            <tr className="bg-[#e6f6f8] text-[#0f6b7a]">
+              <th className="w-10 px-3 py-2 text-center text-[11px] font-bold">#</th>
+              <th className="px-3 py-2 text-left text-[11px] font-bold">Description</th>
+              <th className="px-3 py-2 text-center text-[11px] font-bold">Qty</th>
+              <th className="px-3 py-2 text-right text-[11px] font-bold">Unit</th>
+              <th className="px-3 py-2 text-center text-[11px] font-bold">GST</th>
+              <th className="px-3 py-2 text-right text-[11px] font-bold">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((line, idx) => (
+              <tr key={`sel-ql-${idx}`} className="border-t border-gray-100">
+                <td className="px-3 py-2 text-center text-slate-500">{idx + 1}</td>
+                <td className="px-3 py-2 text-slate-900">{line.description || '—'}</td>
+                <td className="px-3 py-2 text-center tabular-nums">{line.quantity || '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{money(line.quotedUnitPrice || 0)}</td>
+                <td className="px-3 py-2 text-center text-slate-500">
+                  {line.gstPercent != null ? `${line.gstPercent}%` : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums text-[#0f6b7a]">
+                  {money(lineTotal(line))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-[#c5e6eb] bg-[#f4fbfc]">
+              <td colSpan={5} className="px-3 py-2.5 text-right text-sm font-bold text-[#0b5361]">
+                Quoted total
+              </td>
+              <td className="px-3 py-2.5 text-right text-base font-extrabold tabular-nums text-[#0f6b7a]">
+                {money(quotedTotal)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export default function ManagerRfqQuoteSummary({ data, onPreviewFile }: Props) {
+  const [fileBusy, setFileBusy] = useState<string | null>(null);
+  const [fileError, setFileError] = useState('');
+
+  const { vendors, recommended, recLines, recommendedQuotedTotal } = resolveSelectedVendorQuote(data);
+  const recommendedRound =
+    Number(data.recommendedRound) ||
+    Math.max(0, ...(recommended?.rounds || []).map((r) => Number(r.round) || 0)) ||
+    1;
 
   const totalRounds = Math.max(
     Number(data.totalRounds) || 1,
