@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../../../components/feature/DashboardLayout';
 import VendorComparisonMatrix from '../../../components/rfq/VendorComparisonMatrix';
+import ManagerRfqQuoteSummary from '../../../components/rfq/ManagerRfqQuoteSummary';
 import SendBackModal from '../../scm/rfq-entry/components/SendBackModal';
 import PostRfqApprovalModal from '../../rfq-approval/components/PostRfqApprovalModal';
 import CreateVendorForm from '../../scm/vendor-master/components/CreateVendorForm';
@@ -2922,9 +2923,13 @@ export default function RfqEntryDetailPage() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-bold text-gray-900">Compare vendor prices</h2>
+                  <h2 className="text-base font-bold text-gray-900">
+                    {isScm ? 'Vendor Comparison' : 'Compare vendor prices'}
+                  </h2>
                   <p className="text-sm text-gray-500 mt-0.5">
-                    See each vendor’s price side by side, then go back to pick a winner.
+                    {isScm
+                      ? 'Selected vendor quotation line items and vendor comparison, same view as L1 Manager RFQ approval.'
+                      : 'See each vendor’s price side by side, then go back to pick a winner.'}
                   </p>
                 </div>
               </div>
@@ -2933,13 +2938,22 @@ export default function RfqEntryDetailPage() {
                   Loading comparison…
                 </div>
               ) : comparisonForView ? (
-                <VendorComparisonMatrix
-                  data={comparisonForView}
-                  selectedVendorId={recommendedId}
-                  onPreviewFile={(submissionId, _vendorName, fileName) => {
-                    void openFilePreview(submissionId, fileName);
-                  }}
-                />
+                isScm ? (
+                  <ManagerRfqQuoteSummary
+                    data={comparisonForView}
+                    onPreviewFile={(submissionId, _vendorName, fileName) => {
+                      void openFilePreview(submissionId, fileName);
+                    }}
+                  />
+                ) : (
+                  <VendorComparisonMatrix
+                    data={comparisonForView}
+                    selectedVendorId={recommendedId}
+                    onPreviewFile={(submissionId, _vendorName, fileName) => {
+                      void openFilePreview(submissionId, fileName);
+                    }}
+                  />
+                )
               ) : (
                 <div className="bg-white border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
                   Comparison data unavailable. Switch back to Entry or refresh the page.

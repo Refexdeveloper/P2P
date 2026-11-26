@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import VendorComparisonMatrix from '../rfq/VendorComparisonMatrix';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import ManagerRfqQuoteSummary from '../rfq/ManagerRfqQuoteSummary';
 import ApprovalHistoryPanel, {
   ManagerL2CommentsHighlight,
   type ApprovalHistoryEntry,
@@ -252,6 +252,29 @@ export default function RfqListExpandedRow({
     };
   }, [prId, statusLabel]);
 
+  const selectedVendor = useMemo(() => {
+    if (!comparison) return null;
+    const vendors = comparison.vendors || [];
+    const recommended =
+      vendors.find((v) => v.isRecommended) ||
+      vendors.find((v) => Number(v.id) === Number(comparison.recommendedVendorId)) ||
+      null;
+    if (!recommended && !comparison.recommendedVendorName) return null;
+    const quoted =
+      Number(recommended?.latest?.quotedPrice) ||
+      Number(
+        [...(recommended?.rounds || [])]
+          .sort((a, b) => a.round - b.round)
+          .at(-1)?.values?.quotedPrice
+      ) ||
+      0;
+    return {
+      name: comparison.recommendedVendorName || recommended?.name || 'Selected vendor',
+      email: recommended?.email || '',
+      quotedPrice: quoted,
+    };
+  }, [comparison]);
+
   const tabs = [
     { key: 'details' as const, label: 'PR Details', icon: 'ri-information-line' },
     {
@@ -454,7 +477,27 @@ export default function RfqListExpandedRow({
             )}
 
             {!loading && !error && pr && tab === 'items' && (
-              <div className="min-w-0 w-full max-w-full overflow-x-auto">
+              <div className="min-w-0 w-full max-w-full space-y-3">
+                {selectedVendor ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 px-3 py-2.5">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                      <i className="ri-checkbox-circle-fill text-xs" aria-hidden />
+                      Selected vendor
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-emerald-950">{selectedVendor.name}</p>
+                      {selectedVendor.email ? (
+                        <p className="text-xs text-emerald-800/80">{selectedVendor.email}</p>
+                      ) : null}
+                    </div>
+                    {selectedVendor.quotedPrice > 0 ? (
+                      <p className="ml-auto text-sm font-bold tabular-nums text-emerald-900">
+                        {formatCurrency(selectedVendor.quotedPrice)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 {pr.lineItems.length === 0 ? (
                   <p className="text-sm text-gray-500 py-6 text-center">No line items found</p>
                 ) : (
@@ -507,16 +550,15 @@ export default function RfqListExpandedRow({
                     </tfoot>
                   </table>
                 )}
+                </div>
               </div>
             )}
 
             {!loading && !error && pr && tab === 'vendors' && (
               comparison ? (
                 <div className="min-w-0 w-full max-w-full space-y-4 rounded-2xl bg-[#F5F7FA] p-3 sm:rounded-[18px] sm:p-4">
-                  <VendorComparisonMatrix
+                  <ManagerRfqQuoteSummary
                     data={comparison}
-                    latestOnly
-                    compact
                     onPreviewFile={(submissionId, vendorName, fileName) => {
                       void handlePreviewFile(submissionId, vendorName, fileName);
                     }}
