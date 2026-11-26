@@ -1,4 +1,4 @@
-import { PR_STATUS, STAGE } from './constants.js';
+import { PR_STATUS, STAGE, isItVendorSelection } from './constants.js';
 
 /**
  * Send-back target definitions (shared by pre-RFQ + post-RFQ flows).
@@ -346,23 +346,39 @@ export function listSendBackTargets(status, vendorSelection = 'scm', prFlow = 's
  */
 export function listAdminSendBackTargets(
   _status,
-  _vendorSelection = 'scm',
+  vendorSelection = 'scm',
   prFlow = 'standard',
   poCreationBy = 'scm',
   purchaseType = 'purchase_order'
 ) {
   const functional = prFlow === 'functional';
+  const isIt = isItVendorSelection(vendorSelection);
   const cloud = isCloudPurchaseType(purchaseType);
   const requesterPo = String(poCreationBy || 'scm') === 'requester';
-  const keys = cloud
+  let keys = cloud
     ? ADMIN_CLOUD_STEP_KEYS
     : requesterPo
       ? ADMIN_REQUESTER_PO_STEP_KEYS
       : ADMIN_ANY_STEP_KEYS;
+  // IT Vendor Selection: keep Reginold RFQ Entry near the top of Move to step.
+  if (isIt && !cloud) {
+    keys = [
+      'REQUESTER',
+      'REQUESTER_RFQ',
+      ...keys.filter((key) => key !== 'REQUESTER' && key !== 'REQUESTER_RFQ'),
+    ];
+  }
   return keys.map((key) => {
     const def = SEND_BACK_TARGET_DEFS[key];
     if (!def) return null;
     if (cloud && def.key === 'HOD_PRE') return { ...def, label: 'User Approval' };
+    if (isIt) {
+      if (def.key === 'REQUESTER_RFQ') return { ...def, label: 'Reginold RFQ Entry' };
+      if (def.key === 'HOD_PRE') return { ...def, label: 'User Approval' };
+      if (def.key === 'HOD_VENDOR') return { ...def, label: "Reginold's L1 Approval" };
+      if (def.key === 'L2_VENDOR') return { ...def, label: 'L2 Approval (after Reginold RFQ)' };
+      return def;
+    }
     return functional ? withFunctionalLabels(def) : def;
   })
     .filter(Boolean)

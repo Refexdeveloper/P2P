@@ -104,20 +104,21 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   }
 
   const admin = Boolean(options.admin);
-  const allowed = (
-    admin
-      ? listAdminSendBackTargets(
-          pr.status,
-          pr.vendor_selection,
-          pr.pr_flow,
-          pr.po_creation_by,
-          pr.purchase_type
-        )
-      : listSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow)
-  ).map((t) => t.key);
+  const allowedTargets = admin
+    ? listAdminSendBackTargets(
+        pr.status,
+        pr.vendor_selection,
+        pr.pr_flow,
+        pr.po_creation_by,
+        pr.purchase_type
+      )
+    : listSendBackTargets(pr.status, pr.vendor_selection, pr.pr_flow);
+  const allowed = allowedTargets.map((t) => t.key);
   if (!allowed.includes(target.key)) {
     throw new Error(`Cannot send back to ${target.label} from the current stage`);
   }
+  const displayLabel =
+    allowedTargets.find((t) => t.key === target.key)?.label || target.label;
 
   const db = conn || pool;
   const newStatus = target.status;
@@ -157,8 +158,8 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
     if (remarksText) {
       sets.push('send_back_remarks = ?');
       params.push(
-        `[${actor?.role || 'Approver'} → ${target.label}] ${remarksText}`
-      );
+      `[${actor?.role || 'Approver'} → ${displayLabel}] ${remarksText}`
+    );
     }
     params.push(pr.id);
     await db.query(`UPDATE rfq_configs SET ${sets.join(', ')} WHERE pr_id = ?`, params);
@@ -298,14 +299,14 @@ export async function applySendBackToTarget(conn, pr, returnTo, remarks, actor, 
   }
 
   return {
-    target,
+    target: { ...target, label: displayLabel },
     newStatus,
     newStage,
     assignee,
     requester,
     taskCreated,
-    movedTo: { key: target.key, label: target.label, assignedRole: target.assignedRole || null },
-    remarksLine: `${remarks.trim()}\n[${moveVerb}: ${target.label}]`,
+    movedTo: { key: target.key, label: displayLabel, assignedRole: target.assignedRole || null },
+    remarksLine: `${remarks.trim()}\n[${moveVerb}: ${displayLabel}]`,
     actorRole: actor?.role || '',
   };
 }
