@@ -42,6 +42,7 @@ import {
   listCfoPurchaseOrders,
   assertRequesterPoDocumentAccess,
 } from '../services/poService.js';
+import { getConsolidatedPoReport } from '../services/poReportService.js';
 import { getPoFulfillmentSummary } from '../services/accountsFulfillmentService.js';
 import { sendStoredFile } from '../utils/sendStoredFile.js';
 import { adminDeletePurchaseOrder } from '../services/adminDeleteService.js';
@@ -163,6 +164,10 @@ const canReadPo = requireRolesOrPermissions(PO_READ_ROLES, [
 const canTrackPo = requireRolesOrPermissions(
   ['SCM Buyer', 'SCM Manager', 'Super Admin'],
   ['nav.track_po', 'nav.create_po', 'nav.po_approval']
+);
+const canPoReport = requireRolesOrPermissions(
+  ['SCM Buyer', 'SCM Manager', 'CFO', 'Super Admin', 'Accounts Payable', 'Accounts Manager'],
+  ['nav.po_report', 'nav.track_po', 'nav.cfo_insights']
 );
 const canCreatePo = requireRolesOrPermissions(
   ['SCM Buyer', 'SCM Manager', 'Super Admin', 'Requester'],
@@ -587,6 +592,32 @@ router.get('/track', canTrackPo, async (req, res) => {
       dateTo,
     });
     res.json(result);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+/** Consolidated line-level PO report (RMC). Does not change create/approval flows. */
+router.get('/report/consolidated', canPoReport, async (req, res) => {
+  try {
+    const q = (key) => (typeof req.query[key] === 'string' ? req.query[key] : '');
+    const page = req.query.page != null ? Number(req.query.page) : 1;
+    const limit = req.query.limit != null ? Number(req.query.limit) : 50;
+    const data = await getConsolidatedPoReport(req.user, {
+      page: Number.isFinite(page) ? page : 1,
+      limit: Number.isFinite(limit) ? limit : 50,
+      search: q('search'),
+      status: q('status') || 'all',
+      vendor: q('vendor'),
+      plant: q('plant'),
+      category: q('category'),
+      item: q('item'),
+      compareItem: q('compareItem'),
+      dateFrom: q('dateFrom'),
+      dateTo: q('dateTo'),
+      purchaseType: q('purchaseType') || 'all',
+    });
+    res.json({ data });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }

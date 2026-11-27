@@ -80,7 +80,8 @@ export const NAV_ITEMS = [
   { code: 'nav.scm_manager_dashboard', label: 'Dashboard', path: '/scm/manager-dashboard', icon: 'ri-dashboard-line', group: 'SCM Manager', sort: 65 },
   { code: 'nav.create_po', label: 'PO/WO Workspace', path: '/scm/create-po', icon: 'ri-shopping-cart-2-line', group: 'SCM', sort: 62 },
   { code: 'nav.track_po', label: 'PO/WO Tracker', path: '/scm/track-po', icon: 'ri-search-eye-line', group: 'SCM', sort: 63 },
-  { code: 'nav.po_excel_import', label: 'PO Excel Import', path: '/scm/po-excel-import', icon: 'ri-file-excel-2-line', group: 'SCM', sort: 64 },
+  { code: 'nav.po_report', label: 'PO Report', path: '/scm/po-report', icon: 'ri-file-chart-line', group: 'SCM', sort: 64 },
+  { code: 'nav.po_excel_import', label: 'PO Excel Import', path: '/scm/po-excel-import', icon: 'ri-file-excel-2-line', group: 'SCM', sort: 65 },
   { code: 'nav.item_master', label: 'Item Master', path: '/scm/item-master', icon: 'ri-box-3-line', group: 'Masters', sort: 200 },
   { code: 'nav.vendor_master', label: 'Vendor Master', path: '/scm/vendor-master', icon: 'ri-store-2-line', group: 'Masters', sort: 201 },
   { code: 'nav.category_master', label: 'Category Master', path: '/scm/category-master', icon: 'ri-price-tag-3-line', group: 'Masters', sort: 202 },
@@ -128,7 +129,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.project_master',
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval', 'nav.po_report'],
   'Business Head': ['nav.tasks', 'nav.po_value_approval', 'nav.track_pr'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
@@ -139,6 +140,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.create_po',
     'nav.buyer_final_verify',
     'nav.track_po',
+    'nav.po_report',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -161,6 +163,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.rfq_approval',
     'nav.tasks',
     'nav.track_po',
+    'nav.po_report',
     'nav.payment_authorization',
     'nav.item_master',
     'nav.vendor_master',
@@ -176,6 +179,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.tasks',
     'nav.invoice_verification',
     'nav.payment',
+    'nav.po_report',
   ],
   'Accounts Manager': [
     'nav.accounts_dashboard',
@@ -183,6 +187,7 @@ export const ROLE_DEFAULT_PERMISSIONS = {
     'nav.invoice_verification',
     'nav.payment',
     'nav.payment_authorization',
+    'nav.po_report',
   ],
   'Functional Team': ['nav.functional_evaluate', 'nav.tasks'],
   'Tech Evaluator': ['nav.tech_evaluation'],
@@ -357,6 +362,7 @@ export function resolvePermissionCodesFromStored(role, storedCodes = [], email =
         'nav.create_po',
         'nav.buyer_final_verify',
         'nav.track_po',
+        'nav.po_report',
         'nav.po_excel_import'
       );
       const tasksIdx = stored.indexOf('nav.tasks');
@@ -372,7 +378,8 @@ export function resolvePermissionCodesFromStored(role, storedCodes = [], email =
         'nav.po_approval',
         'nav.rfq_approval',
         'nav.tasks',
-        'nav.track_po'
+        'nav.track_po',
+        'nav.po_report'
       );
       // SCM Manager uses RFQ Approval queue (shown as RFQ Entry) — not buyer RFQ Entry
       const scmRfqIdx = stored.indexOf('nav.scm_rfq_entry');
@@ -460,6 +467,7 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.create_po',
             'nav.buyer_final_verify',
             'nav.track_po',
+            'nav.po_report',
             'nav.po_excel_import'
           );
           if (stored.includes('nav.tasks')) removeCodes.push('nav.tasks');
@@ -472,7 +480,8 @@ export async function getUserPermissionCodes(userId, role, email = null) {
             'nav.po_approval',
             'nav.rfq_approval',
             'nav.tasks',
-            'nav.track_po'
+            'nav.track_po',
+            'nav.po_report'
           );
           if (stored.includes('nav.scm_rfq_entry')) removeCodes.push('nav.scm_rfq_entry');
         }

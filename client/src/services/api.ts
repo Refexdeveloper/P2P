@@ -950,6 +950,99 @@ export const poApi = {
   },
   list: (pending?: boolean) =>
     request<{ data: unknown[] }>(`/api/po${pending ? '?pending=true' : ''}`),
+  consolidatedReport: (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    vendor?: string;
+    plant?: string;
+    category?: string;
+    item?: string;
+    compareItem?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    purchaseType?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.page != null) query.set('page', String(params.page));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.search) query.set('search', params.search);
+    if (params?.status && params.status !== 'all') query.set('status', params.status);
+    if (params?.vendor) query.set('vendor', params.vendor);
+    if (params?.plant) query.set('plant', params.plant);
+    if (params?.category) query.set('category', params.category);
+    if (params?.item) query.set('item', params.item);
+    if (params?.compareItem) query.set('compareItem', params.compareItem);
+    if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params?.dateTo) query.set('dateTo', params.dateTo);
+    if (params?.purchaseType && params.purchaseType !== 'all') {
+      query.set('purchaseType', params.purchaseType);
+    }
+    const qs = query.toString();
+    return request<{
+      data: {
+        summary: {
+          totalPOs: number;
+          totalVendors: number;
+          totalQuantity: number;
+          totalPoValue: number;
+          totalLineExGst: number;
+          totalLineTax: number;
+          totalLineValue: number;
+          lineCount: number;
+        };
+        rows: Array<{
+          lineId: number;
+          poId: number;
+          poNumber: string;
+          poDate: string;
+          status: string;
+          statusLabel: string;
+          purchaseType: string;
+          purchaseTypeLabel?: string;
+          vendorId: number | null;
+          vendorName: string;
+          entityName?: string;
+          plantName?: string;
+          department?: string;
+          category: string;
+          itemName: string;
+          description: string;
+          quantity: number;
+          uom: string;
+          unitRate: number;
+          taxPercentage: number;
+          taxAmount: number;
+          lineExGst: number;
+          lineTotal: number;
+          poSubtotal?: number;
+          poTaxAmount?: number;
+          poGrandTotal: number;
+        }>;
+        comparison: Array<{
+          vendorName: string;
+          itemName: string;
+          category: string;
+          poCount: number;
+          totalQuantity: number;
+          minRate: number;
+          maxRate: number;
+          avgRate: number;
+          totalExGst: number;
+        }>;
+        compareItem: string | null;
+        filterOptions: {
+          vendors: string[];
+          plants: string[];
+          categories: string[];
+          items: string[];
+          statuses: Array<{ value: string; label: string }>;
+        };
+        pagination: { page: number; limit: number; total: number; totalPages: number };
+      };
+    }>(`/api/po/report/consolidated${qs ? `?${qs}` : ''}`);
+  },
   listTrack: (params?: {
     page?: number;
     limit?: number;

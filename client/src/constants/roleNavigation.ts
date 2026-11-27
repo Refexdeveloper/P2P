@@ -100,6 +100,13 @@ const NAV_BY_CODE: Record<string, NavItem> = {
     icon: 'ri-search-eye-line',
     group: 'SCM',
   },
+  'nav.po_report': {
+    code: 'nav.po_report',
+    label: 'PO Report',
+    path: '/scm/po-report',
+    icon: 'ri-file-chart-line',
+    group: 'SCM',
+  },
   'nav.po_excel_import': {
     code: 'nav.po_excel_import',
     label: 'PO Excel Import',
@@ -352,7 +359,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     ...REQUESTER_MASTER_NAV_CODES,
   ],
   'PR Manager': ['nav.pr_manager_dashboard', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
-  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval'],
+  CFO: ['nav.cfo_insights', 'nav.cfo_dashboard', 'nav.tasks', 'nav.po_value_approval', 'nav.po_report'],
   'Business Head': ['nav.tasks', 'nav.po_value_approval', 'nav.track_pr'],
   'HOD Approver': ['nav.tasks', 'nav.rfq_approval', 'nav.create_pr', 'nav.track_pr'],
   'SCM Buyer': [
@@ -363,6 +370,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.create_po',
     'nav.buyer_final_verify',
     'nav.track_po',
+    'nav.po_report',
     'nav.item_master',
     'nav.vendor_master',
     'nav.category_master',
@@ -386,6 +394,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.tasks',
     'nav.create_po',
     'nav.track_po',
+    'nav.po_report',
     'nav.payment_authorization',
     'nav.item_master',
     'nav.vendor_master',
@@ -402,6 +411,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.tasks',
     'nav.invoice_verification',
     'nav.payment',
+    'nav.po_report',
   ],
   'Accounts Manager': [
     'nav.cfo_insights',
@@ -410,6 +420,7 @@ const ROLE_DEFAULT_CODES: Record<string, string[]> = {
     'nav.invoice_verification',
     'nav.payment',
     'nav.payment_authorization',
+    'nav.po_report',
   ],
   'Functional Team': ['nav.functional_evaluate', 'nav.tasks'],
   'Tech Evaluator': ['nav.tech_evaluation'],
@@ -533,6 +544,7 @@ export function ensureNavigation(
       'nav.tasks',
       'nav.create_po',
       'nav.track_po',
+      'nav.po_report',
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
         merged.push(NAV_BY_CODE[code]);
@@ -566,6 +578,7 @@ export function ensureNavigation(
       'nav.create_po',
       'nav.buyer_final_verify',
       'nav.track_po',
+      'nav.po_report',
     ]) {
       if (!codes.has(code) && NAV_BY_CODE[code]) {
         merged = [...merged, NAV_BY_CODE[code]];
